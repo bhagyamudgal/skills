@@ -1138,7 +1138,25 @@ Otherwise, skip the normal "Post review" prompt entirely. Instead, use AskUserQu
        - label: "Post anyway"
          description: "Post to GitHub as COMMENT state (GitHub coerces self-reviews)"
 
-On "Fix now": invoke `/fix-pr-review <url>` immediately — skip the "Then ask" prompt, skip posting, skip the "Post-completion next actions" prompt. `/fix-pr-review` handles its own workflow from here. On "Keep local only": skip the post-review prompt entirely and exit. On "Post anyway": proceed to the normal "Then ask" prompt below (the review will be posted as COMMENT due to GitHub's coercion). On "Other": treat as "Fix now" (the most useful default for self-reviews).
+On "Fix now":
+1. Write findings to `/tmp/review-pr-<number>-findings.md` in the per-finding structured format (NOT the summary table — use the explicit field labels that `/fix-pr-review` expects to parse):
+   ```
+   ## Findings
+   
+   Severity: Serious
+   File: src/auth.ts:47
+   Category: Silent-failure
+   Issue: Unhandled stdin error can crash process
+   Why it matters: Production crash on communication failure
+   Suggested fix: Add error event handler
+   
+   Severity: Moderate
+   ...
+   ```
+2. Invoke `/fix-pr-review /tmp/review-pr-<number>-findings.md`
+3. Skip the "Then ask" prompt, skip posting, skip the "Post-completion next actions" prompt — `/fix-pr-review` handles its own workflow from here via the local file input path (Phase 7 GitHub ops are automatically skipped for local files).
+
+On "Keep local only": skip the post-review prompt entirely and exit. On "Post anyway": proceed to the normal "Then ask" prompt below (the review will be posted as COMMENT due to GitHub's coercion). On "Other": treat as "Fix now" (the most useful default for self-reviews).
 
 ### Verdict-body sync check (re-runs)
 

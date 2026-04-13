@@ -11,6 +11,46 @@ Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding
 
 **Use AskUserQuestion for ALL user-facing decisions** — branch safety, stash confirmation, plan approval, per-fix confirmations, type-check failure triage, and post-completion next actions. Always present options as cursor-selectable choices, not plain text questions.
 
+## Quick Reference
+
+### Phase Overview
+
+| Phase | What | Key Output |
+|-------|------|------------|
+| 1 | Prereqs, input detection, branch safety, baseline type-check | `BASE_SHA`, `repo_map`, `baseline_errors` |
+| 2 | Fetch review data from GitHub or local file | Unified `Comment[]` array |
+| 3 | Triage subagent: classify each finding via R-rubric | Triage plan (FIX/DISMISS/DEFER/DISAGREE/NEEDS-INPUT) |
+| 4 | Plan approval gate: validate + user confirmation | Approved plan |
+| 5 | Execute fixes: sequential edits + per-file type-check (β) | Modified files, `fix_status` per item |
+| 6 | /done pipeline: fix-ts-errors → parallel-review → simplify | Clean code |
+| 7 | Reply + resolve on GitHub (skipped for local files) | Threads resolved |
+| 8 | Finalize: restore stash, report, suppressions write, next actions | Final report |
+
+### R-Rubric Summary (Phase 3 STEP 4 — first match wins)
+
+| Rule | Classification | Requires |
+|------|---------------|----------|
+| R1 | DISMISS — self-contradictory/wrong | — |
+| R2 | DISMISS — hallucinated file:line | Dead-link re-anchor failed |
+| R4 | DISMISS — already fixed | `prior_commit_sha` |
+| R5 | DISMISS — contradicts CLAUDE.md | `claude_md_quote` |
+| R3 | DISMISS — pure style/naming | Not reusability-flagged |
+| R6 | FIX — bug/security/perf/correctness/reusability | `fix_plan` ≥30 chars, `change_class`, `test_scenario` |
+| R7 | DEFER — valid but out of scope | Tracking reference |
+| R8 | DISAGREE — legitimate technical disagreement | `disagree_rationale` |
+| R9 | NEEDS-INPUT — ambiguous/needs user knowledge | `why_unclear` |
+
+*R4/R5 are evaluated before R3 by design — high-signal dismissals take priority over style. See Phase 3 STEP 4 for rationale.*
+
+### Key Cross-References
+
+- **R-rubric definition**: Phase 3 STEP 4
+- **Plan validation rules**: Phase 4 (validates fields required by R-rubric)
+- **Fix execution routing**: Phase 5 (executes R6 FIX items)
+- **Reply validator**: Phase 7 (format rules for GitHub replies)
+- **Report grouping**: Phase 8 (groups by R-classification)
+- **Suppressions**: Phase 3 STEP 0.5 (read) + Phase 8 (write)
+
 ## Usage
 
 ```
@@ -18,6 +58,7 @@ Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding
 /fix-pr-review https://github.com/owner/repo/pull/123#pullrequestreview-4089716169
 /fix-pr-review https://github.com/owner/repo/pull/123#discussion_r3064352825
 /fix-pr-review ./review.md            # local output from /review-pr
+/fix-pr-review /tmp/review-pr-123-findings.md  # temp file from /review-pr self-review
 /fix-pr-review                         # no arg → ask user to paste
 ```
 
@@ -180,6 +221,12 @@ Stash both outputs as `repo_map_files` and `repo_map_exports` for the Phase 3 su
 
 ## Phase 2: Fetch review data (main)
 
+### Dual-path input for /review-pr findings
+
+`/review-pr` now posts findings as **individual inline comments** (one per finding, each on a specific code line). These create standard `PullRequestReviewThread`s on GitHub — identical to CodeRabbit threads. The existing GraphQL fetch below handles them with zero special parsing.
+
+For self-review auto-fix (where `/review-pr` detects the user is the PR author and offers "Fix now"), findings are written to a temp file (e.g., `/tmp/review-pr-<number>-findings.md`) in the standard `## Findings` format. This uses the existing local file input path — Phase 7 automatically skips GitHub ops for local files.
+
 ### For PR URL (paginated unresolved threads)
 
 Loop with `after:` cursor until `hasNextPage == false`:
@@ -245,9 +292,11 @@ If any fetched review's body contains `🤖 Prompt for all review comments with 
 - `Inline comments:` section → maps to actionable items (match to inline comments by file:line)
 - `Nitpick comments:` section → body-only nitpicks with file + line
 
-### For local `./review.md`
+### For local files (`./review.md`, `/tmp/review-pr-*-findings.md`, etc.)
 
 Parse the `/review-pr` output format. Extract findings from the `## Findings` section, preserving `Severity / File / Category / Issue / Why it matters / Suggested fix`.
+
+**Severity mapping**: `/review-pr` uses `Critical | Serious | Moderate | Minor` while CodeRabbit uses `Critical | Major | Minor | Refactor | Nitpick`. Both are valid — normalize to the internal `Comment` schema which accepts either convention. Map for triage priority: `Critical` = highest, `Serious`/`Major` = high, `Moderate` = medium, `Minor`/`Refactor` = low, `Nitpick` = default-dismiss.
 
 ### Normalize to internal `Comment` list
 
@@ -260,7 +309,7 @@ Comment {
   source_type:  <actionable | nitpick | local>
   path:         <file path>
   line:         <post-image line, NULL for body-only nitpicks without clear line>
-  severity:     <critical | major | minor | refactor | nitpick>
+  severity:     <critical | serious | major | moderate | minor | refactor | nitpick>
   body:         <full comment text>
   html_url:     <direct URL to the comment, or review body URL for nitpicks>
   can_resolve:  <true if thread_id exists>
@@ -276,6 +325,14 @@ Comment {
 ---
 
 ## Phase 3: Triage subagent (`general-purpose`)
+
+### Load review suppressions (main agent, before dispatch)
+
+Before dispatching the subagent, load `.claude/review-suppressions.yml` from the project root (if it exists). In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<head-sha>`. If not found, set `SUPPRESSIONS = ""`.
+
+Pass loaded suppressions into the subagent prompt as a `## Review suppressions` section (same approach as CLAUDE.md content, PR diff, and repo maps — main agent fetches, subagent receives as context).
+
+### Dispatch
 
 Dispatch **one** `general-purpose` subagent with `Read`, `Grep`, and `Bash` tools.
 
@@ -309,6 +366,10 @@ PR goal (from description + linked issue if available): <one sentence>
 This map is truncated at 500 lines per section — grep packages/ directly
 for anything not listed here.
 
+## Review suppressions (from .claude/review-suppressions.yml)
+<If SUPPRESSIONS loaded by main agent, include suppressions content here.
+If no suppressions file exists, include: "None">
+
 ## Comments to triage
 <JSON array of Comment objects from Phase 2>
 
@@ -325,6 +386,32 @@ root and any nested CLAUDE.md in the affected subdirectories. Identify rules
 that could override CodeRabbit findings — e.g., "use type not interface",
 "use function keyword not arrow", forbidden patterns, testing rules, style
 conventions. These override CodeRabbit preferences.
+
+STEP 0.5 — APPLY REVIEW SUPPRESSIONS (do once, after STEP 0):
+Review suppressions are loaded by the MAIN AGENT before subagent dispatch
+(see below) and passed into this prompt as context. If suppressions were
+provided, they appear in the "## Review suppressions" section above.
+
+Expected format:
+  suppressions:
+    - pattern: "factory pattern"
+      category: Architecture
+      reason: "YAGNI - single provider by design"
+      added: 2026-04-13  # informational, not used for matching
+    - pattern: "missing timeout"
+      file: "claude-code.ts"
+      reason: "Timeout handled at caller level"
+      added: 2026-04-13
+
+Before applying the R1-R9 rubric in STEP 4, check each finding against
+suppressions. For each suppression entry:
+  1. Match `pattern` (case-insensitive substring) against the comment body
+  2. If `category` is set, also match against the finding's category
+  3. If `file` is set, also match against the finding's file path
+If ALL specified conditions match: auto-classify as DISMISS with reason
+  "suppressed by .claude/review-suppressions.yml: <reason>"
+Skip the R1-R9 rubric for suppressed findings — they go straight to
+DISMISS in the triage plan.
 
 STEP 1 — DEDUPE PASS: Group comments that describe the same pattern at
 different callsites (same rule + same symbol, OR same rule + same file).
@@ -690,6 +777,8 @@ Return the plan in this EXACT format. Missing required fields cause rejection.
 
 ## Phase 4: Plan approval gate (main)
 
+*Validates against R-rubric (see Phase 3 STEP 4). Required fields per classification are defined there.*
+
 ### Plan validation (before display)
 
 Before anything is shown to the user, mechanically validate the classifier's output:
@@ -773,6 +862,8 @@ When `EDIT_AVAILABLE=false`, present only "Execute plan" and "Cancel" (2 options
 ---
 
 ## Phase 5: Execute fixes (main, sequential)
+
+*Executes R6 FIX items from the approved plan (see Phase 3 STEP 4 for R6 criteria, Phase 4 for approval gate).*
 
 ### Dependency resolution
 
@@ -886,7 +977,9 @@ If `done_remaining` is non-empty after 2 iterations, record it for the final rep
 
 ## Phase 7: Reply + resolve on GitHub (main)
 
-**Skip this entire phase if the input was `./review.md`** — there are no GitHub threads to operate on. Phase 8 still produces the local final report.
+*Reply format rules are defined here and referenced by Phase 4 validation. This skill does NOT read or write `/review-pr`'s cache (`~/.claude/skills/review-pr/cache/`). Thread resolution happens on GitHub — `/review-pr`'s re-review picks up resolved threads via its GraphQL prior-review timeline fetch.*
+
+**Skip this entire phase if the input was `./review.md`** or any local file — there are no GitHub threads to operate on. Phase 8 still produces the local final report.
 
 ### Step 7a — Regenerate FIX replies from actual diff
 
@@ -1015,6 +1108,8 @@ gh_status[idx] = {
 ---
 
 ## Phase 8: Finalize (main)
+
+*Report groups by R-classification (see Phase 3 STEP 4). Includes suppressions write (learning loop).*
 
 ### 1. Restore WIP
 
@@ -1192,11 +1287,44 @@ On "Fix it": use a follow-up AskUserQuestion to collect guidance:
 
    On "Use reviewer's suggestion": apply the fix using the original comment's recommendation (same as Phase 5 per-fix loop) and post a FIX reply. On "I'll describe" or "Other": use the user's freeform text as the fix plan, apply inline, and post a FIX reply.
 
-On "Defer": post a DEFER reply and resolve. On "Dismiss": post a DISMISS reply and resolve.
+On "Defer": post a DEFER reply and resolve (skip GitHub ops for local file inputs — record classification in report only). On "Dismiss": post a DISMISS reply and resolve (same local file guard).
 
 On "Skip for now": continue to next actions.
 
 Skip this step entirely if the NEEDS-INPUT count is 0.
+
+### 3.5. Offer to write suppressions (learning loop)
+
+After the final report and NEEDS-INPUT triage, collect all DISMISS and DISAGREE items from the triage plan. If any exist, offer to persist them as suppressions for future reviews.
+
+Use AskUserQuestion:
+
+   Question:
+     header: "Learn"
+     text: "Save these dismissed/disagreed patterns to .claude/review-suppressions.yml so they're auto-dismissed in future reviews?"
+     options: [one option per DISMISS/DISAGREE item, showing the pattern + reason]
+     multiSelect: true
+
+For each selected item, append to `.claude/review-suppressions.yml`:
+```yaml
+  - pattern: "<normalized pattern from finding — key phrase, not full text>"
+    category: "<finding category if available>"
+    file: "<finding's file path — include only if the rationale is specific to one file, omit for generic patterns>"
+    reason: "<dismiss/disagree rationale from triage>"
+    added: <today's date YYYY-MM-DD>
+```
+
+If the file doesn't exist, create it with:
+```yaml
+suppressions:
+  - pattern: ...
+```
+
+If no items are selected, or the user chooses "Other" to skip, do not write anything.
+
+Skip this step entirely if:
+- There are no DISMISS or DISAGREE items
+- The input was a local file from outside a git repo (no project root to write suppressions into)
 
 ### 4. Post-completion next actions
 
@@ -1249,7 +1377,7 @@ Do not auto-commit unless the user chose "Commit changes" or "Push to remote" in
 - **NEVER** post a FIX reply generated in Phase 3 — always regenerate from the actual post-fix diff in Phase 7 Step 7a.
 - **NEVER** dismiss the CodeRabbit review's `CHANGES_REQUESTED` state — let CodeRabbit auto-re-review when the user pushes.
 - **NEVER** post replies for body-only nitpicks (no thread to reply to). Promoted nitpicks with `thread_id=null` get fixes but no GitHub ack — surfaced in the final report instead.
-- **NEVER** touch GitHub (Phase 7) for a local `./review.md` input.
+- **NEVER** touch GitHub (Phase 7) for any local file input (`./review.md`, `/tmp/review-pr-*-findings.md`, etc.).
 - **NEVER** proceed past Phase 4 without explicit "Execute plan" or edited-plan confirmation via AskUserQuestion.
 - **NEVER** proceed past Phase 4 if plan validation is missing required fields: `claude_md_quote` for R5, `prior_commit_sha` for R4, `disagree_rationale` for DISAGREE, `grounding_a` + `grounding_b` for every item, `fix_plan` ≥ 30 chars for every FIX.
 - **NEVER** corrupt user WIP — always auto-stash before Phase 5 edits, restore in Phase 8, error loudly on stash conflicts.
