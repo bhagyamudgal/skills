@@ -270,9 +270,23 @@ If `$CACHE_FILE` exists:
   "last_run_timestamp": "2026-04-11T13:29:50Z",
   "last_run_verdict": "request-changes",
   "findings": [ ... ],
-  "filtered_out": [ ... ]
+  "filtered_out": [ ... ],
+  "last_posted_review_id": "PR_review_abc123",
+  "last_posted_verdict": "request-changes",
+  "last_posted_at": "2026-04-11T13:30:15Z",
+  "posted_comments": [
+    {
+      "finding_key": "(file.ts, 47, handleerror)",
+      "finding_id": "S1",
+      "github_comment_id": 12345,
+      "github_thread_id": "PRRT_abc123",
+      "finding_severity": "Serious"
+    }
+  ]
 }
 ```
+
+The `posted_comments` array tracks inline comments from the hybrid posting (see Phase 4). Each entry maps a finding's dedupe key to its GitHub comment and thread IDs, enabling thread resolution on re-reviews. The `last_posted_*` fields track the most recent posted review for verdict-body sync checks.
 
 Three branches:
 
@@ -373,6 +387,51 @@ try \{ | catch \( | catch \{ | throw new | throw \s | \.catch\( | Result< | resc
 
 If any pattern appears, OR the user explicitly mentions error handling, set `INCLUDE_SILENT_FAILURE_HUNTER = true`. Otherwise false. Filename-based detection is unreliable — a silent `catch {}` added to `user-service.ts` would never trigger it.
 
+### Load project-level review suppressions
+
+Check for a `.claude/review-suppressions.yml` file in the project root. This file allows teams to suppress known-acceptable patterns that would otherwise be flagged repeatedly.
+
+```bash
+SUPPRESSIONS_FILE=".claude/review-suppressions.yml"
+if [ -f "$SUPPRESSIONS_FILE" ]; then
+  SUPPRESSIONS=$(cat "$SUPPRESSIONS_FILE")
+fi
+```
+
+Expected format:
+
+```yaml
+suppressions:
+  - pattern: "factory pattern"
+    category: Architecture
+    reason: "YAGNI - single provider by design decision"
+    added: 2026-04-13
+
+  - pattern: "missing timeout"
+    file: "claude-code.ts"
+    reason: "Timeout handled at caller level"
+    added: 2026-04-13
+```
+
+Fields:
+- `pattern` (required): case-insensitive substring matched against a finding's `Issue` text
+- `category` (optional): if set, only suppress findings with this exact Category
+- `file` (optional): if set, only suppress findings whose `File` path contains this string
+- `reason` (required): why this pattern is suppressed — logged in Filtered Out for auditability
+- `added` (optional): when the suppression was added — helps with periodic cleanup
+
+If the file exists, pass its contents into the Phase 2 reviewer subagent prompt as:
+
+```
+## Review suppressions (from .claude/review-suppressions.yml)
+The following patterns are intentionally suppressed — do NOT flag them:
+<suppressions content>
+```
+
+This lets the reviewer skip suppressed patterns upfront, reducing noise before the critic pass. Phase 3 also applies suppressions as a safety net (see Step 5.5).
+
+**Cross-repo mode**: in `CROSS_REPO_MODE=true`, the local filesystem check won't find the PR repo's suppressions file. Fetch it via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<head-sha>` instead. If the file doesn't exist (404), skip suppressions as normal.
+
 ---
 
 ## Phase 2: Parallel review (subagents)
@@ -434,6 +493,9 @@ Out of scope: <from Phase 1>
 Prior findings already reported (do NOT re-report unless you have a correction): <from Phase 1>
 
 PR URL: <url>
+
+## Review suppressions (from .claude/review-suppressions.yml)
+<If SUPPRESSIONS loaded in Phase 1, include: "The following patterns are intentionally suppressed — do NOT flag them:" followed by the suppressions content. If no suppressions file exists, include: "None">
 
 ## Shared package repo map (for Q6 reusability check)
 
@@ -928,6 +990,22 @@ Fix:        Before merging, grep packages/ for each new function/component name 
 
 Drop all `Confidence: low` findings at Moderate or Minor severity. Log as `low-confidence filler`. **Keep** low-confidence Critical/Serious findings — humans want to see risky-but-uncertain flags even if the reviewer wasn't sure.
 
+### 5.5. Apply project-level suppressions
+
+If `SUPPRESSIONS` was loaded in Phase 1, match each remaining finding against the suppressions list:
+
+For each suppression entry:
+1. Check if the finding's `Issue` text contains `pattern` (case-insensitive substring match)
+2. If `category` is set, also check that the finding's `Category` matches exactly
+3. If `file` is set, also check that the finding's `File` path contains the string
+
+If ALL specified conditions match: **DROP** the finding and log in Filtered Out:
+```
+suppressed by .claude/review-suppressions.yml: "<reason>" (pattern: "<pattern>")
+```
+
+**Critical/Serious override**: suppressions can drop findings at ANY severity. If a team has explicitly decided a pattern is acceptable, that decision should be respected even for Serious findings. The `reason` field in the log ensures this is auditable.
+
 ### 6. Gap check (Q1–Q6)
 
 For any question category where BOTH reviewers said nothing, briefly think about whether the diff has anything in that category. Add findings if you spot something they missed.
@@ -1041,24 +1119,26 @@ if [ "$VIEWER" = "$AUTHOR" ]; then
 fi
 ```
 
-**GitHub silently coerces `--request-changes` to `--comment` when the reviewer is the PR author.** This is a GitHub quirk, not a skill bug — you can't formally request changes on your own PR. The skill must warn the user so they're not confused when the body says `Verdict: request-changes` but the posted state shows `COMMENTED`.
+**GitHub silently coerces `--request-changes` to `--comment` when the reviewer is the PR author.** This is a GitHub quirk, not a skill bug — you can't formally request changes on your own PR.
 
-If `SELF_REVIEW=true` AND verdict is `request-changes`:
+If `SELF_REVIEW=true`:
 
-Before the "Then ask" prompt, use AskUserQuestion:
+If the review has **zero findings** (verdict is `approve` with no comments), skip the self-review prompt entirely — there is nothing to fix or post. Print "No findings — nothing to fix." and exit.
+
+Otherwise, skip the normal "Post review" prompt entirely. Instead, use AskUserQuestion:
 
    Question:
      header: "Self-review"
-     text: "Self-review detected — you are the PR author. GitHub will coerce request-changes to comment when posting. How should I handle the verdict?"
+     text: "Self-review detected — you're the PR author. Posting to GitHub is unnecessary. Fix these findings directly?"
      options:
-       - label: "Post as comment"
-         description: "Post with comment state — body still says 'Verdict: request-changes' for clarity"
-       - label: "Downgrade verdict"
-         description: "Re-render body with 'comment' verdict throughout and adjust Senior approval line"
+       - label: "Fix now (Recommended)"
+         description: "Auto-invoke /fix-pr-review to fix findings directly — no GitHub posting"
        - label: "Keep local only"
-         description: "Skip posting entirely — review stays in your terminal"
+         description: "Review stays in your terminal — no posting, no fixing"
+       - label: "Post anyway"
+         description: "Post to GitHub as COMMENT state (GitHub coerces self-reviews)"
 
-On "Post as comment": leave the body unchanged — the reader will understand that "request-changes" in the body is advisory since the thread state is `COMMENTED`. On "Downgrade verdict": re-render the body with updated Verdict and Senior approval fields (change "No" to "With changes" if the reasoning still holds). On "Keep local only": skip the post-review prompt entirely and exit. On "Other": treat as "Post as comment" (the safest default).
+On "Fix now": invoke `/fix-pr-review <url>` immediately — skip the "Then ask" prompt, skip posting, skip the "Post-completion next actions" prompt. `/fix-pr-review` handles its own workflow from here. On "Keep local only": skip the post-review prompt entirely and exit. On "Post anyway": proceed to the normal "Then ask" prompt below (the review will be posted as COMMENT due to GitHub's coercion). On "Other": treat as "Fix now" (the most useful default for self-reviews).
 
 ### Verdict-body sync check (re-runs)
 
@@ -1094,47 +1174,159 @@ Use AskUserQuestion:
        - label: "Edit first"
          description: "Open the review body in $EDITOR for tweaks before posting"
 
-On "Post now": proceed to compose and post (the "If yes" section below). On "Keep local": skip posting. On "Edit first": proceed to the "If edit first" section below. On "Other": treat as freeform instruction (e.g., the user might say "change the verdict to comment before posting").
+On "Post now": proceed to resolve threads (if re-review) then compose and post (the "If yes" section below). On "Keep local": skip posting. On "Edit first": proceed to the "If edit first" section below. On "Other": treat as freeform instruction (e.g., the user might say "change the verdict to comment before posting").
 
-### If yes
+### Re-review thread resolution (before posting)
 
-Compose a clean markdown review body **without the "Filtered out" section** (internal only) but **including the Senior engineer approval line with emojis** (same emoji mapping as the terminal output). Post via:
+If this is a re-review AND the cache has `posted_comments` from a previous run, resolve threads for findings that were fixed:
 
-```bash
-gh pr review <url> <verdict-flag> --body "<composed body>"
+1. **Identify fixed findings**: compare the current run's findings (after Phase 3 critic pass) against `posted_comments` in the cache using the dedupe key `(file_path, post_image_line, normalized_symbol_name)`. A cached finding NOT present in the current findings is considered "fixed".
+
+2. **Resolve their threads** on GitHub:
+   ```bash
+   # For each fixed finding's thread_id
+   gh api graphql -f query='
+     mutation($threadId: ID!) {
+       resolveReviewThread(input: {threadId: $threadId}) {
+         thread { isResolved }
+       }
+     }
+   ' -F threadId="<thread_id>"
+   ```
+
+3. **Track resolved findings**: collect the finding IDs (e.g., S1, S4, S5) of resolved threads for the "Fixed since last review" line in the summary body.
+
+4. **Filter inline comments**: only post inline comments for findings that are NEW or STILL PRESENT — do NOT re-post findings that were already posted in a previous review and are still unresolved (they already have inline comments on GitHub). A finding is "still present" if its dedupe key matches a cached `posted_comments` entry AND it still appears in the current findings — skip its inline comment (the existing one is sufficient).
+
+5. **Error handling**: if a `resolveReviewThread` mutation fails (e.g., thread already resolved, or permission issue), log the failure but continue with posting. Thread resolution is best-effort — it should never block the review.
+
+### If yes — Hybrid posting (summary body + inline comments)
+
+Post the review as a **single atomic API call** using the GitHub REST API. This creates a review with both a summary body AND inline comments on specific lines.
+
+#### Step 1 — Compose the summary body (Part 1 of the review)
+
+Build a lean summary body **without the "Filtered out" section** (internal only) but **including the Senior engineer approval line with emojis**:
+
+```markdown
+## PR Review: #<number>
+<verdict-emoji> <verdict> | <severity-count-badges>
+**Senior engineer approval**: <emoji> <Yes | No | With changes> — <one-sentence reason>
+
+**Goal**: <intent goal>
+**Summary**: <2-3 sentences>
+
+### Findings
+| # | Sev | File | Issue |
+|---|-----|------|-------|
+| S1 | 🟠 | `<path:line>` | <one-line issue> |
+| M1 | 🟡 | `<path:line>` | <one-line issue> |
+
+*Details in inline comments below.*
 ```
 
-Verdict flag mapping:
-- `approve` → `--approve`
-- `comment` → `--comment`
-- `request-changes` → `--request-changes`
+**Severity count badges**: `🔴 <N> Critical · 🟠 <M> Serious · 🟡 <K> Moderate · 🔵 <J> Minor` — only include severity levels that have findings.
 
-**After successful post**: cache the returned review ID for future verdict-body sync checks:
-```bash
-POSTED_REVIEW_ID=$(gh pr review <url> <verdict-flag> --body "..." --json id -q .id)
-# Write to CACHE_FILE: last_posted_review_id, last_posted_verdict, last_posted_at
+**Finding numbering**: assign sequential IDs by severity: C1, C2... for Critical, S1, S2... for Serious, M1, M2... for Moderate, m1, m2... for Minor. Use these IDs consistently in the summary table and inline comments.
+
+**Findings without a valid line number** (e.g., Architecture-category findings with file-only references): include in the summary table but do NOT create an inline comment. Append the full finding detail to the body instead, under a `### Additional findings` section after the table.
+
+**Re-review "Fixed since last review" line**: if this is a re-review and previous findings were resolved (see Re-review thread resolution), append after the table. Use the previous run's finding ID with its one-line issue text to avoid confusion with the current run's numbering:
+```markdown
+**Fixed since last review**: S1 (`auth.ts:47` missing null check), S4 (`db.ts:123` N+1 query) *(threads resolved)*
 ```
+
+#### Step 2 — Compose inline comments (Part 2 of the review)
+
+Each finding with a valid `file:line` becomes an inline comment. Format each comment as self-contained markdown:
+
+```markdown
+<severity-emoji> **<Severity>** · <Category>
+
+**<Issue one-sentence>**
+
+<2-3 sentence explanation of what's wrong and how it manifests>
+
+**Why it matters**: <one sentence>
+
+**Suggested fix**: <one sentence, actionable>
+```
+
+Inline severity emojis: 🔴 Critical, 🟠 Serious, 🟡 Moderate, 🔵 Minor.
+
+#### Step 3 — Post via GitHub REST API
+
+Use `gh api` to submit the review with inline comments in one atomic call. Pass ALL fields in a single `--input` JSON — do NOT mix `--input` with `-f` flags (when `--input` is used, `-f` fields go to the query string, not the body):
+
+```bash
+gh api "repos/<owner>/<repo>/pulls/<number>/reviews" \
+  --method POST \
+  --input <(jq -n \
+    --arg body "<summary body from Step 1>" \
+    --arg event "<APPROVE|COMMENT|REQUEST_CHANGES>" \
+    --arg commit_id "<head SHA>" \
+    --argjson comments '[
+      {
+        "path": "<file path>",
+        "line": <post-image line number>,
+        "side": "RIGHT",
+        "body": "<inline comment from Step 2>"
+      }
+    ]' \
+    '{body: $body, event: $event, commit_id: $commit_id, comments: $comments}')
+```
+
+**Event mapping**: `approve` → `APPROVE`, `comment` → `COMMENT`, `request-changes` → `REQUEST_CHANGES`.
+
+**Fallback**: if the `gh api` call fails (e.g., line number out of range for a specific comment), retry WITHOUT the failing comment(s) — log which comments were dropped. If the entire call fails, fall back to `gh pr review <url> <verdict-flag> --body "<full monolithic body>"` (the old approach, with all findings in the body).
+
+#### Step 4 — Cache the result
+
+After successful post, **merge** the posting metadata into the existing `$CACHE_FILE` (do NOT overwrite — the cache already has `last_run_sha`, `findings`, etc. from the end-of-Phase-4 write). Add/update these fields:
+
+- `last_posted_review_id`: review ID from the API response
+- `last_posted_verdict`: the verdict string
+- `last_posted_at`: ISO timestamp
+- `posted_comments`: array of comment entries (see Phase 1 cache schema for the full structure)
+
+To populate `github_thread_id` for each posted comment, run the review threads GraphQL query (same as Phase 1's prior-review timeline fetch) immediately after posting and match by comment `databaseId` — the REST API response includes each comment's ID which can be correlated with the GraphQL thread query's `comments.nodes[].databaseId` field. This avoids ambiguity when multiple findings share the same `path` + `line`.
 
 ### If edit first
 
-Write the composed body to a temp file (e.g. `/tmp/review-pr-<number>.md`), open it in `${EDITOR:-vi}`, then post after the user closes the editor.
+Write the composed summary body to a temp file (e.g. `/tmp/review-pr-<number>.md`), open it in `${EDITOR:-vi}`, then post after the user closes the editor. Inline comments are NOT editable via this flow — only the summary body. If the user needs to remove a specific inline comment, they should edit the findings list before choosing "Post now".
 
-### Post-completion next actions
+### Post-completion next actions (context-aware)
 
-After the review is posted or kept local, use AskUserQuestion. Skip this prompt if the review had zero findings (verdict was `approve` with no comments) — there's nothing to act on. Also skip if the user chose "Keep local only" from the self-review prompt — they've already opted out of further action.
+After the review is posted or kept local, use AskUserQuestion. Skip this prompt entirely if:
+- The review had zero findings (verdict was `approve` with no comments)
+- The user chose "Fix now" or "Keep local only" from the self-review prompt
+- `/fix-pr-review` was already invoked (it handles its own workflow)
+
+**For external PRs** (reviewer is NOT the author):
 
    Question:
      header: "Next"
-     text: "Review complete. What would you like to do next?"
+     text: "Review posted. What would you like to do next?"
      options:
-       - label: "Fix findings"
-         description: "Run /fix-pr-review on this PR to address the findings"
-       - label: "Re-review"
-         description: "Run /review-pr again on this PR (useful after author pushes fixes)"
+       - label: "Re-review later"
+         description: "Re-run /review-pr after author pushes fixes"
        - label: "Done"
          description: "Nothing more — end the session"
 
-On "Fix findings": invoke `/fix-pr-review <url>`. On "Re-review": invoke `/review-pr <url>` (this will hit the cache check). On "Done": exit. On "Other": follow the user's freeform instruction.
+On "Re-review later": print "Run `/review-pr <url>` again after the author pushes fixes." and exit — do NOT immediately re-invoke (the author hasn't pushed yet). On "Done": exit. On "Other": follow the user's freeform instruction.
+
+**For self-reviews** (reviewer IS the author, and user chose "Post anyway"):
+
+   Question:
+     header: "Next"
+     text: "Review posted. What would you like to do next?"
+     options:
+       - label: "Fix findings"
+         description: "Run /fix-pr-review on this PR to address the posted findings"
+       - label: "Done"
+         description: "Nothing more — end the session"
+
+On "Fix findings": invoke `/fix-pr-review <url>`. On "Done": exit. On "Other": follow the user's freeform instruction.
 
 ---
 
@@ -1152,9 +1344,12 @@ On "Fix findings": invoke `/fix-pr-review <url>`. On "Re-review": invoke `/revie
 ## Rules
 
 - **NEVER** run the review twice in a single invocation (don't retry on empty findings).
-- **NEVER** post to the PR without explicit user confirmation via the "Post now" or "Edit first" AskUserQuestion options.
+- **NEVER** post to the PR without explicit user confirmation via the "Post now" or "Edit first" AskUserQuestion options (except self-reviews where "Fix now" skips posting entirely).
 - **NEVER** post the "Filtered out" section to GitHub — it's for local audit only.
 - **NEVER** fabricate file:line references; if unsure, omit the line and use file-only for Architecture-category findings.
 - **NEVER** skip Phase 1's stop-and-ask fallback — weak intent is the biggest slop source.
 - **NEVER** skip the grounding pass in the reviewer subagent — findings that don't trace back to the mechanical grounding bullets are hallucinations and must be dropped before output.
 - **NEVER** skip the critic pass — it's the second biggest anti-slop lever after the reviewer prompt.
+- **NEVER** re-post inline comments for findings that already have active (unresolved) threads from a previous review — this creates duplicate noise.
+- **ALWAYS** use `gh api` for posting reviews (hybrid: summary body + inline comments). Fall back to `gh pr review --body` only if the API call fails.
+- **ALWAYS** resolve threads for fixed findings on re-reviews before posting new findings. Thread resolution is best-effort — failures should not block posting.
