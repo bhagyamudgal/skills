@@ -9,6 +9,8 @@ Reviews a remote GitHub PR with anti-slop filtering. Input: **PR URL only**.
 
 The goal of this skill is simple: produce an accurate, critical, actionable PR review that surfaces what a human reviewer should double-check — and filters out the noise (style nitpicks, hallucinated references, duplicates of prior findings, generic advice).
 
+**Use AskUserQuestion for ALL user-facing decisions** — stop-and-ask fallback, cache replay, large-PR confirmation, self-review handling, and post-review choices. Always present options as cursor-selectable choices, not plain text questions.
+
 ## Superpowers planning pipeline (optional pre-review context)
 
 Some PRs may have been shaped by a multi-phase superpowers planning pipeline before code was written. If the repo contains these artifacts, they provide useful context for design decisions:
@@ -159,13 +161,20 @@ Trigger the fallback if **no linked issue** AND the PR description **lacks all**
 
 Thin descriptions like "update X", "fix bug", or "wip" fail the signal check. Terse-but-grounded descriptions like "Fix race condition in `auth/cache.ts` eviction (repros with `make stress-test-auth`)" pass.
 
-On trigger:
+On trigger, use AskUserQuestion:
 
-> **Intent is unclear — no linked issue and the description lacks grounding signals.**
-> Want me to:
-> (a) proceed with just the diff (review will be generic)
-> (b) skip this PR
-> (c) accept intent you type now
+   Question:
+     header: "Intent"
+     text: "Intent is unclear — no linked issue and the description lacks grounding signals. How should I proceed?"
+     options:
+       - label: "Proceed anyway"
+         description: "Review with just the diff — findings will be generic without intent grounding"
+       - label: "Skip this PR"
+         description: "Abort the review entirely"
+       - label: "I'll provide intent"
+         description: "Let me type the intent/goal now so findings can be grounded"
+
+On "Proceed anyway": continue with empty intent model (set Goal to "not stated"). On "Skip this PR": exit 0. On "I'll provide intent": wait for the user's follow-up text input, then build the intent model from it. On "Other": treat as freeform intent text.
 
 Do not proceed silently with weak intent. This is your first anti-slop gate.
 
@@ -236,10 +245,7 @@ elif SIZE <= 2000:
 else:
     # > 2000 lines
     SIZE_MODE = "parallel-chunked-confirm"
-    # Print: "This PR is <N> lines. Chunked review will dispatch <M> parallel reviewer subagents.
-    # Continue? (y/n)"
-    # On n, suggest: "Break this into smaller PRs or run /review-pr with --force-chunked-skip-confirm"
-    # On y, proceed with parallel-chunked.
+    # AskUserQuestion: Continue vs Cancel (see below)
 ```
 
 Phase 2 reads `SIZE_MODE` and dispatches accordingly. For `solo-main`, Phase 2's Subagent 1 section is replaced by inline main-context execution with the same prompt body (no Agent tool call).
@@ -270,10 +276,18 @@ If `$CACHE_FILE` exists:
 
 Three branches:
 
-1. **`last_run_sha == CURRENT_HEAD`** — no new commits since last run. Print:
-   > Cached review found for this commit (<timestamp>). Findings: <N>. Options: (r)eplay cached output, (f)orce fresh review, (q)uit.
-   
-   On `r`: print the cached findings and exit (Phase 2/3/4 skipped). On `f`: proceed with full run. Default to `r` to save tokens on accidental re-runs.
+1. **`last_run_sha == CURRENT_HEAD`** — no new commits since last run. Use AskUserQuestion:
+
+   Question:
+     header: "Cache"
+     text: "Cached review found for this commit (<sha>, <timestamp>). <N> findings. What would you like to do?"
+     options:
+       - label: "Replay cached (Recommended)"
+         description: "Show the cached findings without re-running — saves tokens"
+       - label: "Fresh review"
+         description: "Discard cache and run a full new review from scratch"
+
+   On "Replay cached": print the cached findings and exit (Phase 2/3/4 skipped). On "Fresh review": proceed with full run. On "Other": treat as fresh review.
 
 2. **New commits since last run** (cached `last_run_sha` is an ancestor of `CURRENT_HEAD`) — PARTIAL re-review mode:
    - Compute `git diff <last_run_sha>..<CURRENT_HEAD>` to get only the new commits' diff (via `gh api compare` in cross-repo mode).
@@ -385,9 +399,19 @@ Launch in a **single message with multiple Agent tool calls** — but the dispat
 - Main-context critic in Phase 3 Step 1 dedupes across chunks using the existing `(file, line, symbol)` dedupe key — chunks were file-disjoint so no dupes within-chunk are possible; cross-chunk dupes only occur for findings that span files.
 
 **`SIZE_MODE == "parallel-chunked-confirm"`** (> 2000 lines):
-- Print to user: `"This PR is <N> lines. Chunked review will dispatch <M> parallel reviewer subagents (one per ~500-line chunk) plus CodeRabbit and silent-failure hunter. Expected wall time: <2-4 minutes> depending on parallelism. Continue? (y/n)"`
-- On `y`: proceed with `parallel-chunked` behavior.
-- On `n`: print suggestion `"Break this into smaller PRs for better review quality, or re-run with --force-chunked to skip this prompt."` and exit.
+
+Use AskUserQuestion:
+
+   Question:
+     header: "Large PR"
+     text: "This PR is <N> lines. Chunked review will dispatch <M> parallel reviewer subagents (one per ~500-line chunk) plus CodeRabbit and silent-failure hunter. Expected wall time: 2-4 minutes."
+     options:
+       - label: "Continue"
+         description: "Proceed with chunked parallel review"
+       - label: "Cancel"
+         description: "Abort — consider breaking into smaller PRs or re-run with --force-chunked"
+
+On "Continue": proceed with `parallel-chunked` behavior. On "Cancel" or "Other": print suggestion and exit.
 
 ### Degraded-mode rule
 
@@ -1021,15 +1045,20 @@ fi
 
 If `SELF_REVIEW=true` AND verdict is `request-changes`:
 
-Before the "Then ask" prompt, print:
+Before the "Then ask" prompt, use AskUserQuestion:
 
-> **Self-review detected**: you are the PR author. GitHub will coerce `--request-changes` to `--comment` when posting. Three options:
-> (a) Post as `comment` — body will still say `Verdict: request-changes` for clarity
-> (b) Downgrade verdict to `comment` throughout the body (re-generate Senior engineer approval line: change "No" → "With changes" if the reasoning still holds)
-> (c) Skip posting, keep local only
-> Default: (a)
+   Question:
+     header: "Self-review"
+     text: "Self-review detected — you are the PR author. GitHub will coerce request-changes to comment when posting. How should I handle the verdict?"
+     options:
+       - label: "Post as comment"
+         description: "Post with comment state — body still says 'Verdict: request-changes' for clarity"
+       - label: "Downgrade verdict"
+         description: "Re-render body with 'comment' verdict throughout and adjust Senior approval line"
+       - label: "Keep local only"
+         description: "Skip posting entirely — review stays in your terminal"
 
-If the user picks (b), re-render the body with updated Verdict and Senior approval fields. If (a), leave the body unchanged — the reader will understand that "request-changes" in the body is advisory since the thread state is `COMMENTED`.
+On "Post as comment": leave the body unchanged — the reader will understand that "request-changes" in the body is advisory since the thread state is `COMMENTED`. On "Downgrade verdict": re-render the body with updated Verdict and Senior approval fields (change "No" to "With changes" if the reasoning still holds). On "Keep local only": skip the post-review prompt entirely and exit. On "Other": treat as "Post as comment" (the safest default).
 
 ### Verdict-body sync check (re-runs)
 
@@ -1048,14 +1077,24 @@ fi
 
 If the body verdict and GitHub state drifted:
 
-> **Previous review's body verdict (`<body_verdict>`) does NOT match its GitHub state (`<state>`).** Likely cause: you posted a self-review that GitHub coerced to `comment`, or you manually edited the review state in the GitHub UI afterward. The current run's output will not re-post over the previous review — add a NEW review via the (y) option below if you want to update.
+> **Previous review's body verdict (`<body_verdict>`) does NOT match its GitHub state (`<state>`).** Likely cause: you posted a self-review that GitHub coerced to `comment`, or you manually edited the review state in the GitHub UI afterward. The current run's output will not re-post over the previous review — add a NEW review via the "Post now" option below if you want to update.
 
 ### Then ask
 
-> Post this review to the PR as a GitHub review?
-> (y) yes — post as `<verdict>` review
-> (n) no — keep it local
-> (e) edit first — let me tweak it before posting
+Use AskUserQuestion:
+
+   Question:
+     header: "Post review"
+     text: "Post this review to the PR as a GitHub review? Verdict: <verdict>"
+     options:
+       - label: "Post now"
+         description: "Submit as a <verdict> review to GitHub immediately"
+       - label: "Keep local"
+         description: "Don't post — review stays in your terminal only"
+       - label: "Edit first"
+         description: "Open the review body in $EDITOR for tweaks before posting"
+
+On "Post now": proceed to compose and post (the "If yes" section below). On "Keep local": skip posting. On "Edit first": proceed to the "If edit first" section below. On "Other": treat as freeform instruction (e.g., the user might say "change the verdict to comment before posting").
 
 ### If yes
 
@@ -1080,6 +1119,23 @@ POSTED_REVIEW_ID=$(gh pr review <url> <verdict-flag> --body "..." --json id -q .
 
 Write the composed body to a temp file (e.g. `/tmp/review-pr-<number>.md`), open it in `${EDITOR:-vi}`, then post after the user closes the editor.
 
+### Post-completion next actions
+
+After the review is posted or kept local, use AskUserQuestion. Skip this prompt if the review had zero findings (verdict was `approve` with no comments) — there's nothing to act on. Also skip if the user chose "Keep local only" from the self-review prompt — they've already opted out of further action.
+
+   Question:
+     header: "Next"
+     text: "Review complete. What would you like to do next?"
+     options:
+       - label: "Fix findings"
+         description: "Run /fix-pr-review on this PR to address the findings"
+       - label: "Re-review"
+         description: "Run /review-pr again on this PR (useful after author pushes fixes)"
+       - label: "Done"
+         description: "Nothing more — end the session"
+
+On "Fix findings": invoke `/fix-pr-review <url>`. On "Re-review": invoke `/review-pr <url>` (this will hit the cache check). On "Done": exit. On "Other": follow the user's freeform instruction.
+
 ---
 
 ## Error handling
@@ -1096,7 +1152,7 @@ Write the composed body to a temp file (e.g. `/tmp/review-pr-<number>.md`), open
 ## Rules
 
 - **NEVER** run the review twice in a single invocation (don't retry on empty findings).
-- **NEVER** post to the PR without explicit user confirmation (`y` or `e`).
+- **NEVER** post to the PR without explicit user confirmation via the "Post now" or "Edit first" AskUserQuestion options.
 - **NEVER** post the "Filtered out" section to GitHub — it's for local audit only.
 - **NEVER** fabricate file:line references; if unsure, omit the line and use file-only for Architecture-category findings.
 - **NEVER** skip Phase 1's stop-and-ask fallback — weak intent is the biggest slop source.

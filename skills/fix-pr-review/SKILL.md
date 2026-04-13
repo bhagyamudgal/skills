@@ -9,6 +9,8 @@ Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding
 
 **Goal**: stop re-typing the same "plan → classify → fix → reply → resolve" loop on every CodeRabbit review. One command, one approval, done.
 
+**Use AskUserQuestion for ALL user-facing decisions** — branch safety, stash confirmation, plan approval, per-fix confirmations, type-check failure triage, and post-completion next actions. Always present options as cursor-selectable choices, not plain text questions.
+
 ## Usage
 
 ```
@@ -74,8 +76,32 @@ gh auth status 2>&1 | grep -q "Logged in" || { echo "Run 'gh auth login' first";
 3. `gh pr view <url> --json headRefName,baseRefName -q .` → PR branch name + base branch.
 4. `git branch --show-current` → current branch (returns empty string on detached HEAD).
 5. Branch state handling:
-   - **Empty output (detached HEAD)**: warn explicitly — `Detached HEAD detected. 'gh pr checkout <num>' will move you to the PR branch and any uncommitted detached work may be lost. Proceed? (y/n)`. On `n`, abort.
-   - **Different branch in the same repo**: offer `gh pr checkout <num>`. On `y`, run it. On gh failure (conflicts, missing refs), surface the error and abort.
+   - **Empty output (detached HEAD)**: Use AskUserQuestion:
+
+     Question:
+       header: "Branch"
+       text: "Detached HEAD detected. 'gh pr checkout <num>' will move you to the PR branch. Any uncommitted detached work may be lost."
+       options:
+         - label: "Checkout PR branch"
+           description: "Run 'gh pr checkout <num>' to switch to the PR's head branch"
+         - label: "Abort"
+           description: "Stop here — I'll sort out my branch state manually"
+
+     On "Checkout PR branch": run `gh pr checkout <num>`. On failure (conflicts, missing refs), surface the error and abort. On "Abort": exit.
+
+   - **Different branch in the same repo**: Use AskUserQuestion:
+
+     Question:
+       header: "Branch"
+       text: "You're on branch '<current>' but the PR uses '<pr-branch>'. Switch to the PR branch?"
+       options:
+         - label: "Switch branch"
+           description: "Run 'gh pr checkout <num>' to move to the PR branch"
+         - label: "Abort"
+           description: "Stop — I'll checkout the right branch manually"
+
+     On "Switch branch": run `gh pr checkout <num>`. On gh failure (conflicts, missing refs), surface the error and abort. On "Abort": exit.
+
    - **On the PR branch**: continue.
 
 ### Auto-stash uncommitted work (branch safety)
@@ -84,13 +110,19 @@ gh auth status 2>&1 | grep -q "Logged in" || { echo "Run 'gh auth login' first";
 git status --porcelain
 ```
 
-If non-empty:
+If non-empty, use AskUserQuestion:
 
-> **Uncommitted changes detected.** Auto-stash before fixes? (y/n)
-> Contents will be restored via `git stash pop` at the end. If the run aborts, you'll find your work in `git stash list` as `fix-pr-review auto-stash <timestamp>`.
+   Question:
+     header: "Stash"
+     text: "Uncommitted changes detected. Auto-stash before applying fixes? Contents will be restored via 'git stash pop' at the end."
+     options:
+       - label: "Auto-stash"
+         description: "Stash changes now — they'll be restored when the run completes"
+       - label: "Abort"
+         description: "Stop — I'll commit or stash my work manually first"
 
-- On `y`: `git stash push -u -m "fix-pr-review auto-stash $(date +%s)"` and set `STASH_PUSHED=true`.
-- On `n`: abort with "Commit or stash your uncommitted work first."
+On "Auto-stash": run `git stash push -u -m "fix-pr-review auto-stash $(date +%s)"` and set `STASH_PUSHED=true`. If the run aborts, the user can find their work in `git stash list` as `fix-pr-review auto-stash <timestamp>`.
+On "Abort": print "Commit or stash your uncommitted work first." and exit.
 
 ### Compute the merge base (for already-fixed detection later)
 
@@ -691,8 +723,8 @@ If any DISMISS has `rubric: R5`, print a **separate highlighted section BEFORE**
 [D<n>] <file:line>: <comment ask>
        CLAUDE.md rule: "<verbatim quote>"
        Reply will be: "<reply>"
-       If this rule has a legitimate exception in this case, edit the plan (e)
-       to change D<n> to FIX or NEEDS-INPUT.
+       If this rule has a legitimate exception in this case, choose "Edit plan first"
+       in the approval prompt to change D<n> to FIX or NEEDS-INPUT.
 ```
 
 This is the safety net for the case where a project convention has a legitimate exception.
@@ -705,18 +737,38 @@ This is the safety net for the case where a project convention has a legitimate 
 
 ### Approval prompt
 
-```
-Approve? (y / n / e / q)
-  y — execute full plan
-  n — cancel (no changes made, restore stash)
-  e — edit plan in $EDITOR before executing  [only shown if EDIT_AVAILABLE=true]
-  q — quit (alias for n)
-```
+If `--dry-run`: print the plan, print `dry run — not executing`, restore stash, exit 0.
 
-- If `--dry-run`: print the plan, print `dry run — not executing`, restore stash, exit 0.
-- On `e` (if available): write plan to `/tmp/fix-pr-review-<num>.md`, open in `${EDITOR:-vi}`, read back after close. Re-run the plan validation step. Confirm: `Plan modified — <changes> changes. Execute? (y/n)`. On `y`, proceed.
-- On `n` / `q`: restore stash (if any), print "cancelled", exit 0.
-- On `--interactive`: after `y`, switch to per-item confirmation in Phase 5 (ask before each FIX item).
+Otherwise, use AskUserQuestion with conditional options based on `EDIT_AVAILABLE`:
+
+   Question:
+     header: "Approve"
+     text: "Approve the fix plan above? <F> fixes, <D> dismissals, <E> deferrals, <G> disagrees, <I> needs-input."
+     options:
+       - label: "Execute plan"
+         description: "Apply all FIX items in dependency order"
+       - label: "Cancel"
+         description: "No changes made — restore stash and exit"
+       - label: "Edit plan first"
+         description: "Open the plan in $EDITOR for manual tweaks before executing"
+         [only include this option if EDIT_AVAILABLE=true]
+
+On "Execute plan": proceed to Phase 5. If `--interactive` flag was set, switch to per-item confirmation mode in Phase 5.
+On "Cancel": restore stash (if any), print "cancelled", exit 0.
+On "Edit plan first": write plan to `/tmp/fix-pr-review-<num>.md`, open in `${EDITOR:-vi}`, read back after close. Re-run the plan validation step, then use AskUserQuestion again:
+
+   Question:
+     header: "Confirm"
+     text: "Plan modified — <N> changes detected. Execute the edited plan?"
+     options:
+       - label: "Execute"
+         description: "Apply the edited plan"
+       - label: "Cancel"
+         description: "Discard edits and exit"
+
+   On "Execute": proceed to Phase 5. On "Cancel": restore stash, exit 0.
+
+When `EDIT_AVAILABLE=false`, present only "Execute plan" and "Cancel" (2 options). When `EDIT_AVAILABLE=true`, present all 3. The user can always type a freeform response via the automatic "Other" option.
 
 ---
 
@@ -741,6 +793,22 @@ Revert a single file = `Write(path, preedit_snapshot[path])`. Revert-all = itera
 For each FIX item in topological order:
 
 1. Print `[<idx>/<total>] Fixing: <file:line>`.
+
+   If `--interactive` flag is set, use AskUserQuestion before applying each fix:
+
+   Question:
+     header: "Fix <idx>"
+     text: "[<idx>/<total>] <file:line> — <fix_plan summary, first 80 chars>"
+     options:
+       - label: "Apply fix"
+         description: "Execute this fix and continue to the next"
+       - label: "Skip"
+         description: "Skip this fix — mark as NEEDS-INPUT in the final report"
+       - label: "Skip remaining"
+         description: "Stop here — skip all remaining fixes"
+
+   On "Apply fix": continue with steps 2-7. On "Skip": mark `fix_status[idx] = skipped`, skip to next item. On "Skip remaining": mark all remaining items as `skipped`, jump to Phase 6. On "Other": treat as freeform instruction (e.g., "modify the fix plan for this item").
+
 2. For every file listed in `fix_plan`: if not already in `preedit_snapshot`, `Read` and cache.
 3. Apply the change(s) via `Edit` tool.
 4. **Per-file narrow type-check (β)**:
@@ -755,16 +823,22 @@ For each FIX item in topological order:
 6. On **pass** or **inconclusive**: mark `[<idx>] ✓ fixed` / `[<idx>] ~ inconclusive`, continue.
 7. On **failed**:
 
-   ```
-   [<idx>] ✗ Fix applied but type-check has NEW errors vs baseline:
-   <error output minus baseline, trimmed to ~30 lines>
-   
-   Options: (r)etry / (s)kip / (a)bort
-   ```
+   Print the error output (trimmed to ~30 lines), then use AskUserQuestion:
 
-   - `r` → `Write` the pre-edit snapshot back (revert), re-dispatch the fix plan to a fresh `general-purpose` subagent with the new-errors context, loop (max 2 retries; on 3rd failure, treat as `s`).
-   - `s` → revert via snapshot `Write`, mark `[<idx>] NEEDS-INPUT`, skip reply + resolve for this item in Phase 7.
-   - `a` → revert ALL Phase 5 edits via pre-edit snapshots, restore stash, exit non-zero.
+   Question:
+     header: "Beta fail"
+     text: "[<idx>] Fix applied but type-check has NEW errors vs baseline. <error count> new error(s) in <file>."
+     options:
+       - label: "Retry fix"
+         description: "Revert and re-dispatch to a fresh subagent with error context (max 2 retries)"
+       - label: "Skip this fix"
+         description: "Revert this fix, mark as NEEDS-INPUT, continue with remaining fixes"
+       - label: "Abort all"
+         description: "Revert ALL Phase 5 edits, restore stash, and exit"
+
+   On "Retry fix": `Write` the pre-edit snapshot back (revert), re-dispatch the fix plan to a fresh `general-purpose` subagent with the new-errors context, loop (max 2 retries; on 3rd failure, auto-treat as "Skip this fix").
+   On "Skip this fix": revert via snapshot `Write`, mark `fix_status[idx] = skipped`, mark `[<idx>] NEEDS-INPUT`, skip reply + resolve for this item in Phase 7.
+   On "Abort all": revert ALL Phase 5 edits via pre-edit snapshots, restore stash, exit non-zero.
 
 ### Fix execution tracking
 
@@ -1079,9 +1153,73 @@ Restored: <yes | no | conflict>
   `fix-pr-review auto-stash <timestamp>`.
 ```
 
-### 3. Exit
+### 3. Interactive NEEDS-INPUT triage
 
-Do not commit. User runs the suggested `git commit` manually.
+If any NEEDS-INPUT items exist in the final report, use AskUserQuestion:
+
+   Question:
+     header: "NEEDS-INPUT"
+     text: "<N> item(s) need your input. Would you like to triage them now?"
+     options:
+       - label: "Triage now"
+         description: "Walk through each NEEDS-INPUT item and decide: fix, defer, or dismiss"
+       - label: "Skip for now"
+         description: "Leave them unresolved — handle manually later"
+
+On "Triage now": for each NEEDS-INPUT item, use AskUserQuestion:
+
+   Question:
+     header: "Item N<idx>"
+     text: "<file:line> — <why_unclear>"
+     options:
+       - label: "Fix it"
+         description: "Provide guidance and have the agent apply a fix"
+       - label: "Defer"
+         description: "Mark as out-of-scope, post a DEFER reply on GitHub"
+       - label: "Dismiss"
+         description: "Not a real issue — post a DISMISS reply on GitHub"
+
+On "Fix it": use a follow-up AskUserQuestion to collect guidance:
+
+   Question:
+     header: "Guidance"
+     text: "What should the fix do for <file:line>? Describe the intended behavior or approach."
+     options:
+       - label: "Use reviewer's suggestion"
+         description: "Apply the original review comment's recommended change as-is"
+       - label: "I'll describe"
+         description: "Let me type specific guidance for this fix"
+
+   On "Use reviewer's suggestion": apply the fix using the original comment's recommendation (same as Phase 5 per-fix loop) and post a FIX reply. On "I'll describe" or "Other": use the user's freeform text as the fix plan, apply inline, and post a FIX reply.
+
+On "Defer": post a DEFER reply and resolve. On "Dismiss": post a DISMISS reply and resolve.
+
+On "Skip for now": continue to next actions.
+
+Skip this step entirely if the NEEDS-INPUT count is 0.
+
+### 4. Post-completion next actions
+
+After printing the final report (and optional NEEDS-INPUT triage), use AskUserQuestion. Skip this prompt if all fixes were aborted (nothing was applied).
+
+   Question:
+     header: "Next"
+     text: "Fix run complete. <F> fixes applied, <S> skipped, <N> needs-input. What next?"
+     options:
+       - label: "Commit changes"
+         description: "Stage and commit using the suggested commit message"
+       - label: "Push to remote"
+         description: "Commit and push to update the PR"
+       - label: "Re-run on remaining"
+         description: "Run /fix-pr-review again for skipped/needs-input items"
+       - label: "Done"
+         description: "Exit — I'll handle the rest manually"
+
+On "Commit changes": stage relevant files and commit with the suggested detailed commit message. On "Push to remote": commit first (same as above), then `git push`. On "Re-run on remaining": if the original input was a local file, invoke `/fix-pr-review <original-file-path>` scoped to skipped/needs-input items; otherwise invoke `/fix-pr-review <url>` scoped to remaining items. On "Done": exit.
+
+### 5. Exit
+
+Do not auto-commit unless the user chose "Commit changes" or "Push to remote" in the post-completion prompt above.
 
 ---
 
@@ -1089,7 +1227,7 @@ Do not commit. User runs the suggested `git commit` manually.
 
 - **`gh` / git / auth prereqs** → Phase 1 prereq block catches these with actionable messages.
 - **Wrong repo** → fail fast: `cd` into the right clone and retry. Do not auto-clone.
-- **Wrong branch / detached HEAD** → offer `gh pr checkout <num>` with explicit warning on detached state. On `n`, abort.
+- **Wrong branch / detached HEAD** → offer `gh pr checkout <num>` via AskUserQuestion with explicit warning on detached state. On "Abort", exit.
 - **Uncommitted WIP, user declines stash** → `Commit or stash your uncommitted work first.`
 - **Phase 2 GraphQL error (rate limit, 404, private repo)** → surface error, exit. For 404: `Couldn't access PR — check repo access and run 'gh auth refresh -s repo'.`
 - **Phase 2 pagination loop hangs** → surface per-page error, exit.
@@ -1112,7 +1250,7 @@ Do not commit. User runs the suggested `git commit` manually.
 - **NEVER** dismiss the CodeRabbit review's `CHANGES_REQUESTED` state — let CodeRabbit auto-re-review when the user pushes.
 - **NEVER** post replies for body-only nitpicks (no thread to reply to). Promoted nitpicks with `thread_id=null` get fixes but no GitHub ack — surfaced in the final report instead.
 - **NEVER** touch GitHub (Phase 7) for a local `./review.md` input.
-- **NEVER** proceed past Phase 4 without explicit `y` or edited-plan confirmation.
+- **NEVER** proceed past Phase 4 without explicit "Execute plan" or edited-plan confirmation via AskUserQuestion.
 - **NEVER** proceed past Phase 4 if plan validation is missing required fields: `claude_md_quote` for R5, `prior_commit_sha` for R4, `disagree_rationale` for DISAGREE, `grounding_a` + `grounding_b` for every item, `fix_plan` ≥ 30 chars for every FIX.
 - **NEVER** corrupt user WIP — always auto-stash before Phase 5 edits, restore in Phase 8, error loudly on stash conflicts.
 - **NEVER** retry a β-failed fix more than twice — treat the 3rd failure as `skip` and route to NEEDS-INPUT.
