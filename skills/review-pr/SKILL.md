@@ -93,7 +93,7 @@ gh pr view <url> --json reviews,reviewDecision -q '{
   decision: .reviewDecision
 }'
 
-# For inline comments + their thread resolution state
+# For review comments + their thread resolution state
 gh api graphql -f query='
 query($owner:String!, $repo:String!, $num:Int!) {
   repository(owner:$owner, name:$repo) {
@@ -281,12 +281,19 @@ If `$CACHE_FILE` exists:
       "github_comment_id": 12345,
       "github_thread_id": "PRRT_abc123",
       "finding_severity": "Serious"
+    },
+    {
+      "finding_key": "(config.ts, file-level, missingvalidation)",
+      "finding_id": "M2",
+      "github_comment_id": 12346,
+      "github_thread_id": "PRRT_def456",
+      "finding_severity": "Moderate"
     }
   ]
 }
 ```
 
-The `posted_comments` array tracks inline comments from the hybrid posting (see Phase 4). Each entry maps a finding's dedupe key to its GitHub comment and thread IDs, enabling thread resolution on re-reviews. The `last_posted_*` fields track the most recent posted review for verdict-body sync checks.
+The `posted_comments` array tracks review comments from the hybrid posting (see Phase 4). Each entry maps a finding's dedupe key to its GitHub comment and thread IDs, enabling thread resolution on re-reviews. The `last_posted_*` fields track the most recent posted review for verdict-body sync checks.
 
 Three branches:
 
@@ -929,7 +936,7 @@ Execute in order:
 
 Merge findings that describe the same issue **both** across reviewers AND within a single reviewer's output.
 
-**Dedupe key**: `(file_path, post_image_line, normalized_symbol_name)` — NOT `Category`. Two findings on the same `(file, line, symbol)` are duplicates regardless of whether one is `Category: DRY` (within-diff) and the other is `Category: Reusability` (cross-codebase). Merge them, keep the higher-severity category on the merged finding, and concatenate their reasoning into the `Issue:` field.
+**Dedupe key**: `(file_path, post_image_line, normalized_symbol_name)` — NOT `Category`. For findings without a valid diff line (file-level findings), use `"file-level"` in place of `post_image_line`. Two findings on the same `(file, line-or-file-level, symbol)` are duplicates regardless of whether one is `Category: DRY` (within-diff) and the other is `Category: Reusability` (cross-codebase). Merge them, keep the higher-severity category on the merged finding, and concatenate their reasoning into the `Issue:` field.
 
 Normalize symbol names by lowercasing and stripping CamelCase boundaries (`formatPortionLabel` → `formatportionlabel`) so minor label variants still match.
 
@@ -972,6 +979,7 @@ The full diff is already in main context (stashed in Phase 1). This is *not* tok
   ```
   (The endpoint returns a per-file `patch` field — that's the full unified diff for that file, capped at ~3000 lines per file by GitHub.)
 - **Verification rule**: the `File: <path:line>` must refer to a line present on the **post-image / new side** of the hunk (a `+` line or unchanged context on the new side). References to old-side-only lines, deleted lines, or lines not present in any hunk → **DROP** and log `hallucinated reference`.
+- **File-level findings** (no line number): verify that the referenced `path` appears in the PR's changed files list (from `gh pr view --json files` already fetched in Phase 1). If the path is not in the changed files → **DROP** and log `hallucinated file reference`.
 
 ### 3. Drop already-known
 
@@ -1288,7 +1296,7 @@ On "Post now": proceed to resolve threads (if re-review) then compose and post (
 
 If this is a re-review AND the cache has `posted_comments` from a previous run, resolve threads for findings that were fixed:
 
-1. **Identify fixed findings**: compare the current run's findings (after Phase 3 critic pass) against `posted_comments` in the cache using the dedupe key `(file_path, post_image_line, normalized_symbol_name)`. A cached finding NOT present in the current findings is considered "fixed".
+1. **Identify fixed findings**: compare the current run's findings (after Phase 3 critic pass) against `posted_comments` in the cache using the dedupe key (defined in Phase 3 step 1). A cached finding NOT present in the current findings is considered "fixed".
 
 2. **Resolve their threads** on GitHub:
    ```bash
@@ -1304,13 +1312,13 @@ If this is a re-review AND the cache has `posted_comments` from a previous run, 
 
 3. **Track resolved findings**: collect the finding IDs (e.g., S1, S4, S5) of resolved threads for the "Fixed since last review" line in the summary body.
 
-4. **Filter inline comments**: only post inline comments for findings that are NEW or STILL PRESENT — do NOT re-post findings that were already posted in a previous review and are still unresolved (they already have inline comments on GitHub). A finding is "still present" if its dedupe key matches a cached `posted_comments` entry AND it still appears in the current findings — skip its inline comment (the existing one is sufficient).
+4. **Filter review comments**: only post review comments (line-level or file-level) for findings that are NEW or STILL PRESENT — do NOT re-post findings that were already posted in a previous review and are still unresolved (they already have comment threads on GitHub). A finding is "still present" if its dedupe key matches a cached `posted_comments` entry AND it still appears in the current findings — skip its comment (the existing one is sufficient).
 
 5. **Error handling**: if a `resolveReviewThread` mutation fails (e.g., thread already resolved, or permission issue), log the failure but continue with posting. Thread resolution is best-effort — it should never block the review.
 
-### If yes — Hybrid posting (summary body + inline comments)
+### If yes — Hybrid posting (summary body + review comments)
 
-Post the review as a **single atomic API call** using the GitHub REST API. This creates a review with both a summary body AND inline comments on specific lines.
+Post the review as a **single atomic API call** using the GitHub REST API. This creates a review with a summary body AND review comments (line-level on specific diff lines, file-level on files).
 
 #### Step 1 — Compose the summary body (Part 1 of the review)
 
@@ -1330,23 +1338,28 @@ Build a lean summary body **without the "Filtered out" section** (internal only)
 | S1 | 🟠 | `<path:line>` | <one-line issue> |
 | M1 | 🟡 | `<path:line>` | <one-line issue> |
 
-*Details in inline comments below.*
+*Details in review comments below.*
 ```
 
 **Severity count badges**: `🔴 <N> Critical · 🟠 <M> Serious · 🟡 <K> Moderate · 🔵 <J> Minor` — only include severity levels that have findings.
 
-**Finding numbering**: assign sequential IDs by severity: C1, C2... for Critical, S1, S2... for Serious, M1, M2... for Moderate, m1, m2... for Minor. Use these IDs consistently in the summary table and inline comments.
+**Finding numbering**: assign sequential IDs by severity: C1, C2... for Critical, S1, S2... for Serious, M1, M2... for Moderate, m1, m2... for Minor. Use these IDs consistently in the summary table and review comments.
 
-**Findings without a valid line number** (e.g., Architecture-category findings with file-only references): include in the summary table but do NOT create an inline comment. Append the full finding detail to the body instead, under a `### Additional findings` section after the table.
+**Comment routing — three tiers based on file/line validity**:
+- **Line-level comment**: finding has a valid `file:line` where the line exists in the diff → post as a line-level review comment with `line`, `side: "RIGHT"`.
+- **File-level comment**: finding has a file reference but no valid diff line (e.g., Architecture-category findings, file/module-scope issues, or line not in the diff) → post as a file-level review comment with `subject_type: "file"` (no `line` or `side`). If the finding spans multiple files, pick the most relevant changed file and reference other files in the comment body.
+- **Body fallback** (rare): finding has no file reference at all → include in the summary table and append the full finding detail to the body under a `### Additional findings` section after the table.
+
+Both line-level and file-level comments use the same comment body format (see Step 2) and create full GitHub conversation threads — resolvable, replyable.
 
 **Re-review "Fixed since last review" line**: if this is a re-review and previous findings were resolved (see Re-review thread resolution), append after the table. Use the previous run's finding ID with its one-line issue text to avoid confusion with the current run's numbering:
 ```markdown
 **Fixed since last review**: S1 (`auth.ts:47` missing null check), S4 (`db.ts:123` N+1 query) *(threads resolved)*
 ```
 
-#### Step 2 — Compose inline comments (Part 2 of the review)
+#### Step 2 — Compose review comments (Part 2 of the review)
 
-Each finding with a valid `file:line` becomes an inline comment. Format each comment as self-contained markdown:
+Each finding with a valid file reference becomes a review comment. Format each comment as self-contained markdown:
 
 ```markdown
 <severity-emoji> **<Severity>** · <Category>
@@ -1360,11 +1373,15 @@ Each finding with a valid `file:line` becomes an inline comment. Format each com
 **Suggested fix**: <one sentence, actionable>
 ```
 
-Inline severity emojis: 🔴 Critical, 🟠 Serious, 🟡 Moderate, 🔵 Minor.
+Severity emojis: 🔴 Critical, 🟠 Serious, 🟡 Moderate, 🔵 Minor.
+
+**Comment JSON shape** — build each comment object for the `comments` array:
+- **Line-level**: `{"path": "<file>", "line": <post-image line>, "side": "RIGHT", "body": "<markdown>"}`
+- **File-level**: `{"path": "<file>", "subject_type": "file", "body": "<markdown>"}` — no `line` or `side` fields.
 
 #### Step 3 — Post via GitHub REST API
 
-Use `gh api` to submit the review with inline comments in one atomic call. Pass ALL fields in a single `--input` JSON — do NOT mix `--input` with `-f` flags (when `--input` is used, `-f` fields go to the query string, not the body):
+Use `gh api` to submit the review with all review comments (line-level and file-level) in one atomic call. Pass ALL fields in a single `--input` JSON — do NOT mix `--input` with `-f` flags (when `--input` is used, `-f` fields go to the query string, not the body):
 
 ```bash
 gh api "repos/<owner>/<repo>/pulls/<number>/reviews" \
@@ -1378,7 +1395,12 @@ gh api "repos/<owner>/<repo>/pulls/<number>/reviews" \
         "path": "<file path>",
         "line": <post-image line number>,
         "side": "RIGHT",
-        "body": "<inline comment from Step 2>"
+        "body": "<line-level comment from Step 2>"
+      },
+      {
+        "path": "<file path>",
+        "subject_type": "file",
+        "body": "<file-level comment from Step 2>"
       }
     ]' \
     '{body: $body, event: $event, commit_id: $commit_id, comments: $comments}')
@@ -1386,7 +1408,7 @@ gh api "repos/<owner>/<repo>/pulls/<number>/reviews" \
 
 **Event mapping**: `approve` → `APPROVE`, `comment` → `COMMENT`, `request-changes` → `REQUEST_CHANGES`.
 
-**Fallback**: if the `gh api` call fails (e.g., line number out of range for a specific comment), retry WITHOUT the failing comment(s) — log which comments were dropped. If the entire call fails, fall back to `gh pr review <url> <verdict-flag> --body "<full monolithic body>"` (the old approach, with all findings in the body).
+**Fallback**: if the `gh api` call fails (e.g., line number out of range for a line-level comment, or invalid path for a file-level comment), retry WITHOUT the failing comment(s) — log which comments were dropped. If the entire call fails, fall back to `gh pr review <url> <verdict-flag> --body "<full monolithic body>"` (the old approach, with all findings in the body).
 
 #### Step 4 — Cache the result
 
@@ -1401,7 +1423,7 @@ To populate `github_thread_id` for each posted comment, run the review threads G
 
 ### If edit first
 
-Write the composed summary body to a temp file (e.g. `/tmp/review-pr-<number>.md`), open it in `${EDITOR:-vi}`, then post after the user closes the editor. Inline comments are NOT editable via this flow — only the summary body. If the user needs to remove a specific inline comment, they should edit the findings list before choosing "Post now".
+Write the composed summary body to a temp file (e.g. `/tmp/review-pr-<number>.md`), open it in `${EDITOR:-vi}`, then post after the user closes the editor. Review comments (line-level and file-level) are NOT editable via this flow — only the summary body. If the user needs to remove a specific comment, they should edit the findings list before choosing "Post now".
 
 ### Post-completion next actions (context-aware)
 
@@ -1458,6 +1480,6 @@ On "Fix findings": invoke `/fix-pr-review <url>`. On "Done": exit. On "Other": f
 - **NEVER** skip Phase 1's stop-and-ask fallback — weak intent is the biggest slop source.
 - **NEVER** skip the grounding pass in the reviewer subagent — findings that don't trace back to the mechanical grounding bullets are hallucinations and must be dropped before output.
 - **NEVER** skip the critic pass — it's the second biggest anti-slop lever after the reviewer prompt.
-- **NEVER** re-post inline comments for findings that already have active (unresolved) threads from a previous review — this creates duplicate noise.
-- **ALWAYS** use `gh api` for posting reviews (hybrid: summary body + inline comments). Fall back to `gh pr review --body` only if the API call fails.
+- **NEVER** re-post review comments for findings that already have active (unresolved) threads from a previous review — this creates duplicate noise.
+- **ALWAYS** use `gh api` for posting reviews (hybrid: summary body + review comments). Fall back to `gh pr review --body` only if the API call fails.
 - **ALWAYS** resolve threads for fixed findings on re-reviews before posting new findings. Thread resolution is best-effort — failures should not block posting.
