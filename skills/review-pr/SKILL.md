@@ -576,6 +576,16 @@ thorough checks you may Grep/Glob packages/ directly.
          the "4-line private helper that duplicates a 4-line shared
          helper" case — small-but-duplicated is still slop.
 
+       STEP A-2 — Scan for raw HTML elements in JSX/TSX files.
+         For each file in the diff that is .tsx or .jsx, scan for
+         usage of FLAGGED elements in JSX expressions (return
+         statements, variable assignments, ternaries, array maps):
+           div, span, button, input, a, img, p, h1-h6,
+           ul, ol, li, textarea, select, label
+         This feeds Q6d — skip if the file is inside the component
+         library directory (e.g., packages/ui/src/) or no component
+         library is detected in the project.
+
        STEP B — For each enumerated item, run searches AGGRESSIVELY.
          Run ALL of the following; do NOT stop at the first hit. We pay
          for thoroughness with tokens, not with missed findings.
@@ -618,7 +628,7 @@ thorough checks you may Grep/Glob packages/ directly.
             one). Record `verified: yes — <what the existing impl does>`
             or `verified: no — substring collision`.
 
-       STEP C — Report findings in three sub-buckets:
+       STEP C — Report findings in four sub-buckets:
 
          Q6a. Reimplements existing code (default Severity: SERIOUS;
               escalate to CRITICAL if the existing thing lives in an
@@ -672,6 +682,57 @@ thorough checks you may Grep/Glob packages/ directly.
               <finding with suggested helper name>
               OR "No issues"
 
+         Q6d. Raw HTML element should use design system component
+              (default Severity: MODERATE; escalate to SERIOUS when
+              the element is used for layout/structure — e.g., div as
+              container, wrapper, or layout grid — where Box/Stack/Flex/
+              Grid equivalents are standard)
+
+              FLAGGED ELEMENTS (check only these in JSX):
+                div, span, button, input, a, img, p, h1-h6,
+                ul, ol, li, textarea, select, label
+
+              EXEMPT — never flag these (semantic/specialized, no
+              typical component equivalent):
+                canvas, video, audio, table, thead, tbody, tr, td,
+                th, form, svg, nav, header, footer, main, section,
+                article, aside, dialog, details, summary, fieldset,
+                legend, pre, code, blockquote, hr, br, iframe
+
+              BUILT-IN EXCLUSIONS — skip the check when:
+                (a) The file is INSIDE the component library itself
+                    (e.g., packages/ui/src/, or the project's design
+                    system source directory). These files BUILD the
+                    primitives — raw HTML is expected.
+                (b) The project has NO component library detected
+                    (no packages/ui/, no design-system directory,
+                    no imports from a component library in the diff).
+                    Do not flag raw HTML if there's nothing to
+                    replace it with.
+
+              DETECTION — for each flagged element found in STEP A-2:
+                1. Check if the project's component library exports
+                   a matching component (search packages/ui/src/
+                   or the project's component library path).
+                2. Check if the diff already imports from a component
+                   library (e.g., imports from @project/ui, shadcn,
+                   chakra, etc.) — this signals a library IS in use
+                   and raw HTML is likely a miss.
+                3. Only report if a concrete component alternative
+                   exists. Do NOT guess — if no match is found,
+                   write "No issues".
+
+              Finding format example:
+                Severity:    Moderate (or Serious for layout/structure)
+                Confidence:  high | medium
+                File:        <path:line>
+                Category:    Reusability
+                Issue:       Raw `<div>` used for layout — use `<Box>` / `<Stack>` from the design system instead.
+                Why it matters: Raw HTML bypasses design system tokens (spacing, theming, responsive behavior), creating visual inconsistency and maintenance burden.
+                Suggested fix: Replace `<div className="...">` with the matching component from the component library.
+
+              OR "No issues"
+
        REQUIRED audit field — use this EXACT name `reusability_searches:`
        (not `reuse_searches` or any variant) so the Phase 3 critic can
        parse it:
@@ -689,8 +750,16 @@ thorough checks you may Grep/Glob packages/ directly.
          critic rejects audits that claim "0 matches" for all searches
          as shallow / suspicious. If N == 0, write `verified: n/a`.
 
-         If STEP A was empty, write EXACTLY:
-           "reusability_searches: N/A (no new top-level definitions in diff)"
+         For Q6d, include component library searches in the audit:
+           - Grep("<ComponentName>", "packages/ui/src/components/") → N matches
+             verified: yes — <ComponentName> exists at <path>
+         If no component library detected, write:
+           "Q6d: N/A (no component library detected in project)"
+         If STEP A-2 found no flagged elements, write:
+           "Q6d: N/A (no flagged raw HTML elements in diff)"
+
+         If STEP A was empty AND STEP A-2 was empty, write EXACTLY:
+           "reusability_searches: N/A (no new top-level definitions or raw HTML elements in diff)"
 
        ### Non-monorepo fallback (when `repo_map_files == "N/A"`)
 
@@ -786,11 +855,14 @@ thorough checks you may Grep/Glob packages/ directly.
   the critic. Only flag them if you think a human should still take a second
   look.
 - For Q6, you MUST populate `reusability_searches:` with actual tool calls
-  or write "N/A (no new top-level definitions in diff)". Empty or missing
+  or write "N/A (no new top-level definitions or raw HTML elements in diff)". Empty or missing
   audit = Q6 claims are INVALID and the critic will drop them.
 - Q6b (extraction to shared package) has a HIGH BAR — flag only when ALL
   three conditions hold. Do NOT flag domain-specific code as "should be
   shared". When in doubt, prefer "No issues".
+- Q6d (raw HTML elements) requires a CONFIRMED component library match.
+  Do NOT flag raw HTML if the project has no component library or the
+  specific element has no matching component. When in doubt, skip.
 
 ## Line number convention
 
@@ -917,7 +989,7 @@ Keep the finding if **ANY one** of the three fails. Log drops as `noise / 3-pron
 
 ### 4.5. Reusability audit verification
 
-For each reviewer's "Q6 No issues" response, execute the verification below. The goal is to catch three distinct failure modes: missing audit field, insufficient search count, and class-method definitions not being counted.
+For each reviewer's "Q6 No issues" response, execute the verification below. The goal is to catch four distinct failure modes: missing audit field, insufficient search count, class-method definitions not being counted, and raw HTML elements not checked against the component library (Q6d).
 
 #### Step 4.5a — Count new definitions in the diff
 
@@ -951,11 +1023,11 @@ Three outcomes to distinguish:
    File:       <PR as a whole>
    Category:   Reusability
    Issue:      Reviewer did not include a `reusability_searches:` audit field — Q6 was not performed at all.
-   Why:        The reviewer subagent skipped the mandatory Q6 audit. All claims in Q6a/b/c are unverified.
+   Why:        The reviewer subagent skipped the mandatory Q6 audit. All claims in Q6a/b/c/d are unverified.
    Fix:        Re-run the review, or manually grep packages/ and apps/ for each new definition in this diff before merging.
    ```
 
-2. **Field present with sentinel `N/A (no new top-level definitions in diff)`**: verify `new_definitions_count == 0`. If yes, audit is valid (no action). If `new_definitions_count > 0`, treat as shallow and drop the "No issues" claim per outcome 3 below — the reviewer mis-claimed there was nothing to enumerate.
+2. **Field present with sentinel `N/A (no new top-level definitions or raw HTML elements in diff)`**: verify BOTH `new_definitions_count == 0` (STEP A empty) AND no .tsx/.jsx files in the diff contain flagged raw HTML elements (STEP A-2 empty). If both hold, audit is valid (no action). If either fails, treat as shallow and drop the "No issues" claim per outcome 3 below — the reviewer mis-claimed there was nothing to enumerate.
 
 3. **Field present with entries**: count entries. If `searches_count < new_definitions_count`, drop "Q6 No issues" claims AND add:
    ```
@@ -985,6 +1057,24 @@ Fix:        Before merging, grep packages/ for each new function/component name 
 ```
 
 4. Log the drop in the Filtered Out section so over-filtering is auditable.
+
+#### Step 4.5d — Verify Q6d (raw HTML element) claims
+
+If the reviewer reported Q6d findings, verify each one:
+  1. Confirm the flagged file is NOT inside the component library directory
+     (packages/ui/src/ or equivalent). If it is, drop the finding as
+     "Q6d false positive — file is inside component library".
+  2. Confirm the `reusability_searches:` audit includes a component library
+     search for the suggested replacement component. If missing, mark the
+     Q6d finding as low-confidence.
+  3. If the reviewer wrote "Q6d: N/A (no component library detected)" but
+     the diff imports from a component library (e.g., `import { Box } from
+     '@project/ui'`), drop the N/A claim and flag as shallow — a library
+     IS in use.
+
+If the reviewer wrote "Q6d: No issues" for a .tsx/.jsx diff that contains
+flagged elements AND the project has a component library, mark as suspicious
+but do NOT auto-add a finding — the reviewer may have confirmed no match.
 
 ### 5. Confidence-based drop
 
