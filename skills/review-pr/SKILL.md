@@ -230,9 +230,9 @@ SIZE = additions + deletions
 
 if SIZE < 100:
     SIZE_MODE = "solo-main"
-    # Skip subagent dispatch entirely; run the 6-question pass in main context.
+    # Skip subagent dispatch entirely; run Q1-Q6 (+ Q7-Q9 if schema PR) in main context.
     # Justification: a 50-line PR doesn't warrant 2× subagent spin-up cost (~5min wall time).
-    # Main context reads the diff once, answers Q1-Q6 inline, critic pass is lighter.
+    # Main context reads the diff once, answers questions inline, critic pass is lighter.
 elif SIZE <= 500:
     SIZE_MODE = "parallel-standard"
     # Current behavior: Claude reviewer + CodeRabbit (if not paused) + conditional silent-failure hunter
@@ -283,7 +283,7 @@ If `$CACHE_FILE` exists:
       "finding_severity": "Serious"
     },
     {
-      "finding_key": "(config.ts, file-level, missingvalidation)",
+      "finding_key": "(config.ts, file-level:Architecture, missingvalidation)",
       "finding_id": "M2",
       "github_comment_id": 12346,
       "github_thread_id": "PRRT_def456",
@@ -394,6 +394,20 @@ try \{ | catch \( | catch \{ | throw new | throw \s | \.catch\( | Result< | resc
 
 If any pattern appears, OR the user explicitly mentions error handling, set `INCLUDE_SILENT_FAILURE_HUNTER = true`. Otherwise false. Filename-based detection is unreliable — a silent `catch {}` added to `user-service.ts` would never trigger it.
 
+### Check for new database tables (flag for Phase 2)
+
+**Grep the diff content** for new table definitions in **added lines** (lines starting with `+`):
+
+```
+pgTable\( | createTable\( | CREATE TABLE | knex\.schema\.createTable | Schema\.create\(
+```
+
+If any pattern appears, set `INCLUDE_SCHEMA_CHECKS = true`. Otherwise false.
+
+When true, also extract the **schema directory path** for use in Q7-Q9 searches: look for where existing table definitions matching the detected pattern live (typically `db/schema/`, `drizzle/schema/`, `src/schema/`, or `migrations/`). Stash as `SCHEMA_DIR`. If no schema directory can be identified, set `SCHEMA_DIR = "."` (repo root) and limit Q7-Q9 grepping to files matching the detected table definition pattern (e.g., `Grep("pgTable", ".", glob: "**/*.ts")`) to avoid noise.
+
+**Cross-repo mode**: if `CROSS_REPO_MODE = true`, there is no local repo to scan. Use `gh api git/trees/<head-sha>?recursive=1` to list files and identify the schema directory from the tree. Q7-Q9 searches use `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>` to read schema files remotely.
+
 ### Load project-level review suppressions
 
 Check for a `.claude/review-suppressions.yml` file in the project root. This file allows teams to suppress known-acceptable patterns that would otherwise be flagged repeatedly.
@@ -448,18 +462,18 @@ Launch in a **single message with multiple Agent tool calls** — but the dispat
 ### Dispatch strategy by SIZE_MODE
 
 **`SIZE_MODE == "solo-main"`** (PR < 100 lines):
-- Do NOT dispatch subagents at all. Run the Claude reviewer prompt (Subagent 1 block below) inline in main context. Main reads the stashed diff once, answers Q1-Q6, does grounding pass, populates `reusability_searches:`, and outputs in the same format as the subagent version would.
+- Do NOT dispatch subagents at all. Run the Claude reviewer prompt (Subagent 1 block below) inline in main context. Main reads the stashed diff once, answers Q1-Q6 (and Q7-Q9 if `INCLUDE_SCHEMA_CHECKS = true`), does grounding pass, populates `reusability_searches:`, and outputs in the same format as the subagent version would.
 - Still dispatch CodeRabbit reviewer (if not paused) and silent-failure hunter (if triggered) — these are fast fixed-cost subagents and save main context. They run in parallel with main's inline work.
 - Rationale: on a 50-line PR, spinning up a dedicated reviewer subagent costs ~5 minutes wall time for work main can do in ~30 seconds.
 
 **`SIZE_MODE == "parallel-standard"`** (100-500 lines, default):
-- Dispatch Claude reviewer (Subagent 1) + CodeRabbit (Subagent 2) + conditional silent-failure hunter (Subagent 3) in parallel. Current behavior.
+- Dispatch Claude reviewer (Subagent 1, includes Q7-Q9 if `INCLUDE_SCHEMA_CHECKS = true`) + CodeRabbit (Subagent 2) + conditional silent-failure hunter (Subagent 3) in parallel.
 
 **`SIZE_MODE == "parallel-chunked"`** (500-2000 lines):
 - Split the diff by file into chunks of ~500 lines each. Group by file boundary — don't split a file across chunks.
 - Dispatch ONE Claude reviewer subagent PER CHUNK, each with:
-  - Full intent model + prior review timeline + repo map (shared context)
-  - Only its chunk's files listed in the prompt
+  - Full intent model + prior review timeline + repo map + schema context (shared context)
+  - Only its chunk's files listed in the prompt (Q7-Q9 included if `INCLUDE_SCHEMA_CHECKS = true`)
   - Instruction: "Your scope is the files listed above. Do not report findings in other files. Cross-file references are allowed if they help contextualize a finding within your scope."
 - Still dispatch ONE CodeRabbit (full PR scope, it handles size internally) and ONE silent-failure hunter (full PR scope).
 - Main-context critic in Phase 3 Step 1 dedupes across chunks using the existing `(file, line, symbol)` dedupe key — chunks were file-disjoint so no dupes within-chunk are possible; cross-chunk dupes only occur for findings that span files.
@@ -515,6 +529,10 @@ PR URL: <url>
 This map is your baseline for Q6. It may be truncated at 500 lines — for
 thorough checks you may Grep/Glob packages/ directly.
 
+## Schema review context
+INCLUDE_SCHEMA_CHECKS: <true|false, from Phase 1>
+SCHEMA_DIR: <path from Phase 1, "." if directory unknown, or "N/A" if INCLUDE_SCHEMA_CHECKS is false>
+
 ## Your task
 
 1. Run `gh pr diff <url>` to fetch the full diff.
@@ -529,13 +547,32 @@ thorough checks you may Grep/Glob packages/ directly.
    finding doesn't trace to a grounding bullet, you are hallucinating it —
    drop it before outputting.
 
-4. Answer these 5 questions EXPLICITLY. Each must be addressed, even if just "no issues".
+4. Answer Q1–Q6 EXPLICITLY (plus Q7–Q9 if `INCLUDE_SCHEMA_CHECKS` is true). Each must be addressed, even if just "no issues".
 
    Q1. Intent — Does this PR actually solve the stated goal? Where's the gap, if any?
    Q2. Unnecessary changes — Files, abstractions, config, or indirection not
        required by the goal? (This deliberately collapses scope creep +
        overengineering into one question; reporting them separately produces
        intra-reviewer duplicates.)
+       Q2a. Documentation necessity — For any `.md` file with > 200 added lines
+            OR accounting for > 40% of the PR's total additions: question whether
+            the documentation is needed. Check if `CLAUDE.md` or existing project
+            docs already cover the domain. Frame as observation, not bug.
+            Severity: Minor. Category: Unnecessary.
+       Q2b. Premature complexity — Detect known complexity patterns in the diff
+            that are NOT mentioned or implied in the linked issue:
+            - Optimistic locking (`version` columns with default 1)
+            - Soft-delete on append-only/audit tables
+            - Denormalized aggregation columns (e.g., `totalPrice` alongside line items)
+            - Polymorphic reference patterns
+            - Self-referential FKs (e.g., `parentOrderId`)
+            If `INCLUDE_SCHEMA_CHECKS` is true AND the project already uses the
+            same pattern in existing tables (detectable via `$SCHEMA_DIR` search),
+            do NOT flag it as premature. If `INCLUDE_SCHEMA_CHECKS` is false, skip
+            the existing-pattern search and flag the pattern as-is.
+            Flag as: "Design decision — [pattern] is not mentioned in the linked
+            issue. Confirm this complexity is needed."
+            Severity: Minor. Category: Architecture.
    Q3. DRY — Duplicated logic within the diff, or with existing code visible
        in the surrounding context?
    Q4. Performance — N+1 queries, loops over async, unbounded allocations,
@@ -839,6 +876,67 @@ thorough checks you may Grep/Glob packages/ directly.
    - Breaking changes to public APIs not mentioned in the PR description
    - Architectural issues (wrong layer / wrong package / wrong abstraction boundary)
 
+6. **Schema-specific checks (Q7–Q9)** — only when `INCLUDE_SCHEMA_CHECKS = true` (PR adds new database tables). Skip entirely if false.
+
+   Q7. Schema Overlap — Does a new table duplicate an existing table's domain?
+
+       For each new `pgTable()` (or equivalent) definition in the diff:
+       a. Extract domain keywords from the table name (e.g., `gs_KioskItems` →
+          `kiosk`, `item`).
+       b. Add FK target roots as additional keywords (e.g., FKs `recipeId`,
+          `articleId` → keywords `recipe`, `article`).
+       c. Search `$SCHEMA_DIR` for tables with matching keywords:
+          ```
+          Grep("<keyword>", "$SCHEMA_DIR", type: "ts")
+          ```
+       d. For each hit, read the file and compare FK targets and field names.
+       e. Flag ONLY if an existing table has **3+ matching FK targets** AND a
+          similar domain purpose (both tables serve the same feature area — e.g.,
+          both handle ordering, both handle menu planning). Substring matches
+          alone (e.g., "item" matching many unrelated tables) are NOT sufficient
+          — verify by FK comparison AND domain overlap.
+
+       Severity: Moderate. Category: Architecture.
+       Format: "Existing table `<existing>` in `<path>` has overlapping domain —
+       shares FKs [list]. Is `<new table>` intentionally separate?"
+
+   Q8. Table Consolidation — Could a simple 1:1 table be a column on an existing table?
+
+       For each new table definition in the diff, detect where:
+       a. The PK is also an FK to another table (pattern: `accountId` / `clientId`
+          as both primary key and foreign key).
+       b. The table has fewer than 5 data columns beyond the PK (exclude standard
+          audit columns like `createdAt`, `updatedAt`, `createdBy`, `updatedBy`
+          from this count).
+
+       If both conditions are met:
+       c. Search for existing settings/config tables for the same parent entity:
+          ```
+          Grep("<parent>.*setting|<parent>.*config", "$SCHEMA_DIR", type: "ts")
+          ```
+       d. Flag ONLY if a candidate settings/config table EXISTS. Do NOT suggest
+          "create a settings table" — that is scope creep.
+
+       Severity: Moderate. Category: Architecture.
+       Format: "1:1 table `<new>` has only N data columns — could this be a
+       column on existing `<settings table>` in `<path>`?"
+
+   Q9. Cross-Table Field Consistency — Are entity reference columns complete?
+
+       When a new table has entity reference FKs (to `recipeTable`, `articleTable`,
+       `foodItemTable`, `dishTable`, etc.):
+       a. Identify the "entity reference set" — which entity types does it reference?
+       b. Search for related tables in the same domain (tables sharing the same
+          parent FK or domain name keywords).
+       c. Compare entity reference sets between the new table and related tables.
+       d. Flag ONLY when a related table in the SAME domain has MORE entity types.
+          Do NOT flag cross-domain differences (e.g., procurement items vs shop items
+          may intentionally support different entity types).
+
+       Severity: Moderate. Category: Architecture.
+       Format: "New table references [recipe, article] but related `<table>` in
+       `<path>` also references [foodItem, dish] — are these intentionally omitted?"
+
 ## Anti-slop rules (MANDATORY)
 
 - Do NOT report style, formatting, or naming preferences.
@@ -848,13 +946,13 @@ thorough checks you may Grep/Glob packages/ directly.
 - Do NOT report hypothetical issues ("this COULD become a problem if X") unless
   X is plausible given the actual codebase signals visible in the diff.
 - Do NOT report issues you cannot point to with `File: <path>` — ideally
-  `File: <path:line>`. Line number is optional only for `Category: Architecture`
-  findings that are genuinely file- or module-scope.
+  `File: <path:line>`. Line number is optional for findings that are genuinely
+  file- or module-scope (these route to file-level review comments in Phase 4).
 - Do NOT report generic advice ("consider adding tests") unless tests were
   expected and omitted.
-- If a question (Q1–Q5) has NO issues, write "No issues" — do not invent
-  findings to fill the slot.
-- **Permission to abstain**: if answering Q1–Q5 requires code you haven't
+- If a question (Q1–Q9, except Q6 which has dedicated audit rules) has NO issues,
+  write "No issues" — do not invent findings to fill the slot.
+- **Permission to abstain**: if answering Q1–Q9 (except Q6) requires code you haven't
   seen (e.g., a callee not in the diff), either fetch it via
   `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>` or write
   `Cannot assess — would need <file>` and move on. DO NOT guess.
@@ -883,7 +981,7 @@ the old-side line number. Do NOT use a diff hunk header offset.
 For each finding:
   Severity:   Critical | Serious | Moderate | Minor
   Confidence: high | medium | low
-  File:       <path:line> (or <path> alone for Architecture)
+  File:       <path:line> (or <path> alone for file/module-scope findings)
   Category:   Intent | Unnecessary | DRY | Performance | Security |
               Reusability | Silent-failure | Breaking-change |
               Architecture | Prior-finding-correction
@@ -936,7 +1034,7 @@ Execute in order:
 
 Merge findings that describe the same issue **both** across reviewers AND within a single reviewer's output.
 
-**Dedupe key**: `(file_path, post_image_line, normalized_symbol_name)` — NOT `Category`. For findings without a valid diff line (file-level findings), use `"file-level"` in place of `post_image_line`. Two findings on the same `(file, line-or-file-level, symbol)` are duplicates regardless of whether one is `Category: DRY` (within-diff) and the other is `Category: Reusability` (cross-codebase). Merge them, keep the higher-severity category on the merged finding, and concatenate their reasoning into the `Issue:` field.
+**Dedupe key**: `(file_path, post_image_line, normalized_symbol_name)` — NOT `Category`. For findings without a valid diff line (file-level findings), use `"file-level:<category>"` in place of `post_image_line` (e.g., `(config.ts, file-level:Architecture, missingvalidation)`) — the category suffix prevents two different file-level findings on the same file from colliding. For line-level findings, two findings on the same `(file, line, symbol)` are duplicates regardless of category — merge them, keep the higher-severity category, and concatenate their reasoning into the `Issue:` field. For file-level findings, the category is part of the key, so findings with different categories on the same file are distinct (not merged).
 
 Normalize symbol names by lowercasing and stripping CamelCase boundaries (`formatPortionLabel` → `formatportionlabel`) so minor label variants still match.
 
@@ -978,8 +1076,9 @@ The full diff is already in main context (stashed in Phase 1). This is *not* tok
   gh api repos/<owner>/<repo>/pulls/<num>/files --jq '.[] | select(.filename=="<path>") | .patch'
   ```
   (The endpoint returns a per-file `patch` field — that's the full unified diff for that file, capped at ~3000 lines per file by GitHub.)
-- **Verification rule**: the `File: <path:line>` must refer to a line present on the **post-image / new side** of the hunk (a `+` line or unchanged context on the new side). References to old-side-only lines, deleted lines, or lines not present in any hunk → **DROP** and log `hallucinated reference`.
-- **File-level findings** (no line number): verify that the referenced `path` appears in the PR's changed files list (from `gh pr view --json files` already fetched in Phase 1). If the path is not in the changed files → **DROP** and log `hallucinated file reference`.
+- **Routing**: if the finding has a line number → apply line verification (below). If no line number → skip to file-level verification (below). These are mutually exclusive paths.
+- **Line verification rule**: the `File: <path:line>` must refer to a line present on the **post-image / new side** of the hunk (a `+` line or unchanged context on the new side). References to old-side-only lines, deleted lines, or lines not present in any hunk → **DROP** and log `hallucinated reference`.
+- **File-level verification rule** (no line number): verify that the referenced `path` appears in the PR's changed files list (from `gh pr view --json files` already fetched in Phase 1). If the path is not in the changed files → **DROP** and log `hallucinated file reference`.
 
 ### 3. Drop already-known
 
@@ -1104,9 +1203,9 @@ suppressed by .claude/review-suppressions.yml: "<reason>" (pattern: "<pattern>")
 
 **Critical/Serious override**: suppressions can drop findings at ANY severity. If a team has explicitly decided a pattern is acceptable, that decision should be respected even for Serious findings. The `reason` field in the log ensures this is auditable.
 
-### 6. Gap check (Q1–Q6)
+### 6. Gap check (Q1–Q6, Q7–Q9 if schema PR)
 
-For any question category where BOTH reviewers said nothing, briefly think about whether the diff has anything in that category. Add findings if you spot something they missed.
+For any question category where BOTH reviewers said nothing, briefly think about whether the diff has anything in that category. Add findings if you spot something they missed. Include Q7–Q9 in the gap check only if `INCLUDE_SCHEMA_CHECKS = true`.
 
 **Large-PR caveat**: if `additions + deletions >= 500` AND you don't have the full diff fully loaded in main (e.g., you truncated after stashing), **skip Step 6** and log `gap check not run — PR too large for main context`. Do NOT hallucinate gaps from the file list alone.
 
@@ -1336,9 +1435,10 @@ Build a lean summary body **without the "Filtered out" section** (internal only)
 | # | Sev | File | Issue |
 |---|-----|------|-------|
 | S1 | 🟠 | `<path:line>` | <one-line issue> |
-| M1 | 🟡 | `<path:line>` | <one-line issue> |
+| M1 | 🟡 | `<path>` | <one-line issue (file-level)> |
+| m1 | 🔵 | *(general)* | <one-line issue (body-fallback)> |
 
-*Details in review comments below.*
+*Details in review comments below.* <!-- omit if ALL findings are body-fallback -->
 ```
 
 **Severity count badges**: `🔴 <N> Critical · 🟠 <M> Serious · 🟡 <K> Moderate · 🔵 <J> Minor` — only include severity levels that have findings.
@@ -1347,8 +1447,8 @@ Build a lean summary body **without the "Filtered out" section** (internal only)
 
 **Comment routing — three tiers based on file/line validity**:
 - **Line-level comment**: finding has a valid `file:line` where the line exists in the diff → post as a line-level review comment with `line`, `side: "RIGHT"`.
-- **File-level comment**: finding has a file reference but no valid diff line (e.g., Architecture-category findings, file/module-scope issues, or line not in the diff) → post as a file-level review comment with `subject_type: "file"` (no `line` or `side`). If the finding spans multiple files, pick the most relevant changed file and reference other files in the comment body.
-- **Body fallback** (rare): finding has no file reference at all → include in the summary table and append the full finding detail to the body under a `### Additional findings` section after the table.
+- **File-level comment**: finding has a file reference but no valid diff line (e.g., file/module-scope issues, schema overlap findings, or line not in the diff) → post as a file-level review comment with `subject_type: "file"` (no `line` or `side`). If the finding spans multiple files, pick the most relevant changed file and reference other files in the comment body.
+- **Body fallback** (rare): finding has no file reference at all → use `*(general)*` in the File column of the summary table and append the full finding detail to the body under a `### Additional findings` section after the table.
 
 Both line-level and file-level comments use the same comment body format (see Step 2) and create full GitHub conversation threads — resolvable, replyable.
 
@@ -1377,7 +1477,7 @@ Severity emojis: 🔴 Critical, 🟠 Serious, 🟡 Moderate, 🔵 Minor.
 
 **Comment JSON shape** — build each comment object for the `comments` array:
 - **Line-level**: `{"path": "<file>", "line": <post-image line>, "side": "RIGHT", "body": "<markdown>"}`
-- **File-level**: `{"path": "<file>", "subject_type": "file", "body": "<markdown>"}` — no `line` or `side` fields.
+- **File-level**: `{"path": "<file>", "subject_type": "file", "body": "<markdown>"}` — no `line` or `side` fields. Since GitHub won't show anchored code for file-level comments, include a brief code snippet or reference in the body (e.g., `` `File: <path>` near the `<symbol>` definition ``) so the reader has enough context.
 
 #### Step 3 — Post via GitHub REST API
 
@@ -1419,7 +1519,9 @@ After successful post, **merge** the posting metadata into the existing `$CACHE_
 - `last_posted_at`: ISO timestamp
 - `posted_comments`: array of comment entries (see Phase 1 cache schema for the full structure)
 
-To populate `github_thread_id` for each posted comment, run the review threads GraphQL query (same as Phase 1's prior-review timeline fetch) immediately after posting and match by comment `databaseId` — the REST API response includes each comment's ID which can be correlated with the GraphQL thread query's `comments.nodes[].databaseId` field. This avoids ambiguity when multiple findings share the same `path` + `line`.
+For each posted comment, construct the `finding_key` using the dedupe key format from Phase 3 step 1 (line-level: `(file, line, symbol)`, file-level: `(file, file-level:<category>, symbol)`).
+
+To populate `github_thread_id`, run the review threads GraphQL query (same as Phase 1's prior-review timeline fetch) immediately after posting and match by comment `databaseId` — the REST API response includes each comment's ID which can be correlated with the GraphQL thread query's `comments.nodes[].databaseId` field.
 
 ### If edit first
 
@@ -1476,7 +1578,7 @@ On "Fix findings": invoke `/fix-pr-review <url>`. On "Done": exit. On "Other": f
 - **NEVER** run the review twice in a single invocation (don't retry on empty findings).
 - **NEVER** post to the PR without explicit user confirmation via the "Post now" or "Edit first" AskUserQuestion options (except self-reviews where "Fix now" skips posting entirely).
 - **NEVER** post the "Filtered out" section to GitHub — it's for local audit only.
-- **NEVER** fabricate file:line references; if unsure, omit the line and use file-only for Architecture-category findings.
+- **NEVER** fabricate file:line references; if unsure, omit the line and use file-only (these route to file-level review comments).
 - **NEVER** skip Phase 1's stop-and-ask fallback — weak intent is the biggest slop source.
 - **NEVER** skip the grounding pass in the reviewer subagent — findings that don't trace back to the mechanical grounding bullets are hallucinations and must be dropped before output.
 - **NEVER** skip the critic pass — it's the second biggest anti-slop lever after the reviewer prompt.
