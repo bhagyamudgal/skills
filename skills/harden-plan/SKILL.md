@@ -110,9 +110,11 @@ exist:
 > **cwd does not match the plan's target repo.**
 > Plan references: `<list of top-level dirs>`
 > Cwd has: `<list of top-level dirs in cwd>`
-> Grounding will be unreliable — continue anyway? (y/n)
+> Grounding will be unreliable — continue anyway?
 
-On `n`, abort with:
+Present via AskUserQuestion with options: "Continue anyway" and "Abort".
+
+On abort:
 > Abort. `cd` into the correct clone and retry, or paste the plan inline
 > to skip codebase grounding.
 
@@ -530,9 +532,10 @@ Accept the retry output. Do not retry more than once per category.
 
 - Any **Critical** finding open → `verdict: needs-work` (grill runs)
 - Any **Serious** finding open → `verdict: needs-work` (grill runs)
-- Only Moderate / Minor findings → `verdict: likely-ready` (grill
-  still runs — warns are cheap)
-- Zero findings → `verdict: ready-to-code` (skip grill, go to Phase 5)
+- Only Moderate / Minor findings → `verdict: partial` (interactive
+  review still runs — open moderate findings remain)
+- Zero findings → `verdict: ready-to-code` (skip Phase 4, go to
+  Phase 5)
 
 Stash `findings_queue` (sorted) and `verdict`.
 
@@ -542,11 +545,22 @@ Stash `findings_queue` (sorted) and `verdict`.
 
 If `verdict: ready-to-code`, skip to Phase 5.
 
-Otherwise, walk `findings_queue` in order, emitting ONE question per
-message and waiting for user response before moving to the next. Mirror
-`/grill-me`'s "one question at a time" discipline.
+Otherwise, walk `findings_queue` in order, presenting ONE finding per
+message and waiting for user response before moving to the next.
 
-### Question block format
+**ALWAYS use the AskUserQuestion tool** for every finding presented to
+the user. Each finding gets a single AskUserQuestion call with these
+options:
+- "Accept recommendation (y)" — description includes the recommended_answer text
+- "Dismiss (n)" — description: "Provide a specific reason why this doesn't apply (≥10 chars required)"
+- "Custom answer (other)" — description: "Provide your own resolution instead of the recommendation"
+- "Skip" — description: "Leave unresolved for now, revisit later"
+
+Never fall back to plain-text "(y / n / other / skip)" prompts. The
+question block format below defines the CONTENT of the AskUserQuestion's
+`question` field, not standalone text output.
+
+### Question block format (for the AskUserQuestion question field)
 
 ```
 [<id> · <severity> · <category>]  (<n> of <total>)
@@ -559,9 +573,9 @@ Grounding:   <1 sentence of concrete evidence — file:line or plan text>
 
 Question:    <suggested_question>
 Recommended: <recommended_answer>
-
-(y / n / other / skip)
 ```
+
+Do NOT include a plain-text `(y / n / other / skip)` line — the options are encoded in the AskUserQuestion tool call.
 
 ### Response handling
 
@@ -627,9 +641,9 @@ verify itself.
 
 - User types `abort` / `quit` → stop grilling, jump to Phase 5 with
   remaining findings as `skipped`
-- User provides 3 consecutive `skip`s → prompt:
-  > You've skipped 3 in a row. Want to bail out and get a summary?
-  > (y = bail, n = keep going)
+- User provides 3 consecutive `skip`s → present via AskUserQuestion:
+  "You've skipped 3 in a row. Want to bail out and get a summary?"
+  Options: "Bail out — show summary" and "Keep going"
 
 ### One question at a time — STRICT
 
@@ -688,11 +702,12 @@ finding independently. Pre-batched questions will be rejected.
 
 **Only if `PLAN_SOURCE=file`**:
 
-Prompt:
-> Apply accepted plan additions back to `<PLAN_FILE>`?
-> (a) **write** — insert additions as sub-steps in place
-> (b) **diff** — print unified diff only; you apply manually
-> (c) **exit** — leave the plan file untouched
+Present via AskUserQuestion: "Apply accepted plan additions back to `<PLAN_FILE>`?"
+
+Options:
+- "Write — insert additions in place" — inserts additions as sub-steps directly into the plan file
+- "Diff — print only" — shows a unified diff; you apply manually
+- "Exit — leave untouched" — keeps the plan file as-is
 
 On `(a)`:
   - For each `accepted_additions[]` entry, locate its `plan_step_ref`
