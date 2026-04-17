@@ -1,2 +1,8 @@
 .DS_Store
 node_modules
+
+# Claude Code local state — runtime locks and per-machine overrides.
+# Shared config like .claude/settings.json stays tracked; only ignore local/runtime files.
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+.claude/.credentials.json

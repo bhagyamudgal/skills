@@ -9,7 +9,13 @@ Reviews a remote GitHub PR with anti-slop filtering. Input: **PR URL only**.
 
 The goal of this skill is simple: produce an accurate, critical, actionable PR review that surfaces what a human reviewer should double-check — and filters out the noise (style nitpicks, hallucinated references, duplicates of prior findings, generic advice).
 
-**Use AskUserQuestion for ALL user-facing decisions** — stop-and-ask fallback, cache replay, large-PR confirmation, self-review handling, and post-review choices. Always present options as cursor-selectable choices, not plain text questions.
+**Use AskUserQuestion for ALL user-facing decisions** — stop-and-ask fallback, cache replay, large-PR confirmation, self-review handling, post-review choices, post-failure recovery, and post-completion next-action. Always present options as cursor-selectable choices, not plain text questions.
+
+**Anti-patterns — NEVER do these:**
+- NEVER present choices as a numbered markdown list in terminal text (e.g., `1. Post all / 2. Post criticals / 3. Keep local / 4. Fix them`). That short-circuits the tool call.
+- NEVER end a response with `Would you like me to... ?` followed by a list of options in prose.
+- NEVER ask `What's next — do X, or are we done?` after a tool-call decision. The prior AskUserQuestion is the last word.
+- Self-test: if you catch yourself writing a sentence that asks the user to pick between 2+ labeled paths, STOP and use `AskUserQuestion` instead.
 
 ## Superpowers planning pipeline (optional pre-review context)
 
@@ -111,7 +117,7 @@ query($owner:String!, $repo:String!, $num:Int!) {
       }
     }
   }
-}' -F owner=<owner> -F repo=<repo> -F num=<num>
+}' -f owner=<owner> -f repo=<repo> -F num=<num>   # -f for String!, -F for Int!
 ```
 
 Build this structure in main context:
@@ -271,12 +277,13 @@ If `$CACHE_FILE` exists:
   "last_run_verdict": "request-changes",
   "findings": [ ... ],
   "filtered_out": [ ... ],
-  "last_posted_review_id": "PR_review_abc123",
+  "last_posted_review_id": 12345678,
+  "last_posted_review_node_id": "PRR_kwDO...",
   "last_posted_verdict": "request-changes",
   "last_posted_at": "2026-04-11T13:30:15Z",
   "posted_comments": [
     {
-      "finding_key": "(file.ts, 47, handleerror)",
+      "finding_key": "(file.ts, 47, processrequest)",
       "finding_id": "S1",
       "github_comment_id": 12345,
       "github_thread_id": "PRRT_abc123",
@@ -578,9 +585,32 @@ SCHEMA_DIR: <path from Phase 1, "." if directory unknown, or "N/A" if INCLUDE_SC
    Q4. Performance — N+1 queries, loops over async, unbounded allocations,
        missing Promise.all, missing indices for new WHERE clauses, sequential
        awaits that could be parallel?
-   Q5. Security — Injection, auth bypass, unsafe input handling, secrets in
+   Q5. Security & Data Integrity — Injection, auth bypass, unsafe input handling, secrets in
        code, missing authorization checks, unvalidated user input reaching
-       dangerous sinks?
+       dangerous sinks, AND type-coercion bugs at data boundaries.
+
+       **Type-coercion at write sites** (subtle, test-only-caught bug class):
+       scan every DB insert/update / API payload construction in the diff for
+       expressions like `field: value?.toFixed(N)`, `field: String(value)`, or
+       `field: \`${value.toFixed(N)}\`` being written into fields typed as
+       numeric. Because `.toFixed()` returns a string, this silently stores a
+       string in a numeric column (or ships a string in a number-typed API field).
+       Pattern:
+       ```ts
+       quantity: input.quantity?.toFixed(1)          // BUG: stores "2.6"
+       quantity: `${input.quantity?.toFixed(1)}`     // BUG: template literal also string
+       quantity: Number(input.quantity?.toFixed(1))  // OK
+       ```
+       Coercion methods to scan: `.toFixed`, `.toString`, `.toLocaleString`,
+       `String(...)`, and any template-literal `` `${...}` `` containing those.
+       Flag when the expression is NOT wrapped in `Number(...)` / `parseFloat(...)` /
+       `parseInt(...)` / unary `+(...)`.
+
+       **How to determine "numeric field" type**:
+       - **DB writes**: read the schema file at `$SCHEMA_DIR` (from Phase 1 `INCLUDE_SCHEMA_CHECKS` gating) OR grep the repo for the field name's column definition (`<fieldName>: numeric|integer|real|decimal|double|float|bigint`). If `$SCHEMA_DIR` is unset AND the field's column type cannot be determined, **skip this check for that field** — do not guess.
+       - **API payloads / DTOs**: read the matching Zod schema (`z.number()`, `z.coerce.number()`) or TypeScript type (`: number`). If the DTO can't be located, skip the check.
+
+       Severity: Serious. Category: Breaking-change.
 
    Q6. Reusability (codebase-wide) — MANDATORY tool-use check.
 
@@ -601,7 +631,7 @@ SCHEMA_DIR: <path from Phase 1, "." if directory unknown, or "N/A" if INCLUDE_SC
            - React component (function or const form)
            - React hook (name starts with `use`)
            - **class method** (IMPORTANT — this includes NestJS service methods
-             like `async findOne(...)`, `private formatPortion(...)`,
+             like `async findOne(...)`, `private formatInvoice(...)`,
              `protected validate(...)`. These are inside existing classes but
              are still new code that can duplicate shared helpers. The user's
              primary real-world example was a private method on a NestJS
@@ -642,10 +672,11 @@ SCHEMA_DIR: <path from Phase 1, "." if directory unknown, or "N/A" if INCLUDE_SC
             prefixes/suffixes and searching the remaining verb/noun:
 
             Algorithm for deriving the root:
-              a) Split name on CamelCase boundaries: `formatPortionLabel`
-                 → `[format, Portion, Label]`
-              b) Drop tokens that are DOMAIN nouns (Portion, MealMenu,
-                 Order, Client, User, Meal, Schedule, Inbound, etc.)
+              a) Split name on CamelCase boundaries: `renderUserCard`
+                 → `[render, User, Card]`
+              b) Drop tokens that are DOMAIN nouns (Order, Invoice,
+                 Product, Customer, Account, User, Subscription, etc.
+                 — any business-entity noun specific to the project)
               c) Keep tokens that are GENERIC verbs/nouns (format, parse,
                  validate, build, sleep, chunk, retry, merge, group,
                  sort, filter, map, find, compute, calculate, build,
@@ -653,11 +684,11 @@ SCHEMA_DIR: <path from Phase 1, "." if directory unknown, or "N/A" if INCLUDE_SC
               d) Grep each kept token against packages/ and apps/
 
             Worked examples:
-              - `formatPortionLabel` → root = `format` → `Grep("format", "packages/")` + `Grep("Label", "packages/")`
-              - `validateMealMenuPortion` → root = `validate` → `Grep("validate", "packages/")`
+              - `renderUserCard` → drop `User` (domain) → roots = `render`, `Card` → `Grep("render", "packages/")` + `Grep("Card", "packages/")`
+              - `validateOrderInvoice` → drop `Order`, `Invoice` (domain) → root = `validate` → `Grep("validate", "packages/")`
               - `UserBadge` (React component) → drop `User` → root = `Badge` → `Grep("Badge", "packages/ui/src/components/")`
               - `sleep` (no CamelCase) → root = `sleep` → `Grep("sleep", "packages/")`
-              - `getInboundOrderSummary` → root = `get|Summary` → `Grep("getSummary", "packages/")` + `Grep("summary", "packages/")`
+              - `getMonthlyOrderSummary` → drop `Order` (domain) → roots = `get`, `Monthly`, `Summary` → `Grep("getSummary", "packages/")` + `Grep("summary", "packages/")`
 
          3. UI component search (for any new React component added in
             apps/*/src/components/ or packages/*/src/components/):
@@ -685,8 +716,8 @@ SCHEMA_DIR: <path from Phase 1, "." if directory unknown, or "N/A" if INCLUDE_SC
               Flag ONLY if ALL three hold:
                 (1) fully generic — NO domain types anywhere in the
                     SIGNATURE **or the function body**. "Domain type" =
-                    any type naming a business entity (Portion, MealMenu,
-                    Order, Client, User, Schedule, etc.). Primitives
+                    any type naming a business entity (Order, Invoice,
+                    Product, Customer, Account, User, etc.). Primitives
                     (`string`, `number`, `boolean`, `Date`) and
                     parametric generics (`T[]`, `Record<K,V>`) ARE
                     generic. Important: if the signature is generic but
@@ -704,8 +735,8 @@ SCHEMA_DIR: <path from Phase 1, "." if directory unknown, or "N/A" if INCLUDE_SC
                 • `function chunk<T>(arr: T[], size: number): T[][]`
                   with 12 lines of pure array logic → FLAG (generic,
                   utils package exists).
-                • `function formatPortionLabel(p: Portion): string` →
-                  DO NOT FLAG (Portion is domain).
+                • `function renderUserCard(u: User): string` →
+                  DO NOT FLAG (User is domain).
                 • `function sleep(ms: number): Promise<void>` → DO NOT
                   FLAG (< 10 lines of real logic).
                 • `function groupBy<T, K>(arr: T[], key: (x: T) => K)`
@@ -828,19 +859,19 @@ SCHEMA_DIR: <path from Phase 1, "." if directory unknown, or "N/A" if INCLUDE_SC
 
        Worked example (the class of bug Q6 misses):
 
-         async getClientPortions(...) {
-           const rawClients = await this.getClientsWithOffers(...)
-           if (rawClients.length === 0) {
-             return { components: [], mealMenuPortions: [] }  // ← hardcoded []
+         async getUserInvoices(...) {
+           const activeUsers = await this.getActiveUsers(...)
+           if (activeUsers.length === 0) {
+             return { summary: [], invoiceItems: [] }  // ← hardcoded []
            }
            // ... late path ...
-           const mealMenuPortions =
-             await this.mealMenuPortionsService
-                       .getByMenuPlanAndDateRange(...)
-           return { components, mealMenuPortions }
+           const invoiceItems =
+             await this.invoiceItemsService
+                       .getByUserAndDateRange(...)
+           return { summary, invoiceItems }
          }
 
-       The early return silently drops stored `mealMenuPortions` because
+       The early return silently drops stored `invoiceItems` because
        the helper is only invoked on the late-path. Q6's
        `reusability_searches:` audit won't flag this — nothing was NEWLY
        added, so STEP A enumerates nothing to search for. The gap exists
@@ -1036,7 +1067,7 @@ Merge findings that describe the same issue **both** across reviewers AND within
 
 **Dedupe key**: `(file_path, post_image_line, normalized_symbol_name)` — NOT `Category`. For findings without a valid diff line (file-level findings), use `"file-level:<category>"` in place of `post_image_line` (e.g., `(config.ts, file-level:Architecture, missingvalidation)`) — the category suffix prevents two different file-level findings on the same file from colliding. For line-level findings, two findings on the same `(file, line, symbol)` are duplicates regardless of category — merge them, keep the higher-severity category, and concatenate their reasoning into the `Issue:` field. For file-level findings, the category is part of the key, so findings with different categories on the same file are distinct (not merged).
 
-Normalize symbol names by lowercasing and stripping CamelCase boundaries (`formatPortionLabel` → `formatportionlabel`) so minor label variants still match.
+Normalize symbol names by lowercasing and stripping CamelCase boundaries (`renderUserCard` → `renderusercard`) so minor label variants still match.
 
 Dedupe priority when merging:
 1. **Severity wins**: keep `Serious > Moderate > Minor`.
@@ -1045,7 +1076,7 @@ Dedupe priority when merging:
 
 ### 1.5. Cheap mechanical pre-checks (line-count sanity)
 
-Before the expensive Step 2 diff verification, do a cheap mechanical pre-check on EVERY finding (not just Critical/Serious). This catches hallucinated line numbers that were a real issue on PR #4560 (Claude reviewer produced `SettingsTab.tsx:839-853` for a 258-line file — a hallucinated reference that slipped past Step 2's top-severity-only check).
+Before the expensive Step 2 diff verification, do a cheap mechanical pre-check on EVERY finding (not just Critical/Serious). This catches a common hallucination pattern where the reviewer produces a line reference far beyond the file's actual length (e.g., citing `SomeComponent.tsx:839-853` for a 258-line file) — a reference that slips past Step 2's top-severity-only check but is obviously invalid on a cheap line-count sanity test.
 
 For each finding with a `File: <path:line>` reference:
 
@@ -1113,7 +1144,7 @@ The four patterns cover:
 1. Standard `function`/`class`/`interface`/`type` (with optional `export`, `export default`, `async`)
 2. Arrow-function const exports: `export const myFn = () =>` (React component / hook form)
 3. Default-exported functions/classes (Next.js pages, default React components)
-4. **Class methods inside class bodies** — `private formatPortion()`, `async findOne()`, `public validate()`. This is the critical pattern for NestJS-style services where new "functions" live as class methods. Only count method declarations that appear INSIDE a class block (track `{`/`}` nesting from the nearest `class X {` on the new side of the hunk).
+4. **Class methods inside class bodies** — `private formatInvoice()`, `async findOne()`, `public validate()`. This is the critical pattern for NestJS-style services where new "functions" live as class methods. Only count method declarations that appear INSIDE a class block (track `{`/`}` nesting from the nearest `class X {` on the new side of the hunk).
 
 Combine the four pattern counts into `new_definitions_count`.
 
@@ -1182,6 +1213,131 @@ If the reviewer reported Q6d findings, verify each one:
 If the reviewer wrote "Q6d: No issues" for a .tsx/.jsx diff that contains
 flagged elements AND the project has a component library, mark as suspicious
 but do NOT auto-add a finding — the reviewer may have confirmed no match.
+
+### 4.6. Wrapped-coercion false-positive filter
+
+Drop findings that claim a numeric-coercion method returns a string when the
+immediate enclosing expression already coerces it back to a number. This is a
+class of false positive observed on real PRs where a reviewer saw `.toFixed(4)`
+in isolation and flagged it, missing the surrounding `Number(...)` wrapper.
+
+For each finding where the `Issue` mentions one of:
+  - `.toFixed(` returning a string
+  - `.toString(` returning a string (in a numeric context)
+  - `.toLocaleString(` returning a string
+  - `String(` coercing to string
+
+Verify the cited code against the stashed diff. The wrapper must be **structurally enclosing**, not just lexically nearby. Match with these anchored patterns on the cited line:
+
+  - `=\s*(Number|parseFloat|parseInt|\+)\s*\(\s*<call>` — assignment RHS starts with a wrapper call that contains `<call>`
+  - `:\s*(Number|parseFloat|parseInt|\+)\s*\(\s*<call>` — object literal value starts with wrapper
+  - `return\s+(Number|parseFloat|parseInt|\+)\s*\(\s*<call>` — return-statement wrapper
+  - `<call>` directly followed by arithmetic `*`/`+`/`-`/`/` with a literal number (e.g., `.toFixed(1) * 1` — rare but explicit coercion)
+
+**Do NOT match when**:
+  - `<call>` is a sibling argument to `Number(...)` (e.g., `foo(bar.toFixed(1), Number(y))` — `Number` wraps `y`, not `bar.toFixed`)
+  - The wrapper appears on a DIFFERENT line than the cited `.toFixed` call (multi-line wrapper pattern — reviewer can't confirm coverage without AST; leave to human)
+
+→ **DROP** the finding and log in Filtered Out: `wrapped-coercion false positive — .toFixed(N) is inside Number(...) on the same line`.
+
+**Line-local limitation**: this filter only catches same-line wrappers. A multi-line case like `const x = v?.toFixed(1); ...; field: Number(x)` is NOT dropped — the critic can't safely infer the wrapper's coverage across lines without an AST. Such findings fall through to manual review.
+
+**Interaction with Q5 Type-coercion at write sites**: for same-line cases, the two rules are mutually exclusive — Q5 fires when the wrapper is absent (bug), 4.6 fires when the wrapper is present (false positive). For multi-line cases, there's a shared blind spot (Q5 may flag an already-wrapped value whose wrapper is off-line, and 4.6 won't rescue it). Flag the interaction explicitly in the Filtered Out log when relevant.
+
+### 4.7. Intent-alignment filter for "unscoped" findings
+
+Drop/downgrade findings that call a change "unscoped", "semantic drift",
+"not in PR description", or "scope creep" when the change IS the PR's intent.
+This is a critic failure where the reviewer flagged a feature as a bug.
+
+For each finding with a phrase matching `(?i)unscoped|semantic (drift|change)|not mentioned|not in (the )?description|scope creep|out of scope|outside (the )?stated goal|beyond PR scope|undeclared change|silently changes behavior` in its `Issue` or `Why` field:
+
+1. Tokenize the PR's intent model (title + linked-issue title + first 200 chars of PR body) into keywords:
+   - Split on whitespace AND `[_\-\.\/]` AND camelCase transitions
+   - Lowercase all tokens
+   - Drop tokens ≤ 2 characters (too generic)
+   - Filter out stop words (`add`, `fix`, `update`, `refactor`, `use`, `new`, `the`, `a`, `of`, `in`, `for`, `to`, `and`, `or`, `is`, `be`)
+
+2. Tokenize the finding's core claim (the cited `File:` path + the symbol/function name from `Issue`) using the same rules.
+
+3. Compute overlap ratio = `|intent_tokens ∩ finding_tokens| / |finding_tokens|`.
+
+4. **Precondition**: this filter only applies when BOTH `|finding_tokens| >= 3` AND `|intent_tokens| >= 3`. If either side has fewer than 3 tokens after filtering, SKIP this filter entirely — the signal is too noisy to trust.
+
+5. If overlap ≥ 0.5 (at least half the finding's core tokens appear in PR intent):
+   - **DOWNGRADE** by one severity level (Serious → Moderate, Moderate → Minor, Minor → stays Minor but add note)
+   - Prepend to `Why`: `Note: this change aligns with PR intent ("<intent keywords matched>"). Re-verify before merging — may be intentional.`
+   - Log in Filtered Out: `intent-alignment downgrade — <N>/<M> finding tokens match PR intent`
+
+6. If overlap is 1.0 (every finding token is a PR intent token) **AND severity is Minor**:
+   - **DROP** entirely. Log: `intent-alignment drop — finding IS the PR's stated goal`
+   - **Do NOT drop Moderate or higher** — those surface to the user with the downgrade note; the human can confirm intent
+
+This filter protects against misreading a feature as a bug. Common example: a `COALESCE` / override / new-field / renamed-function change gets flagged as "unscoped semantic change" when the PR title/body makes clear that IS the PR's central mechanism. The reviewer pattern-matched on the change shape without cross-checking intent.
+
+### 4.8. Library-behavior citation filter
+
+Downgrade findings that claim a library has an edge case / bug / quirk
+without citing concrete evidence. Reviewers sometimes reason from general
+language knowledge (e.g., "JS floats are fragile") without verifying the
+specific library's handling.
+
+For each finding where the `Issue` asserts behavior of a named library,
+framework, or helper — signals include phrases like:
+  - `<Library> does X (wrongly / fragile / unsafe)`
+  - `<method>(<args>) returns <unexpected>`
+  - `float precision will break this`
+  - `IEEE 754 / floating-point / NaN / Infinity` concerns
+
+Check whether the `Why` or `Fix` field contains ANY of:
+  - A file path pointing to the library's implementation inside `node_modules/<lib>/` (the path's `<lib>` segment must match the library name in the finding)
+  - A URL whose host contains the library name, points to an official docs domain (e.g., `github.com/<org>/<lib>`, `<lib>.dev`, `docs.<lib>.io`), or links to a spec/RFC
+  - A reproducible code snippet showing the claim with actual input/output values (not pseudo-code, not prose-only)
+  - A linked repo issue or failing test case with a concrete reproduction
+
+**Severity ladder** (tuned to drop low-confidence library claims that lack any concrete evidence — e.g., "`z.number().multipleOf(0.1)` is fragile for floats" flagged as Moderate with no repro, which the library may actually handle internally):
+
+| Original | With citation | Without citation |
+|----------|---------------|------------------|
+| Critical | Keep as-is | Downgrade to Serious + note |
+| Serious  | Keep as-is | Downgrade to Moderate + note |
+| Moderate | Keep as-is | **DROP** — log `library-claim drop — Moderate with no citation` |
+| Minor    | Keep as-is | **DROP** — log `library-claim drop — Minor with no citation` |
+
+The rationale for dropping at Moderate+Minor: unverified library-quirk claims waste reviewer attention at low severity. At Serious/Critical they're important enough to surface despite uncertainty — with a clear "unverified" note.
+
+On downgrade, prepend to `Why`: `Note: unverified library-behavior claim — requires empirical check (run the code / read the library source) before acting.`
+
+Example class: a reviewer flags `z.number().multipleOf(0.1)` or similar as "fragile for floats" based on general JS float knowledge, without testing. A library that handles IEEE 754 tolerance internally (like Zod does for `.multipleOf`) makes this a false positive — requiring a citation before acting cuts this class of finding.
+
+### 4.9. Default-fallback filter for "dropped field" findings
+
+Downgrade findings that claim a field is "dropped", "not propagated", or
+"lost during transformation" when a named constant/default handles the
+missing value. Presence of a named default is a strong signal of intentional
+design.
+
+For each finding with a phrase matching `(?i)\b(dropped|stripped|lost in|never propagated|not (propagated|passed|forwarded|carried))\b|falls? back to|fallback to` in `Issue` (the identifier usually appears right before these verbs, e.g., `` `someField` is dropped ``):
+
+1. Extract the claimed-dropped field name from the `Issue` text (backtick-quoted identifier, or first camelCase/snake_case token near the matched verb).
+
+2. Search the **stashed diff first** (free — already in context). Only if stashed diff doesn't contain the candidate file's full content, fetch with `gh api contents` (rate-limited — one call per file, cache within the critic pass). Look for:
+   - An ALL_CAPS constant whose name contains a segment of the field name: compute the uppercase-joined variants of the field's camelCase tokens (e.g., field `currencyCode` → segments `CURRENCY`, `CURRENCY_CODE`, `CODE`), then match `[A-Z][A-Z0-9_]*<segment>[A-Z0-9_]*` — catches `DEFAULT_CURRENCY_CODE`, `FALLBACK_CURRENCY`, `PRIMARY_CODE`, etc.
+   - A camelCase default: regex `\b(default|fallback|initial)[A-Z]\w*\b` whose suffix contains a segment of the field (e.g., `fallbackCurrency`, `defaultCode`, `initialLocale`).
+   - A config-object default: `config\.(default|fallback)\w*`, `defaults\.\w+`, `<obj>\.fallback\w*`.
+   - An explicit coalesce pattern on the receiving side: `??\s*<const>`, `||\s*<const>`, or `<const>\s*??\s*value`.
+   - A comment or JSDoc within 10 lines of the "drop" site saying `(?i)defaults? to|always|intentionally|by design|only\s+\w+\s+(makes sense|is supported|applies)`.
+
+3. If ANY named-default signal is found → **DOWNGRADE** by one severity AND prepend to `Why`: `Note: a named default (<CONST>) handles the absent value — likely intentional design, not a propagation bug.` Log: `default-fallback downgrade — found <CONST>`.
+
+4. If the named default is explicitly documented with `"by design"` / `"only <X> makes sense here"` / `"always <X>"` → **DROP** entirely. Log: `default-fallback drop — documented intentional`.
+
+This filter catches domain-semantics calls the reviewer can't know without
+project knowledge. Common example: a field like `localeId` is intentionally
+dropped before reaching an exporter that only supports one locale, with a
+`DEFAULT_LOCALE_ID` constant handling the absence — the reviewer flags this
+as "field dropped" without noticing the named default that makes the drop
+intentional.
 
 ### 5. Confidence-based drop
 
@@ -1297,7 +1453,7 @@ Before printing the Filtered Out section, compute total elapsed time and per-pha
 ## Timing
 Phase 1: <elapsed>s (metadata + diff + intent model + repo map)
 Phase 2: <elapsed>s wall / <sum>s CPU (parallel: <N> subagents)
-Phase 3: <elapsed>s (dedupe + verify + challenge + reusability audit + gap check + verdict)
+Phase 3: <elapsed>s (dedupe + verify + challenge + reusability audit + false-positive sweep + gap check + verdict)
 Phase 4: <elapsed>s
 Total:   <total>s
 ```
@@ -1376,6 +1532,8 @@ If the body verdict and GitHub state drifted:
 
 ### Then ask
 
+**Reminder:** Use AskUserQuestion — cursor-selectable options, not a plain-text `1. / 2. / 3.` list. Do NOT precede this with a prose question like "Would you like me to..." — the tool call itself is the question.
+
 Use AskUserQuestion:
 
    Question:
@@ -1406,7 +1564,7 @@ If this is a re-review AND the cache has `posted_comments` from a previous run, 
          thread { isResolved }
        }
      }
-   ' -F threadId="<thread_id>"
+   ' -f threadId="<thread_id>"
    ```
 
 3. **Track resolved findings**: collect the finding IDs (e.g., S1, S4, S5) of resolved threads for the "Fixed since last review" line in the summary body.
@@ -1417,7 +1575,19 @@ If this is a re-review AND the cache has `posted_comments` from a previous run, 
 
 ### If yes — Hybrid posting (summary body + review comments)
 
-Post the review as a **single atomic API call** using the GitHub REST API. This creates a review with a summary body AND review comments (line-level on specific diff lines, file-level on files).
+Post the review as a **three-phase flow** that creates a PENDING review, attaches line-level and file-level threads, then submits atomically. The cross-API split (REST for creation, GraphQL for file-level threads) exists because of a hard GitHub platform constraint — see the callout below.
+
+#### GitHub API reference — why two APIs (READ BEFORE EDITING THIS SECTION)
+
+**DO NOT regress this to a single REST call with `subject_type: "file"` comments.** That shape is rejected by GitHub:
+
+- **Line-level review comments** (`{path, line, side: "RIGHT"}`): Supported by REST `POST /pulls/:n/reviews` AND by GraphQL `addPullRequestReviewThread`.
+- **File-level review comments** (no line anchor): Supported ONLY by GraphQL `addPullRequestReviewThread` with `subjectType: FILE`. The REST `POST /pulls/:n/reviews` endpoint uses the `DraftPullRequestReviewComment` validator which has NO `subjectType` field — passing `subject_type: "file"` returns `422 Unprocessable Entity` with error `Field is not defined on DraftPullRequestReviewComment, ..., position`. This was the bug that silently collapsed past review runs to a monolithic body and lost every resolvable thread.
+
+The three-phase flow below works around the split:
+1. **Phase A (REST)** — create the review in PENDING state with line-level comments.
+2. **Phase B (GraphQL)** — attach file-level threads to that pending review.
+3. **Phase C (GraphQL)** — submit the review with the final verdict event.
 
 #### Step 1 — Compose the summary body (Part 1 of the review)
 
@@ -1446,11 +1616,11 @@ Build a lean summary body **without the "Filtered out" section** (internal only)
 **Finding numbering**: assign sequential IDs by severity: C1, C2... for Critical, S1, S2... for Serious, M1, M2... for Moderate, m1, m2... for Minor. Use these IDs consistently in the summary table and review comments.
 
 **Comment routing — three tiers based on file/line validity**:
-- **Line-level comment**: finding has a valid `file:line` where the line exists in the diff → post as a line-level review comment with `line`, `side: "RIGHT"`.
-- **File-level comment**: finding has a file reference but no valid diff line (e.g., file/module-scope issues, schema overlap findings, or line not in the diff) → post as a file-level review comment with `subject_type: "file"` (no `line` or `side`). If the finding spans multiple files, pick the most relevant changed file and reference other files in the comment body.
+- **Line-level thread** (REST, Phase A): finding has a valid `file:line` where the line exists on the post-image side of the diff → attach to the pending review with `{path, line, side: "RIGHT", body}`.
+- **File-level thread** (GraphQL, Phase B): finding has a file reference but no valid diff line (e.g., file/module-scope issues, schema overlap findings, or line not in the diff) → attach via `addPullRequestReviewThread` mutation with `subjectType: FILE` (no line/side). If the finding spans multiple files, pick the most relevant changed file and reference other files in the comment body.
 - **Body fallback** (rare): finding has no file reference at all → use `*(general)*` in the File column of the summary table and append the full finding detail to the body under a `### Additional findings` section after the table.
 
-Both line-level and file-level comments use the same comment body format (see Step 2) and create full GitHub conversation threads — resolvable, replyable.
+All three tiers create full GitHub conversation threads that are resolvable and replyable. The body-fallback tier is the ONLY acceptable reason for a finding to not have its own thread — never use it to work around an API error (see Step 7 for failure recovery).
 
 **Re-review "Fixed since last review" line**: if this is a re-review and previous findings were resolved (see Re-review thread resolution), append after the table. Use the previous run's finding ID with its one-line issue text to avoid confusion with the current run's numbering:
 ```markdown
@@ -1475,59 +1645,207 @@ Each finding with a valid file reference becomes a review comment. Format each c
 
 Severity emojis: 🔴 Critical, 🟠 Serious, 🟡 Moderate, 🔵 Minor.
 
-**Comment JSON shape** — build each comment object for the `comments` array:
-- **Line-level**: `{"path": "<file>", "line": <post-image line>, "side": "RIGHT", "body": "<markdown>"}`
-- **File-level**: `{"path": "<file>", "subject_type": "file", "body": "<markdown>"}` — no `line` or `side` fields. Since GitHub won't show anchored code for file-level comments, include a brief code snippet or reference in the body (e.g., `` `File: <path>` near the `<symbol>` definition ``) so the reader has enough context.
+**Comment payload shape** — build each comment for its target API:
+- **Line-level (REST, Phase A)**: `{"path": "<file>", "line": <post-image line>, "side": "RIGHT", "body": "<markdown>"}` — goes into the `comments` array of the REST review creation call.
+- **File-level (GraphQL, Phase B)**: passed as separate mutation arguments — `path: "<file>"`, `subjectType: FILE`, `body: "<markdown>"`, `pullRequestReviewId: <node_id from Phase A>`. Since GitHub doesn't anchor code for file-level threads, include a brief code reference in the body (e.g., `` near the `<symbol>` definition in `<file>` ``) so the reader has enough context.
 
-#### Step 3 — Post via GitHub REST API
+#### Step 3 — Pre-posting hunk validation
 
-Use `gh api` to submit the review with all review comments (line-level and file-level) in one atomic call. Pass ALL fields in a single `--input` JSON — do NOT mix `--input` with `-f` flags (when `--input` is used, `-f` fields go to the query string, not the body):
+Before Phase A, fetch the PR's diff hunks once and verify that each line-level comment's `(path, line)` is on the post-image side of a hunk. Demote any mismatches to file-level (Phase B). This prevents REST rejections and makes tier routing deterministic instead of hopeful.
 
 ```bash
-gh api "repos/<owner>/<repo>/pulls/<number>/reviews" \
+gh api "repos/<owner>/<repo>/pulls/<number>/files" --paginate \
+  --jq '.[] | {filename, patch}'
+```
+
+**Output format:** `--paginate` with `--jq` emits **NDJSON** (one `{filename, patch}` object per line across all pages), NOT a single JSON array. Process line-by-line (e.g., `while read -r line; do …; done`); do NOT pipe the combined output to another `jq '.[]'` expecting an array — that fails on the second page.
+
+Parse each file's `patch`: each `@@ -<oldStart>,<oldLen> +<newStart>,<newLen> @@` header starts a new hunk. Within the hunk, `+` lines and space-prefixed context lines advance the post-image counter (starting at `newStart`); `-` lines do NOT. A line is "in the diff" for posting purposes only if it matches a counter value on some hunk for that file.
+
+For each line-level finding, check: is `line` present on `path`'s post-image counter? If yes → keep as line-level. If no → demote to file-level (add to Phase B batch) and log the demotion so the reviewer can see why a line-cited finding became file-scoped.
+
+#### Step 4 — Phase A: create PENDING review with line-level comments (REST)
+
+Pass ALL fields in a single `--input` JSON — do NOT mix `--input` with `-f` flags. **Omit the `event` field** so the review stays PENDING while Phase B attaches file-level threads:
+
+**Note — call Phase A even with zero line-level findings.** If all findings are file-level (after Step 3 demotions), pass `comments: []`. The REST endpoint accepts an empty `comments` array with a body-only PENDING review — this is the only way to get the `pullRequestReviewId` that Phase B's mutations require.
+
+```bash
+# Build comments array dynamically — empty [] is valid when all findings are file-level
+COMMENTS_JSON='[
+  {
+    "path": "<file path>",
+    "line": <post-image line number>,
+    "side": "RIGHT",
+    "body": "<line-level comment from Step 2>"
+  }
+]'
+# OR: COMMENTS_JSON='[]'  when all findings are file-level
+
+REVIEW_RESP=$(gh api "repos/<owner>/<repo>/pulls/<number>/reviews" \
   --method POST \
   --input <(jq -n \
     --arg body "<summary body from Step 1>" \
-    --arg event "<APPROVE|COMMENT|REQUEST_CHANGES>" \
     --arg commit_id "<head SHA>" \
-    --argjson comments '[
-      {
-        "path": "<file path>",
-        "line": <post-image line number>,
-        "side": "RIGHT",
-        "body": "<line-level comment from Step 2>"
-      },
-      {
-        "path": "<file path>",
-        "subject_type": "file",
-        "body": "<file-level comment from Step 2>"
-      }
-    ]' \
-    '{body: $body, event: $event, commit_id: $commit_id, comments: $comments}')
+    --argjson comments "$COMMENTS_JSON" \
+    '{body: $body, commit_id: $commit_id, comments: $comments}'))
+
+REVIEW_NODE_ID=$(echo "$REVIEW_RESP" | jq -r '.node_id // empty')   # e.g. PRR_kwDO...
+REVIEW_DB_ID=$(echo "$REVIEW_RESP" | jq -r '.id // empty')          # integer, for cache
+
+if [ -z "$REVIEW_NODE_ID" ] || [ -z "$REVIEW_DB_ID" ]; then
+  echo "Phase A returned no node_id/id. Full response:" >&2
+  echo "$REVIEW_RESP" >&2
+  # Treat as failure → go to Step 7 with error text "$REVIEW_RESP"
+fi
+
+ATTACHED_THREADS=0   # Step 7 uses this to disclose partial Phase B success count
 ```
 
-**Event mapping**: `approve` → `APPROVE`, `comment` → `COMMENT`, `request-changes` → `REQUEST_CHANGES`.
+Capture BOTH IDs: `node_id` (GraphQL ID) is needed for Phases B and C; `id` (integer) is needed for caching. If the `gh api` call fails OR if the null guard fires → go to Step 7.
 
-**Fallback**: if the `gh api` call fails (e.g., line number out of range for a line-level comment, or invalid path for a file-level comment), retry WITHOUT the failing comment(s) — log which comments were dropped. If the entire call fails, fall back to `gh pr review <url> <verdict-flag> --body "<full monolithic body>"` (the old approach, with all findings in the body).
+#### Step 5 — Phase B: attach file-level threads (GraphQL)
 
-#### Step 4 — Cache the result
+For each file-level finding (original file-level findings + any demoted in Step 3), call `addPullRequestReviewThread`:
 
-After successful post, **merge** the posting metadata into the existing `$CACHE_FILE` (do NOT overwrite — the cache already has `last_run_sha`, `findings`, etc. from the end-of-Phase-4 write). Add/update these fields:
+```bash
+THREAD_RESP=$(gh api graphql -f query='
+  mutation($reviewId: ID!, $path: String!, $body: String!) {
+    addPullRequestReviewThread(input: {
+      pullRequestReviewId: $reviewId,
+      path: $path,
+      body: $body,
+      subjectType: FILE
+    }) {
+      thread { id comments(first: 1) { nodes { databaseId } } }
+    }
+  }
+' -f reviewId="$REVIEW_NODE_ID" -f path="<file path>" -f body="<file-level comment body>")   # -f (lowercase) forces string; -F would coerce numeric-looking paths/bodies to JSON numbers
 
-- `last_posted_review_id`: review ID from the API response
+# gh api graphql exits 0 even when GraphQL returns errors — check both .errors and thread.id
+if echo "$THREAD_RESP" | jq -e '.errors' >/dev/null \
+   || [ "$(echo "$THREAD_RESP" | jq -r '.data.addPullRequestReviewThread.thread.id // empty')" = "" ]; then
+  echo "Phase B failed on thread $((ATTACHED_THREADS + 1)). Response: $THREAD_RESP" >&2
+  # Go to Step 7 with error text and current ATTACHED_THREADS count
+fi
+ATTACHED_THREADS=$((ATTACHED_THREADS + 1))
+```
+
+Loop **sequentially, not in parallel** — thread order in the submitted review follows call order. Capture each returned `thread.id` and `comments.nodes[0].databaseId` for caching. On failure mid-loop, Step 7's question text must disclose how many threads succeeded (see `ATTACHED_THREADS`) so the user knows the pending review has partial state.
+
+#### Step 6 — Phase C: submit the review (GraphQL)
+
+```bash
+SUBMIT_RESP=$(gh api graphql -f query='
+  mutation($reviewId: ID!, $event: PullRequestReviewEvent!) {
+    submitPullRequestReview(input: {
+      pullRequestReviewId: $reviewId,
+      event: $event
+    }) {
+      pullRequestReview { id databaseId state submittedAt }
+    }
+  }
+' -f reviewId="$REVIEW_NODE_ID" -f event="<APPROVE|COMMENT|REQUEST_CHANGES>")   # -f forces string; GraphQL coerces the enum from the declared $event type
+
+# Same error-check pattern as Phase B: gh exits 0 on GraphQL errors
+if echo "$SUBMIT_RESP" | jq -e '.errors' >/dev/null \
+   || [ "$(echo "$SUBMIT_RESP" | jq -r '.data.submitPullRequestReview.pullRequestReview.databaseId // empty')" = "" ]; then
+  echo "Phase C submit failed. Response: $SUBMIT_RESP" >&2
+  # Go to Step 7 with error text — review is still PENDING with all attached threads
+fi
+```
+
+**Event mapping**: `approve` → `APPROVE`, `comment` → `COMMENT`, `request-changes` → `REQUEST_CHANGES`. If the mutation fails (HTTP error OR GraphQL error OR missing `databaseId`) → go to Step 7. A Phase C failure is the worst case: the pending review has ALL threads attached but is never submitted, so it lingers as a draft until Step 7 cleans it up or the user submits it manually.
+
+#### Step 7 — Posting failed recovery (NEVER silent)
+
+If Phase A, B, or C fails at any point, **DO NOT silently collapse to a monolithic body.** The prior silent fallback was the root cause of posting zero resolvable comments on past runs — the user must explicitly CHOOSE to degrade.
+
+**Reminder:** Use AskUserQuestion — cursor-selectable options, not a plain-text `1. / 2. / 3.` list.
+
+**Disclose partial state in the question text.** The `text` must name which phase failed AND report how many threads/comments are already attached to the pending review, e.g.:
+
+> "Phase B failed on thread 3 of 8. Pending review `<REVIEW_NODE_ID>` already has 2 file-level threads + <N> line-level comments attached from Phase A. GitHub error: `<error>`. How should I proceed?"
+
+The user cannot choose intelligently between "Post monolithic", "Abort", and "Show payload" without knowing there's partial state.
+
+   Question:
+     header: "Post failed"
+     text: "<phase>. Pending review has <K> thread(s) attached. GitHub error: <error>. How should I proceed?"
+     options:
+       - label: "Post as monolithic body"
+         description: "Delete the pending review, then post via `gh pr review --body-file` with all findings inline — loses resolvable threads but the review still appears on GitHub"
+       - label: "Abort — keep local"
+         description: "Delete the pending review; nothing is posted. The review stays in your terminal only"
+       - label: "Show payload & keep draft"
+         description: "Print the failing request body/mutation and leave the pending review as a draft on GitHub so you can submit/edit it manually in the UI"
+
+**Cleanup helper** — used by "Post as monolithic" and "Abort" branches. Capture stderr so failures are visible, not silently swallowed:
+
+```bash
+cleanup_pending_review() {
+  local out
+  if ! out=$(gh api graphql -f query='
+    mutation($id: ID!) {
+      deletePullRequestReview(input: {pullRequestReviewId: $id}) { clientMutationId }
+    }
+  ' -f id="$REVIEW_NODE_ID" 2>&1); then
+    echo "WARNING: could not delete pending review $REVIEW_NODE_ID — $out" >&2
+    echo "Manually clean up at https://github.com/<owner>/<repo>/pull/<n> → Files changed → Pending review" >&2
+    return 1
+  fi
+}
+```
+
+**On "Post as monolithic body"**: call `cleanup_pending_review` (best-effort; if cleanup fails, continue but keep the warning visible to the user), then post via `gh pr review <url> <verdict-flag> --body-file /tmp/review-pr-<number>-monolithic.md` with the full findings list inline in the body.
+
+**On "Abort — keep local"**: call `cleanup_pending_review` and stop. If cleanup fails, surface the warning so the user knows a draft is lingering.
+
+**On "Show payload & keep draft"**: print the offending JSON/mutation that failed. Do NOT clean up the pending review — the user explicitly chose to keep the draft so they can retry manually via the GitHub UI or CLI. Print the pending review URL (`https://github.com/<owner>/<repo>/pull/<n>` → "Finish your review" banner) so they can find it.
+
+#### Step 8 — Cache the result
+
+After successful Phase C, **merge** the posting metadata into the existing `$CACHE_FILE` (do NOT overwrite — the cache already has `last_run_sha`, `findings`, etc. from the end-of-Phase-4 write). Add/update these fields:
+
+- `last_posted_review_id`: the integer `databaseId` from Phase C's response (REST-compatible — matches what Phase 1's prior-review timeline query uses)
+- `last_posted_review_node_id`: the GraphQL `node_id` from Phase A (useful for follow-up GraphQL mutations)
 - `last_posted_verdict`: the verdict string
 - `last_posted_at`: ISO timestamp
 - `posted_comments`: array of comment entries (see Phase 1 cache schema for the full structure)
 
 For each posted comment, construct the `finding_key` using the dedupe key format from Phase 3 step 1 (line-level: `(file, line, symbol)`, file-level: `(file, file-level:<category>, symbol)`).
 
-To populate `github_thread_id`, run the review threads GraphQL query (same as Phase 1's prior-review timeline fetch) immediately after posting and match by comment `databaseId` — the REST API response includes each comment's ID which can be correlated with the GraphQL thread query's `comments.nodes[].databaseId` field.
+**To populate `github_thread_id`** — this needs two sources because REST and GraphQL return different identifiers:
+
+- **File-level threads**: the thread's GraphQL node ID (e.g., `PRRT_kwDO...`) is returned directly by Phase B's mutation at `data.addPullRequestReviewThread.thread.id`. No follow-up query needed.
+- **Line-level comments**: Phase A's REST response returns each comment's numeric `id` (e.g., `2145678901`) in `.comments[].id`, but NOT the thread's node ID. GitHub wraps every comment in an auto-created thread with its own node ID that's needed for `resolveReviewThread`. Run one follow-up GraphQL query to correlate REST comment IDs to thread node IDs:
+
+```bash
+gh api graphql -f query='
+  query($owner: String!, $repo: String!, $num: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $num) {
+        reviewThreads(last: 100) {
+          nodes {
+            id
+            comments(first: 1) { nodes { databaseId } }
+          }
+        }
+      }
+    }
+  }
+' -f owner=<owner> -f repo=<repo> -F num=<number>   # -f for String!, -F for Int!
+```
+
+Match each line-level comment's `databaseId` (from Phase A's REST response `.comments[].id`) to a thread via `reviewThreads.nodes[].comments.nodes[0].databaseId`; take that thread's `id` as `github_thread_id`. This is the same prior-review-timeline query pattern used in Phase 1 — reuse it.
 
 ### If edit first
 
 Write the composed summary body to a temp file (e.g. `/tmp/review-pr-<number>.md`), open it in `${EDITOR:-vi}`, then post after the user closes the editor. Review comments (line-level and file-level) are NOT editable via this flow — only the summary body. If the user needs to remove a specific comment, they should edit the findings list before choosing "Post now".
 
 ### Post-completion next actions (context-aware)
+
+**Reminder:** Use AskUserQuestion — cursor-selectable options. This is the LAST interaction gate of the skill; do NOT add a freeform `What's next — do X or are we done?` prose question after it.
 
 After the review is posted or kept local, use AskUserQuestion. Skip this prompt entirely if:
 - The review had zero findings (verdict was `approve` with no comments)
@@ -1547,6 +1865,8 @@ After the review is posted or kept local, use AskUserQuestion. Skip this prompt 
 
 On "Re-review later": print "Run `/review-pr <url>` again after the author pushes fixes." and exit — do NOT immediately re-invoke (the author hasn't pushed yet). On "Done": exit. On "Other": follow the user's freeform instruction.
 
+**The AskUserQuestion above is the final turn of this skill.** Do not follow it with any freeform text question (e.g., "What's next?", "Want me to re-review later?", "Are we done?"). The tool call itself terminates the skill's interaction — any extra prose question re-introduces the very anti-pattern the top-level rule forbids.
+
 **For self-reviews** (reviewer IS the author, and user chose "Post anyway"):
 
    Question:
@@ -1559,6 +1879,8 @@ On "Re-review later": print "Run `/review-pr <url>` again after the author pushe
          description: "Nothing more — end the session"
 
 On "Fix findings": invoke `/fix-pr-review <url>`. On "Done": exit. On "Other": follow the user's freeform instruction.
+
+**The AskUserQuestion above is the final turn of this skill.** Do not follow it with any freeform text question. The tool call itself terminates the skill's interaction.
 
 ---
 
