@@ -1,0 +1,130 @@
+# CodeRabbit configuration template — copy to <repo-root>/.coderabbit.yaml and customize.
+# Docs: https://docs.coderabbit.ai/guides/configure-coderabbit
+#
+# This template encodes the conventions in ~/.claude/CLAUDE.md so CodeRabbit catches
+# style + cosmetic findings BEFORE /review-pr runs. /review-pr should focus on
+# higher-signal work (intent grounding, codebase-wide reuse audits, multi-round state).
+
+language: en
+early_access: false
+tone_instructions: Be concise. Skip praise. Cite file:line. Drop nitpicks unless they mask a behavior bug.
+
+reviews:
+  profile: assertive          # surface more findings; /review-pr's critic-pass filters cull noise
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+
+  # Skip noise sources outright
+  path_filters:
+    - "!**/*.lock"
+    - "!**/package-lock.json"
+    - "!**/pnpm-lock.yaml"
+    - "!**/yarn.lock"
+    - "!**/bun.lockb"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/.next/**"
+    - "!**/.turbo/**"
+    - "!**/node_modules/**"
+    - "!**/coverage/**"
+    - "!**/*.snap"
+    - "!**/*.min.js"
+    - "!**/*.min.css"
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+      - master
+      - develop
+
+  # Path-based instructions encode the rules from ~/.claude/CLAUDE.md
+  path_instructions:
+    - path: "**/*.{ts,tsx}"
+      instructions: |
+        Enforce these TypeScript conventions:
+        - NEVER use `any`. Use `unknown` and narrow it. Flag any new `any`.
+        - NEVER use non-null assertions (`!.`). Refactor to type-safe narrowing.
+        - NEVER use type assertions (`as Foo`) except where unavoidable for third-party type gaps. When `as` is the only option, require an inline comment explaining why.
+        - Use `type` instead of `interface` (project-wide convention).
+        - Use the `function` keyword for top-level function declarations. Arrow functions are OK only for inline callbacks.
+        - No magic numbers or strings. Require named constants.
+        - Boolean variable names must use `is`, `has`, `can`, or `should` prefixes.
+        - No nested ternaries. Suggest object lookups or early returns.
+        - Files over 400 LOC: warn and suggest splitting only if the file has multiple concerns.
+        - Use `import type` for type-only imports.
+        - No comments on obvious code. Comments must explain WHY, not WHAT. Flag JSDoc that just restates the function name/signature.
+        - No emojis in code or logs.
+
+    - path: "**/*.tsx"
+      instructions: |
+        React-specific anti-patterns to flag:
+        - `useEffect` for state derivation: suggest `useMemo` or render-time compute.
+        - State initialization inside `useEffect` instead of `useState()` initializer.
+        - Using `useEffect` to reset state on prop change: suggest the `key` prop pattern.
+        - `useMemo` for cheap computations (only justified for expensive work).
+        - `useCallback` not passed to a memoized child: usually unnecessary.
+
+    - path: "**/*.test.{ts,tsx}"
+      instructions: |
+        Testing conventions:
+        - Prefer real database / real fixtures over mocks. Flag new database mocking in integration tests.
+        - Test names should describe the behavior, not the implementation.
+        - No `.skip` / `xit` / `xtest` without an inline TODO comment naming the unblock condition.
+        - No `console.log` left in tests.
+
+    - path: "{apps,packages}/**/*.{ts,tsx}"
+      instructions: |
+        Error-handling convention:
+        - Project uses `tryCatch` from `lib/try-catch.ts` instead of raw try/catch.
+          Flag new `try { ... } catch (e) { ... }` blocks except at framework boundaries (route handlers, top-level error boundaries).
+        - Suggest `tryCatchSync` for synchronous, `tryCatchRetry` for retryable, `tryCatchWithTimeout` for bounded calls.
+
+    - path: "{apps,packages}/**/*.{ts,tsx}"
+      instructions: |
+        Performance hints:
+        - Sequential `await` for independent calls: suggest `Promise.all`.
+        - Database queries inside loops (N+1): suggest `IN` clause or join.
+        - Pagination using a separate `COUNT(*)` query: suggest `dbQueryWithPagination` (count + data in one pass).
+        - `WHERE` clause column lacking an index: flag for review.
+        - `.select()` without column projection in list endpoints: suggest `.select({ field1, field2 })`.
+
+    - path: "**/turbo.json"
+      instructions: |
+        Turborepo config:
+        - Tasks must declare `dependsOn` accurately.
+        - `outputs` must be specified for cacheable tasks.
+        - Avoid `"$TURBO_DEFAULT$"` unless intentional.
+
+    - path: "**/migrations/**"
+      instructions: |
+        Database migrations:
+        - NEVER drop or rename a column in a single migration without a deprecation step.
+        - NEVER add a NOT NULL column without a default or two-phase rollout.
+        - Adding indexes on large tables: warn about lock contention; suggest CONCURRENTLY (Postgres) or equivalent.
+        - Backfills inside migrations: warn if the table has > 1M rows.
+
+    - path: "**/*.sql"
+      instructions: |
+        SQL conventions:
+        - `SELECT *` in production queries: flag.
+        - Missing `LIMIT` on potentially-unbounded queries: flag.
+        - Subqueries that could be `JOIN`s for performance: suggest.
+
+  abort_on_close: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  opt_out: false
+  learnings:
+    scope: auto              # local + global learnings apply
+  issues:
+    scope: auto
+  pull_requests:
+    scope: auto

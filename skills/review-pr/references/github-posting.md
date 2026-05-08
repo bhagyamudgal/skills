@@ -1,0 +1,450 @@
+# GitHub posting flow (Phase 4) — REST + GraphQL hybrid + rolling-review
+
+Loaded by SKILL.md when posting findings to a real PR. SKILL.md keeps a ~30-line dispatch step that delegates to this reference.
+
+This file owns:
+- Composing summary body + per-finding review comments
+- Pre-posting hunk validation (line vs file-level routing)
+- Three-phase REST/GraphQL posting (PENDING review → file-level threads → submit)
+- **Rolling-review fix**: detect prior `/review-pr` review on the PR via marker comment, edit its body in place instead of posting a duplicate.
+- Failure recovery (Phase A/B/C disclosed partial state)
+- State + cache write-back
+
+---
+
+## Why two APIs (READ BEFORE EDITING)
+
+**DO NOT regress this to a single REST call with `subject_type: "file"` comments.** That shape is rejected by GitHub:
+
+- **Line-level review comments** (`{path, line, side: "RIGHT"}`): Supported by REST `POST /pulls/:n/reviews` AND by GraphQL `addPullRequestReviewThread`.
+- **File-level review comments** (no line anchor): Supported ONLY by GraphQL `addPullRequestReviewThread` with `subjectType: FILE`. The REST endpoint uses `DraftPullRequestReviewComment` which has no `subjectType` field — passing `subject_type: "file"` returns `422 Unprocessable Entity`. This was the bug that silently collapsed past runs to a monolithic body and lost every resolvable thread.
+
+The hybrid flow:
+1. **Phase A (REST)** — create PENDING review with line-level comments.
+2. **Phase B (GraphQL)** — attach file-level threads.
+3. **Phase C (GraphQL)** — submit with the verdict event.
+
+When a prior `/review-pr` review exists on the PR, **the Rolling-review path replaces Phase A** (see Step 0 below).
+
+---
+
+## Step 0 — Detect prior `/review-pr` review (rolling-review path)
+
+Every review posted by `/review-pr` includes a hidden marker comment in the body:
+
+```markdown
+<!-- review-pr:run sha=<head_sha_at_post_time> round=<round_number> -->
+```
+
+Before posting a new review, query for prior tagged reviews:
+
+```bash
+PRIOR_REVIEW_NODE_ID=$(gh api graphql -f query='
+  query($owner:String!, $repo:String!, $num:Int!) {
+    repository(owner:$owner, name:$repo) {
+      pullRequest(number:$num) {
+        reviews(first:100) { nodes { id databaseId state submittedAt body } }
+      }
+    }
+  }
+' -f owner=<owner> -f repo=<repo> -F num=<num> \
+  | jq -r '
+      [.data.repository.pullRequest.reviews.nodes[]
+       | select(.body | test("<!-- review-pr:run"))]
+      | sort_by(.submittedAt) | last | .id // empty
+    ')
+
+PRIOR_REVIEW_DB_ID=$(... same query, take .databaseId ...)
+```
+
+**Branches**:
+
+- **No prior tagged review** → fall through to Step 4 (Phase A: create new pending review).
+- **Prior tagged review found AND submittedAt is within 30 days** → ROLLING-REVIEW path. Skip Step 4. Use Step 4-rolling instead: edit the body via `updatePullRequestReviewBody` GraphQL mutation, then proceed to Step 5 (attach NEW file-level threads only — see Step 5-rolling for the dedup against `posted_comments`), then skip Step 6 (no submit needed — the prior review is already submitted; we just rolled new threads onto the same review).
+- **Prior tagged review found BUT submittedAt > 30 days ago** → treat as legacy, fall through to Step 4 (new review). Don't try to edit reviews older than a month — they likely belong to a different commit history.
+
+**Rationale**: instead of N separate review entries piling up on a multi-round PR, you get ONE rolling review whose body is the latest summary and whose threads accumulate as new findings appear (resolved findings get their threads resolved via `resolveReviewThread`, see Step 7-rolling).
+
+---
+
+## Step 1 — Compose the summary body
+
+Build a lean summary body (NO "Filtered out" section — internal only). **Always** include the marker comment so future runs can detect this review:
+
+```markdown
+<!-- review-pr:run sha=<head_sha> round=<round_number> -->
+## PR Review: #<number>
+<verdict-emoji> <verdict> | <severity-count-badges>
+**Senior engineer approval**: <emoji> <Yes | No | With changes> — <one-sentence reason>
+
+**Goal**: <intent goal>
+**Summary**: <2-3 sentences>
+
+### Findings
+| # | Sev | File | Issue |
+|---|-----|------|-------|
+| S1 | 🟠 | `<path:line>` | <one-line issue> |
+| M1 | 🟡 | `<path>` | <one-line issue (file-level)> |
+| m1 | 🔵 | *(general)* | <one-line issue (body-fallback)> |
+
+*Details in review comments below.*  <!-- omit if ALL findings are body-fallback -->
+```
+
+**Severity count badges**: `🔴 <N> Critical · 🟠 <M> Serious · 🟡 <K> Moderate · 🔵 <J> Minor` — only include levels that have findings.
+
+**Finding numbering**: assign sequential IDs by severity: `C1, C2…` Critical, `S1, S2…` Serious, `M1, M2…` Moderate, `m1, m2…` Minor. Use these IDs consistently in the summary table and review comments. **Note**: per-round visible labels (M3, S1, etc.) do NOT have to match across rounds — internal stability comes from the `findings[].id` hash in `.claude/review-state/<pr>.yml` (see `references/finding-state-schema.md`).
+
+**Comment routing — three tiers**:
+
+- **Line-level thread** (REST, Phase A): finding has a valid `file:line` where the line exists on the post-image side of the diff → attach with `{path, line, side: "RIGHT", body}`.
+- **File-level thread** (GraphQL, Phase B): finding has a file reference but no valid diff line (file/module-scope, schema overlap, line not in diff) → attach via `addPullRequestReviewThread` with `subjectType: FILE`.
+- **Body fallback** (rare): finding has NO file reference at all → use `*(general)*` in the summary table and append the full detail to the body under `### Additional findings`.
+
+All three tiers create resolvable, replyable GitHub threads. Body fallback is the only acceptable reason for a finding to lack its own thread — never use it to work around an API error (Step 7 covers that).
+
+**Re-review "Resolved since last review" line**: replace the prior "Fixed" wording with explicit `resolved`. After the table:
+
+```markdown
+**Resolved since last review**: S1 (`auth.ts:47` missing null check, round 4 commit `abc1234`), S4 (`db.ts:123` N+1 query, round 5 commit `def5678`) *(threads resolved)*
+```
+
+NEVER use "deferred" — it's ambiguous. Use one of: `resolved` (with commit SHA), `dismissed` (with reason), or `still-active`.
+
+---
+
+## Step 2 — Compose review comments (per finding)
+
+Each finding with a valid file reference becomes a review comment. Format as self-contained markdown:
+
+```markdown
+<severity-emoji> **<Severity>** · <Category>
+
+**<Issue one-sentence>**
+
+<2-3 sentence explanation>
+
+**Why it matters**: <one sentence>
+
+**Suggested fix**: <one sentence, actionable>
+```
+
+Severity emojis: 🔴 Critical, 🟠 Serious, 🟡 Moderate, 🔵 Minor.
+
+**Comment payload shape**:
+
+- **Line-level (REST, Phase A)**: `{"path": "<file>", "line": <post-image>, "side": "RIGHT", "body": "<markdown>"}` — goes into the `comments` array of the REST review creation call.
+- **File-level (GraphQL, Phase B)**: `path: "<file>"`, `subjectType: FILE`, `body: "<markdown>"`, `pullRequestReviewId: <node_id from Phase A or rolling>`. GitHub doesn't anchor code for file-level threads — include a brief code reference in the body (e.g., "near the `<symbol>` definition").
+
+---
+
+## Step 3 — Pre-posting hunk validation
+
+Before Phase A (or rolling-review path), fetch hunks once and verify each line-level comment's `(path, line)` is on the post-image side. Demote mismatches to file-level (Phase B).
+
+```bash
+gh api "repos/<owner>/<repo>/pulls/<number>/files" --paginate \
+  --jq '.[] | {filename, patch}'
+```
+
+**Output format**: `--paginate` with `--jq` emits NDJSON (one `{filename, patch}` per line across pages), NOT a JSON array. Process line-by-line; do NOT pipe to another `jq '.[]'` expecting an array — fails on page 2.
+
+Parse each `patch`: each `@@ -<oldStart>,<oldLen> +<newStart>,<newLen> @@` header starts a new hunk. Within the hunk, `+` lines and space-prefixed context lines advance the post-image counter (start at `newStart`); `-` lines do not. A line is "in the diff" only if it matches a counter value on some hunk for that file.
+
+For each line-level finding: is `line` present on `path`'s post-image counter? If yes → keep. If no → demote to file-level + log the demotion.
+
+---
+
+## Step 4 — Phase A: create PENDING review with line-level comments (REST)
+
+**Skip this step if rolling-review path is active (Step 0 found a recent prior review).** Use Step 4-rolling instead.
+
+Pass ALL fields in a single `--input` JSON. **Omit the `event` field** so the review stays PENDING while Phase B attaches file-level threads:
+
+**Note**: call Phase A even with zero line-level findings — pass `comments: []`. The REST endpoint accepts an empty array with a body-only PENDING review; this is the only way to get the `pullRequestReviewId` Phase B's mutations need.
+
+```bash
+COMMENTS_JSON='[
+  {"path": "<file path>", "line": <post-image line>, "side": "RIGHT", "body": "<line-level comment>"}
+]'
+# OR: COMMENTS_JSON='[]'  when all findings are file-level
+
+REVIEW_RESP=$(gh api "repos/<owner>/<repo>/pulls/<number>/reviews" \
+  --method POST \
+  --input <(jq -n \
+    --arg body "<summary body from Step 1>" \
+    --arg commit_id "<head SHA>" \
+    --argjson comments "$COMMENTS_JSON" \
+    '{body: $body, commit_id: $commit_id, comments: $comments}'))
+
+REVIEW_NODE_ID=$(echo "$REVIEW_RESP" | jq -r '.node_id // empty')
+REVIEW_DB_ID=$(echo "$REVIEW_RESP" | jq -r '.id // empty')
+
+if [ -z "$REVIEW_NODE_ID" ] || [ -z "$REVIEW_DB_ID" ]; then
+  echo "Phase A returned no node_id/id. Full response:" >&2
+  echo "$REVIEW_RESP" >&2
+  # → Step 7
+fi
+
+ATTACHED_THREADS=0
+```
+
+Capture BOTH IDs: `node_id` (GraphQL) for Phases B/C, `id` (integer) for caching.
+
+---
+
+## Step 4-rolling — Update existing review's body (GraphQL)
+
+When Step 0 found a recent prior `/review-pr` review:
+
+```bash
+UPDATE_RESP=$(gh api graphql -f query='
+  mutation($id: ID!, $body: String!) {
+    updatePullRequestReviewBody(input: { pullRequestReviewId: $id, body: $body }) {
+      pullRequestReview { id databaseId state submittedAt }
+    }
+  }
+' -f id="$PRIOR_REVIEW_NODE_ID" -f body="$NEW_SUMMARY_BODY")
+
+if echo "$UPDATE_RESP" | jq -e '.errors' >/dev/null \
+   || [ "$(echo "$UPDATE_RESP" | jq -r '.data.updatePullRequestReviewBody.pullRequestReview.id // empty')" = "" ]; then
+  echo "updatePullRequestReviewBody failed: $UPDATE_RESP" >&2
+  # Fallback: create a new review (Step 4 above) instead of failing the whole post
+  ROLLING_FALLBACK=true
+else
+  REVIEW_NODE_ID="$PRIOR_REVIEW_NODE_ID"
+  REVIEW_DB_ID="$PRIOR_REVIEW_DB_ID"
+  ATTACHED_THREADS=0   # we'll only count NEWLY attached threads in Phase B
+  ROLLING_PATH=true
+fi
+```
+
+If the rolling path succeeds, the prior review's body is replaced with the new summary. Existing threads on that review are preserved (they belong to the same review entry). New threads will be added in Phase B.
+
+If `ROLLING_FALLBACK=true`, fall through to Step 4 (Phase A: create a fresh review).
+
+---
+
+## Step 5 — Phase B: attach file-level threads (GraphQL)
+
+For each file-level finding (originals + Step 3 demotions):
+
+```bash
+THREAD_RESP=$(gh api graphql -f query='
+  mutation($reviewId: ID!, $path: String!, $body: String!) {
+    addPullRequestReviewThread(input: {
+      pullRequestReviewId: $reviewId, path: $path, body: $body, subjectType: FILE
+    }) {
+      thread { id comments(first: 1) { nodes { databaseId } } }
+    }
+  }
+' -f reviewId="$REVIEW_NODE_ID" -f path="<file>" -f body="<file-level body>")
+# -f (lowercase) forces string; -F would coerce numeric-looking values to JSON numbers
+
+# gh api graphql exits 0 even when GraphQL returns errors — check both .errors AND thread.id
+if echo "$THREAD_RESP" | jq -e '.errors' >/dev/null \
+   || [ "$(echo "$THREAD_RESP" | jq -r '.data.addPullRequestReviewThread.thread.id // empty')" = "" ]; then
+  echo "Phase B failed on thread $((ATTACHED_THREADS + 1)). Response: $THREAD_RESP" >&2
+  # → Step 7 with current ATTACHED_THREADS count
+fi
+ATTACHED_THREADS=$((ATTACHED_THREADS + 1))
+```
+
+Loop **sequentially, not in parallel** — thread order in the submitted review follows call order. Capture each returned `thread.id` and `comments.nodes[0].databaseId` for caching.
+
+### Step 5-rolling — Skip already-posted threads
+
+When `ROLLING_PATH=true`, before issuing each `addPullRequestReviewThread`, look up the finding's `id` (per `references/finding-state-schema.md`) in `$CACHE_FILE`'s `posted_comments[]` array (canonical path: `$HOME/.claude/skills/review-pr/cache/<owner>_<repo>_<pr-number>.json`, set in SKILL.md Phase 1). If a prior comment exists with the same dedupe key AND matches the current `id`, skip the mutation — the thread is already on the review.
+
+```bash
+# Pseudocode per finding:
+existing_thread_id=$(jq -r --arg id "$finding_id" \
+  '.posted_comments[] | select(.finding_id == $id) | .github_thread_id // empty' \
+  "$CACHE_FILE")
+if [ -n "$existing_thread_id" ]; then
+  echo "Skipping already-posted thread for finding $finding_id (thread $existing_thread_id)" >&2
+  continue
+fi
+# Otherwise, proceed with addPullRequestReviewThread
+```
+
+This is the core dedup that prevents duplicate posting on rolling re-review.
+
+---
+
+## Step 6 — Phase C: submit the review (GraphQL)
+
+**Skip if `ROLLING_PATH=true`** — the prior review is already submitted; rolling onto it doesn't re-submit.
+
+```bash
+SUBMIT_RESP=$(gh api graphql -f query='
+  mutation($reviewId: ID!, $event: PullRequestReviewEvent!) {
+    submitPullRequestReview(input: { pullRequestReviewId: $reviewId, event: $event }) {
+      pullRequestReview { id databaseId state submittedAt }
+    }
+  }
+' -f reviewId="$REVIEW_NODE_ID" -f event="<APPROVE|COMMENT|REQUEST_CHANGES>")
+
+if echo "$SUBMIT_RESP" | jq -e '.errors' >/dev/null \
+   || [ "$(echo "$SUBMIT_RESP" | jq -r '.data.submitPullRequestReview.pullRequestReview.databaseId // empty')" = "" ]; then
+  echo "Phase C submit failed. Response: $SUBMIT_RESP" >&2
+  # → Step 7 — review is still PENDING with all attached threads
+fi
+```
+
+**Event mapping**: `approve` → `APPROVE`, `comment` → `COMMENT`, `request-changes` → `REQUEST_CHANGES`.
+
+A Phase C failure is the worst case: pending review has all threads but is never submitted, lingering as a draft.
+
+---
+
+## Step 7 — Posting failed recovery (NEVER silent)
+
+If Phase A, B, or C fails: **DO NOT silently collapse to a monolithic body.** The prior silent fallback was the root cause of past zero-resolvable-comment runs.
+
+Use AskUserQuestion (cursor-selectable, NOT a numbered prose list).
+
+**Disclose partial state in the question text**: name which phase failed AND report how many threads/comments are already attached, e.g.:
+
+> "Phase B failed on thread 3 of 8. Pending review `<REVIEW_NODE_ID>` has 2 file-level threads + N line-level comments attached from Phase A. GitHub error: `<error>`. How should I proceed?"
+
+```
+Question:
+  header: "Post failed"
+  text: "<phase>. Pending review has <K> thread(s) attached. Error: <error>. How should I proceed?"
+  options:
+    - label: "Post as monolithic body"
+      description: "Delete the pending review, then post via gh pr review --body-file with all findings inline — loses resolvable threads but the review still appears on GitHub"
+    - label: "Abort — keep local"
+      description: "Delete the pending review; nothing is posted. Review stays in your terminal only"
+    - label: "Show payload & keep draft"
+      description: "Print the failing request body/mutation and leave the pending review as a draft on GitHub for manual submit"
+```
+
+**Cleanup helper** (used by "Post as monolithic" + "Abort"):
+
+```bash
+cleanup_pending_review() {
+  local out
+  if ! out=$(gh api graphql -f query='
+    mutation($id: ID!) {
+      deletePullRequestReview(input: {pullRequestReviewId: $id}) { clientMutationId }
+    }
+  ' -f id="$REVIEW_NODE_ID" 2>&1); then
+    echo "WARNING: could not delete pending review $REVIEW_NODE_ID — $out" >&2
+    echo "Manually clean up at https://github.com/<owner>/<repo>/pull/<n> → Files changed → Pending review" >&2
+    return 1
+  fi
+}
+```
+
+**On "Post as monolithic"**: call `cleanup_pending_review` (best-effort), then `gh pr review <url> <verdict-flag> --body-file /tmp/review-pr-<num>-monolithic.md`.
+
+**On "Abort"**: `cleanup_pending_review` and stop.
+
+**On "Show payload"**: print the offending JSON/mutation. Do NOT clean up — user explicitly chose to keep the draft. Print the pending review URL.
+
+---
+
+## Step 8 — Cache + state write-back
+
+After successful Phase C (or rolling Step 5):
+
+### 8a. Update `posted_comments` in `$CACHE_FILE`
+
+Merge into existing cache (do NOT overwrite). Add/update:
+
+- `last_posted_review_id` — integer `databaseId` from Phase C **OR** `PRIOR_REVIEW_DB_ID` only when `ROLLING_PATH=true` AND `ROLLING_FALLBACK` is unset/false. If `ROLLING_FALLBACK=true` (Step 4-rolling failed and Step 4 created a fresh review), the new `REVIEW_DB_ID` from that fresh Phase A response MUST be used — do NOT cache the stale prior ID.
+- `last_posted_review_node_id` — GraphQL node ID
+- `last_posted_verdict` — verdict string
+- `last_posted_at` — ISO timestamp
+- `posted_comments` — array of comment entries (preserve existing entries; merge new ones)
+
+For each newly-posted comment, construct `finding_key` using the dedupe key format (line-level: `(file, line, symbol)`, file-level: `(file, file-level:<category>, symbol)`).
+
+### 8b. Populate `github_thread_id` (line-level requires correlation query)
+
+REST and GraphQL return different identifiers:
+
+- **File-level threads**: `data.addPullRequestReviewThread.thread.id` is the GraphQL node ID. Use directly.
+- **Line-level comments**: Phase A's REST response has `.comments[].id` (numeric `databaseId`), NOT the thread node ID. Run one follow-up query to correlate:
+
+```bash
+gh api graphql -f query='
+  query($owner:String!, $repo:String!, $num:Int!) {
+    repository(owner:$owner, name:$repo) {
+      pullRequest(number:$num) {
+        reviewThreads(last: 100) {
+          nodes { id comments(first: 1) { nodes { databaseId } } }
+        }
+      }
+    }
+  }
+' -f owner=<owner> -f repo=<repo> -F num=<number>
+```
+
+Match each line-level comment's `databaseId` (from REST `.comments[].id`) to a thread via `reviewThreads.nodes[].comments.nodes[0].databaseId`; take that thread's `id` as `github_thread_id`.
+
+### 8c. Update `.claude/review-state/<pr>.yml`
+
+For each finding posted/active in this round:
+
+- If `id` not in `state.findings`: append with `status: active`, `round_first_seen: <current_round>`, `github_thread_id`, `github_comment_id`, `last_message`, `label_history: [<this-round-label>]`, `severity`.
+- If `id` exists: append `<this-round-label>` to `label_history`, update `last_message`, `severity`, `github_thread_id`/`github_comment_id` if newly created.
+
+For findings the user dismissed via post-review AskUserQuestion: write `status: dismissed` + `dismissal_reason: <reason>`.
+
+Increment `last_round`. Update `updated_at`. Write atomically (temp + rename).
+
+### 8d. Resolve threads for findings now in `status: resolved`
+
+For each finding transitioning to `resolved` this round (because `/fix-pr-review` shipped a fix between rounds and updated the state file), call:
+
+```bash
+gh api graphql -f query='
+  mutation($threadId: ID!) {
+    resolveReviewThread(input: {threadId: $threadId}) { thread { isResolved } }
+  }
+' -f threadId="<github_thread_id>"
+```
+
+Failures here are best-effort — log and continue. Don't block posting on thread-resolution errors.
+
+---
+
+## Quick-reference: rolling-review decision tree
+
+```
+                     /review-pr posts findings
+                              │
+                              ▼
+                   Step 0: query reviews for marker
+                              │
+            ┌─────────────────┼─────────────────┐
+            │                 │                 │
+            ▼                 ▼                 ▼
+       no prior         prior < 30d         prior > 30d
+            │                 │                 │
+            ▼                 ▼                 ▼
+        Step 4         Step 4-rolling        Step 4
+   (create review)   (update body only)  (create new review)
+            │                 │                 │
+            └─────────────────┴─────────────────┘
+                              │
+                              ▼
+                    Step 5 + 5-rolling
+              (attach NEW threads, skip dups)
+                              │
+            ┌─────────────────┴─────────────────┐
+            │                                   │
+            ▼                                   ▼
+       Step 6 (submit)               (skip if rolling — already submitted)
+            │                                   │
+            └─────────────────┬─────────────────┘
+                              │
+                              ▼
+                          Step 8
+                  (cache + state write-back +
+                   resolve threads for fixed)
+```
+
+Net effect: PR shows ONE review entry per `/review-pr` user, body always reflects the latest run, threads accumulate non-destructively, resolved findings have collapsed threads.
