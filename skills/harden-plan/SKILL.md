@@ -1,6 +1,6 @@
 ---
 name: harden-plan
-description: Pre-code quality gate that runs /review-pr's anti-slop lens against a written plan BEFORE any code is written. Grounds the plan against the real codebase, runs 11 category checks (security, concurrency, round-trip, control-flow, error-handling, pattern-consistency, plus /review-pr's Q1-Q6), then grills the user one question at a time until the plan is hardened. Use when the user says "harden my plan", "check my plan", "grill my plan before I code", "lint this plan", or invokes `/harden-plan` explicitly. Also invoke proactively after `/superpowers:brainstorm` or `/grill-me` completes with a written plan and before any implementation begins. Do NOT invoke after coding has started — redirect to `/review-pr` / `/fix-pr-review` in that case.
+description: Pre-code quality gate that runs /review-pr's anti-slop lens against a written plan BEFORE any code is written. Grounds the plan against the real codebase, runs 11 category checks (security, concurrency, round-trip, control-flow, error-handling, pattern-consistency, plus /review-pr's Q1-Q6), then grills the user one question at a time until the plan is hardened. Use when the user says "harden my plan", "check my plan", "grill my plan before I code", "lint this plan", or invokes `/harden-plan` explicitly. Also invoke proactively after `/grill-me` or `/grilling` completes with a written plan and before any implementation begins. Do NOT invoke after coding has started — redirect to `/review-pr` / `/fix-pr-review` in that case.
 ---
 
 # /harden-plan — Pre-code Plan Quality Gate
@@ -19,8 +19,8 @@ refactor.
 /harden-plan --plan-mode                 # explicit plan-mode grab
 ```
 
-This skill runs AFTER design has been settled (via `/superpowers:brainstorm`
-and/or `/grill-me`) and BEFORE you start coding. For post-code review use
+This skill runs AFTER design has been settled (via `/grill-me`
+and/or `/grilling`) and BEFORE you start coding. For post-code review use
 `/review-pr`. For fixing review findings use `/fix-pr-review`.
 
 ## When to invoke
@@ -32,7 +32,7 @@ Invoke when the user has a plan they're about to execute and says any of:
 - "lint this plan"
 - "is this plan ok to execute?"
 
-Or proactively after `/superpowers:brainstorm` or `/grill-me` completes
+Or proactively after `/grill-me` or `/grilling` completes
 with a written plan and before implementation starts, if the user hasn't
 already invoked `/harden-plan`.
 

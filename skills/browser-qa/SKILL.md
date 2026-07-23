@@ -1,6 +1,6 @@
 ---
-name: qa
-description: Use when user says "qa", "test the flow", "QA this", "verify the UI", "test this page", "check if it works", "end-to-end check", or after completing code changes that affect UI and need manual verification replaced by automation.
+name: browser-qa
+description: Automated browser testing of UI flows via Playwright MCP + agent-browser. Use when user says "browser qa", "test the flow", "verify the UI", "test this page", "check if it works", "end-to-end check", or after completing code changes that affect UI and need manual verification replaced by automation. NOT for conversational bug-reporting sessions — that's /qa.
 ---
 
 # QA — Smart Browser Testing

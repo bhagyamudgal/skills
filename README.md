@@ -54,9 +54,10 @@ npx skills add bhagyamudgal/skills
 | `grill-me` | Interview-style stress-test of a plan or design, one decision at a time, until aligned |
 | `project-discovery` | Deep project discovery and architecture planning for new projects |
 | `design-director` | Senior creative-director voice — 7 modes (brief simplify, logo, layout, typography, color, critique, brand identity) |
-| `qa` | Smart browser testing with Playwright automation |
+| `browser-qa` | Automated browser testing of UI flows — Playwright MCP interactions, agent-browser video + visual diffs |
 | `reuse-first` | Search-first discipline before writing any new utility, type, schema, component, hook, or constant — 3-layer search, reuse hierarchy, duplicate smells |
 | `backend-perf` | Performance checklist for backend services and DB queries — parallel async, N+1 nuance, index coverage, EXPLAIN-evidence for rewrites |
+| `systematic-debugging` | Four-phase root-cause loop for mid-debugging-session discipline — no fix without an understood cause, evidence at component boundaries, bandaid budget zero |
 | `executing-tickets-with-subagents` | Execute a multi-sub-task GitHub ticket via subagents — full-thread intake, in-ticket progress tracking, follow-up triage, manual-QA handoff doc |
 | `resolving-merge-conflicts` | Resolve in-progress merge/rebase conflicts — lose no changes, deep git-diff review of both sides, ask when ambiguous |
 | `git-commit` | Conventional commits from diff analysis — intelligent staging, message generation, suggest-only mode |
@@ -76,13 +77,14 @@ npx skills add bhagyamudgal/skills
 /fix-pr-review       # Triage and apply CodeRabbit / review-pr findings
 /audit-ticket <n>    # Audit a stale issue against current code — update or sunset it
 /fix-ts-errors       # Fix TypeScript errors
-/qa                  # Run browser tests
+/browser-qa          # Automated browser testing of UI flows
 /harden-plan         # Stress-test a written plan before coding
 /grill-me            # Interview-style plan/design refinement
 /project-discovery   # Plan a new project
 /design-director     # Design + branding direction
 /reuse-first         # Search-first check before writing new utilities/types/components
 /backend-perf        # Perf checklist for backend services and DB queries
+/systematic-debugging  # Root-cause loop once you're inside a debugging session
 /executing-tickets-with-subagents  # Run a bundled ticket end-to-end via subagents
 /resolving-merge-conflicts         # Resolve merge/rebase conflicts safely
 /git-commit          # Conventional commit (or suggest-only message)

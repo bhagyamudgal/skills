@@ -42,8 +42,10 @@ Written for a reader with **zero context** — assume the next writer remembers 
 
 1. **Brief to scratchpad**; if HEAD moved since planning, run an Explore **drift-check** and write an addendum (addendum wins; locate by symbol).
 2. **Fresh implementer agent** — never implement in main context. Bug fixes are TDD (failing test first, watch it fail). Formatter before commit; type-check loop until clean; single conventional commit; push.
-3. **Review wave in parallel**: spec reviewer given *named risks* to verify with file:line evidence; independent bug-hunt reviewer; AI-bot CLI review.
-4. **Triage every finding**: FIX-NOW (fix agent) / DISMISS only with a verified rationale (check the locked design/brief first — reviewers re-litigate settled decisions) / DEFER (log in ledger minors).
+3. **Two-stage review, separate subagents** — one combined reviewer anchors on whichever lens it starts with; two fresh ones don't. Both verdicts are required; a report missing either is not a review:
+   - **Stage 1 — spec compliance**: reviewer gets the task brief + diff — never the implementer's summary; agent reports are unverified claims — and verdicts against the ticket requirements: **Missing / Extra / Misunderstood**, with file:line evidence. Give it the *named risks* to verify.
+   - **Stage 2 — code quality**: independent reviewer for correctness, error handling, tests that assert real behavior, and structure; findings ranked Critical / Important / Minor. AI-bot CLI review runs alongside.
+4. **Triage every finding**: FIX-NOW (fix agent, then **re-review both stages until spec passes and quality approves** — a task with open Critical/Important findings is not complete) / DISMISS only with a verified rationale (check the locked design/brief first — reviewers re-litigate settled decisions) / DEFER (log in ledger minors).
 5. **Browser QA agent** for UI tasks: records original data, restores it, proves restoration; artifacts to scratchpad only.
 6. **Bookkeeping**: tick todo, PATCH checklist comment, TaskUpdate, ledger — then next task.
 
@@ -73,5 +75,6 @@ Written for a reader with **zero context** — assume the next writer remembers 
 - **Subagents only for search, edits done inline** — the biggest regression; the loop's value is fresh implementer + independent reviewers per task.
 - Treating todo.md as the recovery map — working notes are not a zero-context ledger with NEXT ACTION.
 - Skipping the review wave because CI + review bot run on push — bots miss spec violations; give reviewers named risks.
+- Merging spec + quality into one reviewer, or accepting a report with only one verdict — spec compliance and code quality are separate passes by separate subagents, and both must pass before the task closes.
 - Trusting plan line numbers after other tasks land — drift-check, locate by content.
 - Reporting "done" from type-check alone — the done-bar locked in Phase 1 decides (tests, browser QA, evidence).
