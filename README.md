@@ -1,6 +1,6 @@
 # Skills
 
-Custom Claude Code skills for development workflows — code review, TypeScript fixes, QA automation, PR reviews, and design direction.
+Custom Claude Code skills for development workflows — code review, TypeScript fixes, QA automation, PR reviews, design direction, and coding discipline (code reuse + backend performance).
 
 ## Install
 
@@ -54,6 +54,8 @@ npx skills add bhagyamudgal/skills
 | `project-discovery` | Deep project discovery and architecture planning for new projects |
 | `design-director` | Senior creative-director voice — 7 modes (brief simplify, logo, layout, typography, color, critique, brand identity) |
 | `qa` | Smart browser testing with Playwright automation |
+| `reuse-first` | Search-first discipline before writing any new utility, type, schema, component, hook, or constant — 3-layer search, reuse hierarchy, duplicate smells |
+| `backend-perf` | Performance checklist for backend services and DB queries — parallel async, N+1 nuance, index coverage, EXPLAIN-evidence for rewrites |
 
 ## Bundled tooling (not slash commands)
 
@@ -74,7 +76,13 @@ npx skills add bhagyamudgal/skills
 /grill-me            # Interview-style plan/design refinement
 /project-discovery   # Plan a new project
 /design-director     # Design + branding direction
+/reuse-first         # Search-first check before writing new utilities/types/components
+/backend-perf        # Perf checklist for backend services and DB queries
 ```
+
+## Reference
+
+[`reference/CLAUDE.md`](reference/CLAUDE.md) — the global user-level `~/.claude/CLAUDE.md` these skills plug into. `reuse-first` and `backend-perf` were extracted from it into on-demand skills to keep the always-loaded file lean; the rest shows how the skills fit into a full rule setup.
 
 ## How `review-pr` + `coderabbit-config` work together
 
