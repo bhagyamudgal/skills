@@ -121,6 +121,7 @@ The `/done` skill runs the full verification pipeline in sequence:
 - After completing changes: update the project's README.md and CLAUDE.md if conventions, exports, or workflows changed.
 - After ANY correction from me: turn it into a rule that prevents the same mistake — in the project CLAUDE.md if project-specific, or in the global CLAUDE.md / a skill if universal.
 - When I ask for findings, reports, audits, or lists to review: deliver a hosted HTML artifact (Artifact tool), not a raw markdown file. I review first; destructive follow-ups only after my explicit go-ahead.
+- Handoff docs and any other docs I ask for go in the repo's `docs/` folder (create it if missing) — never the repo root unless I explicitly say root. Filenames in lowercase snake_case (e.g., `docs/e2e_session_handover.md`).
 
 ## Overnight / Unattended Mode
 
