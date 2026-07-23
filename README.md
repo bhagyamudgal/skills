@@ -48,6 +48,7 @@ npx skills add bhagyamudgal/skills
 | `parallel-review` | Run code-review + CodeRabbit review in parallel on locally-changed code |
 | `review-pr` | Deep anti-slop review of a GitHub PR with critic-pass filtering, persistent multi-round state, and rolling-review posting — batch mode reviews multiple PRs via one subagent per PR with a consolidated report |
 | `fix-pr-review` | Triage and fix CodeRabbit / `review-pr` findings, then reply + resolve PR conversations |
+| `audit-ticket` | Audit a stale GitHub issue against current code — per-requirement verdicts with evidence, then update, sunset, or split it |
 | `fix-ts-errors` | Autonomous TypeScript error detection and fixing loop |
 | `harden-plan` | Pre-code quality gate — validates plans against 11 category checks before implementation |
 | `grill-me` | Interview-style stress-test of a plan or design, one decision at a time, until aligned |
@@ -70,6 +71,7 @@ npx skills add bhagyamudgal/skills
 /parallel-review     # Review locally-changed code
 /review-pr <pr-url>  # Review a GitHub PR (or several at once — batch mode)
 /fix-pr-review       # Triage and apply CodeRabbit / review-pr findings
+/audit-ticket <n>    # Audit a stale issue against current code — update or sunset it
 /fix-ts-errors       # Fix TypeScript errors
 /qa                  # Run browser tests
 /harden-plan         # Stress-test a written plan before coding

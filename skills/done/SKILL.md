@@ -60,33 +60,34 @@ Briefly report:
 - Any issues found and fixed during review
 - Final status: clean or remaining concerns
 
-### Step 6: Suggest Commit Messages
+### Step 6: Commit Message Suggestions
 
-After everything passes, suggest two ready-to-paste `git commit` commands. **Do NOT run them — only print them for the user to choose.**
+After all verification passes, print two ready-to-paste `git commit` commands. **Suggest only — NEVER run `git commit`.** The user commits; committing without their explicit permission is forbidden.
 
 Use conventional commit format (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`).
 
-**Option A — Detailed:**
+**Option A — One-liner:**
 ```
-git commit -m "feat: add user role validation to auth middleware
+git commit -m 'feat: add user role validation to auth middleware'
+```
+
+**Option B — Detailed** (single quoted `-m` string with embedded newlines — NEVER heredoc/EOF format):
+```
+git commit -m 'feat: add user role validation to auth middleware
 
 - Add role-based guard to /api/admin routes
-- Update UserRole type with new 'manager' variant
-- Add validation tests for all role combinations"
-```
-
-**Option B — One-liner:**
-```
-git commit -m "feat: add user role validation to auth middleware"
+- Update UserRole type with new manager variant
+- Add validation tests for all role combinations'
 ```
 
 Rules for commit message suggestions:
-- Analyze the actual `git diff` to understand what changed
+- Analyze the actual `git diff` to derive the message — never write it from memory of the task
 - The subject line should explain WHY, not WHAT (the diff shows what)
 - Detailed version uses `-` bullet points for key changes (3-5 bullets max)
 - Use the correct prefix: `feat:` for new features, `fix:` for bugs, `refactor:` for restructuring, `chore:` for tooling/config, `docs:` for documentation
 - Keep subject line under 72 characters
-- **Never commit automatically — only suggest**
+- Multi-line messages go in ONE single-quoted `-m` string with embedded newlines — never heredoc, never multiple `-m` flags
+- **Never commit automatically — only suggest. The user runs the command.**
 
 ## Rules
 
