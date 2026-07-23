@@ -9,7 +9,7 @@ Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding
 
 **Goal**: stop re-typing the same "plan → classify → fix → reply → resolve" loop on every CodeRabbit review. One command, one approval, done.
 
-**Use AskUserQuestion for ALL user-facing decisions** — branch safety, stash confirmation, plan approval, per-fix confirmations, type-check failure triage, and post-completion next actions. Always present options as cursor-selectable choices, not plain text questions.
+**Use AskUserQuestion for ALL user-facing decisions** — branch safety, stash confirmation, contested-item confirmation, plan approval, per-fix confirmations, type-check failure triage, and post-completion next actions. Always present options as cursor-selectable choices, not plain text questions. Options must be concrete, considered answers — never generic placeholders. Put the strongest option first and mark it "(Recommended)".
 
 ## Quick Reference
 
@@ -818,6 +818,37 @@ If any DISMISS has `rubric: R5`, print a **separate highlighted section BEFORE**
 
 This is the safety net for the case where a project convention has a legitimate exception.
 
+### Contested-item confirmation (multiSelect)
+
+Contested items are the ones that will post a reply and resolve a thread WITHOUT any code change: every DISMISS, DEFER, and DISAGREE. A wrong classification here silently closes a reviewer's conversation — confirm the triage before the approval prompt, and before Phase 5/7 can act on it.
+
+Skip this step if there are zero contested items. Otherwise, use AskUserQuestion:
+
+   Question:
+     header: "Triage"
+     text: "<C> item(s) will get a reply + thread resolution with no code change. Select any to RECLASSIFY — unselected items proceed as planned."
+     options: [one option per DISMISS/DEFER/DISAGREE item: "[<id>] <file:line> — <classification> (<rubric>): <reason, first ~60 chars>"]
+     multiSelect: true
+
+If contested items exceed the option limit, split into multiple multiSelect questions — DISMISS first (the most costly to get wrong).
+
+For each selected item, use a follow-up AskUserQuestion:
+
+   Question:
+     header: "Item <id>"
+     text: "<file:line> — currently <classification>: <reason>. Reclassify as?"
+     options:
+       - label: "FIX (Recommended)"
+         description: "Treat as a real issue — add to the FIX list with a fix plan"
+       - label: "NEEDS-INPUT"
+         description: "Park it — no reply, no resolution; surfaces in the final report"
+       - label: "Keep as-is"
+         description: "Selected by mistake — keep the original classification"
+
+On "FIX": re-dispatch the classifier scoped to just this item to produce `fix_plan`, `change_class`, and `test_scenario`, then re-run plan validation on the changed item. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
+
+Nothing is posted or resolved during this step — Phase 7 remains the only place GitHub is touched, and only for items that survived this confirmation.
+
 ### Interactive TTY detection
 
 ```bash
@@ -1379,6 +1410,7 @@ Do not auto-commit unless the user chose "Commit changes" or "Push to remote" in
 - **NEVER** post replies for body-only nitpicks (no thread to reply to). Promoted nitpicks with `thread_id=null` get fixes but no GitHub ack — surfaced in the final report instead.
 - **NEVER** touch GitHub (Phase 7) for any local file input (`./review.md`, `/tmp/review-pr-*-findings.md`, etc.).
 - **NEVER** proceed past Phase 4 without explicit "Execute plan" or edited-plan confirmation via AskUserQuestion.
+- **NEVER** post a DISMISS/DEFER/DISAGREE reply or resolve its thread unless the item survived the Phase 4 contested-item confirmation — closing a reviewer's conversation on a wrong classification is irreversible noise.
 - **NEVER** proceed past Phase 4 if plan validation is missing required fields: `claude_md_quote` for R5, `prior_commit_sha` for R4, `disagree_rationale` for DISAGREE, `grounding_a` + `grounding_b` for every item, `fix_plan` ≥ 30 chars for every FIX.
 - **NEVER** corrupt user WIP — always auto-stash before Phase 5 edits, restore in Phase 8, error loudly on stash conflicts.
 - **NEVER** retry a β-failed fix more than twice — treat the 3rd failure as `skip` and route to NEEDS-INPUT.

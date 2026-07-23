@@ -60,11 +60,25 @@ After fixing, re-run diagnostics on the same files to confirm all errors are res
 
 If new errors appeared (cascade effect), go back to Step 3.
 
-### Step 5: Report
+### Step 5: As-Cast Audit
+
+Once diagnostics are clean, grep the changed lines for `as ` assertions (excluding `as const`):
+
+```bash
+git diff -U0 -- '*.ts' '*.tsx' | grep '^+' | grep -w 'as' | grep -v 'as const'
+```
+
+Skip import aliases (`import { x as y }`). For every remaining `as`:
+1. Attempt to remove it with proper typing — inference, narrowing, type guards, generics, or schema-derived types (`z.infer`)
+2. Re-run diagnostics after each removal; if errors appear, go back to Step 3
+3. An `as` may survive only if genuinely unavoidable (e.g., a third-party library type gap) — and it must carry a comment explaining why
+
+### Step 6: Report
 
 Once clean, briefly report:
 - How many errors were found
 - What was fixed
+- Surviving `as` casts: the count, with a one-line justification each (target: 0)
 - Any remaining concerns
 
 ## Loop Breaker

@@ -46,7 +46,7 @@ npx skills add bhagyamudgal/skills
 |-------|-------------|
 | `done` | MANDATORY post-task verification — type-check, parallel code review, code simplification |
 | `parallel-review` | Run code-review + CodeRabbit review in parallel on locally-changed code |
-| `review-pr` | Deep anti-slop review of a GitHub PR with critic-pass filtering, persistent multi-round state, and rolling-review posting |
+| `review-pr` | Deep anti-slop review of a GitHub PR with critic-pass filtering, persistent multi-round state, and rolling-review posting — batch mode reviews multiple PRs via one subagent per PR with a consolidated report |
 | `fix-pr-review` | Triage and fix CodeRabbit / `review-pr` findings, then reply + resolve PR conversations |
 | `fix-ts-errors` | Autonomous TypeScript error detection and fixing loop |
 | `harden-plan` | Pre-code quality gate — validates plans against 11 category checks before implementation |
@@ -68,7 +68,7 @@ npx skills add bhagyamudgal/skills
 ```
 /done                # Run after every task
 /parallel-review     # Review locally-changed code
-/review-pr <pr-url>  # Review a GitHub PR
+/review-pr <pr-url>  # Review a GitHub PR (or several at once — batch mode)
 /fix-pr-review       # Triage and apply CodeRabbit / review-pr findings
 /fix-ts-errors       # Fix TypeScript errors
 /qa                  # Run browser tests

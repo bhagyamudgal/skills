@@ -36,6 +36,17 @@ If improvements are suggested:
 1. Apply the improvements
 2. Re-run `/fix-ts-errors` after changes
 
+#### Comment Scan (mandatory — blocking)
+
+Run `git diff` on the changed code and inspect **every ADDED comment**. A comment may stay only if it states a non-obvious WHY — a gotcha, a workaround, a constraint, or a reason the code cannot express itself.
+
+Delete on sight:
+- Comments that narrate WHAT the code does
+- JSDoc on obvious functions
+- Section dividers
+
+**Do not call the task done while any such comment remains in the diff.** Deleting them is part of this step, not a suggestion for later.
+
 ### Step 4: Verify Correctness
 
 1. Review the final code logic to verify it does what was intended
