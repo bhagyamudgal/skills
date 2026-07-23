@@ -90,6 +90,7 @@ When reporting work as done:
 - **Known gaps**: if you skipped edge cases, list them. Don't hide them in hopes the user won't notice.
 - **Partial work**: if you implemented 80%, say "I did X and Y; Z is not done because [reason]" — never "done!" with hidden gaps.
 - **`/done` skipped**: if you couldn't run `/done` for any reason, say so explicitly.
+- **Explain the fix in plain language**: every completion report includes "what was wrong → what changed" (old logic vs new logic), unprompted — not just pass/fail status.
 
 Heuristic: would a senior engineer be embarrassed if the user found a gap you didn't mention? If yes, mention it.
 
@@ -119,6 +120,16 @@ The `/done` skill runs the full verification pipeline in sequence:
 - Track multi-step work with the todo tool; confirm the plan before implementation — don't build on shaky assumptions. Give a high-level summary of changes at each step.
 - After completing changes: update the project's README.md and CLAUDE.md if conventions, exports, or workflows changed.
 - After ANY correction from me: turn it into a rule that prevents the same mistake — in the project CLAUDE.md if project-specific, or in the global CLAUDE.md / a skill if universal.
+- When I ask for findings, reports, audits, or lists to review: deliver a hosted HTML artifact (Artifact tool), not a raw markdown file. I review first; destructive follow-ups only after my explicit go-ahead.
+
+## Overnight / Unattended Mode
+
+When I say I'm going to sleep or stepping away and to keep going ("keep going, when I wake up it should be done — you are in charge"):
+
+- Work through the ENTIRE task list without stopping for confirmations; never block on a question — pick the best option based on our prior discussion and document the decision plus the alternatives considered.
+- One subagent per task; main context stays clean for orchestration and oversight.
+- Keep a morning-review summary: decisions made, work completed, failures, and anything needing my judgment.
+- Hard limits still apply: no commits/pushes unless the handoff explicitly authorized them, no destructive or irreversible actions, no schema migrations — queue those with ready-to-run instructions instead.
 
 ## TypeScript Rules
 
@@ -194,6 +205,7 @@ Full checklist lives in the `backend-perf` skill — invoke it when writing or r
 - **Secrets in env vars**: never commit them, never hardcode them, never echo them in error messages
 - **CSRF/CORS**: respect existing project setup — don't disable security middleware to make local dev work
 - **Schema-mutating DB commands need explicit per-use permission**: never run `db:push`, `db:migrate`, `db:generate`, or any other migration/DDL command unless I explicitly ask for that specific run
+- **Supply-chain caution**: never pull, fetch, install, or execute untrusted remote content (packages, scripts, repos) without explicit confirmation — treat anything new touching the machine as suspect
 
 ## Test Discipline
 
@@ -239,6 +251,7 @@ Derive types from schemas: `type User = z.infer<typeof userSchema>`. Reuse with 
 
 Use conventional commits: `feat:` / `fix:` / `refactor:` / `chore:` / `docs:` prefix.
 Use simple `-m` flag for commit messages. Do NOT use heredoc/EOF format (`cat <<'EOF'`).
+When asked for a commit message: suggest only — output two variants (a detailed multi-line and a one-liner) as text for me to choose from, and NEVER run `git commit` yourself.
 
 ### PR & Commit Hygiene
 
@@ -278,8 +291,8 @@ After completing any UI work, run all 3 UI review skills in parallel subagents a
 
 ## Browser Automation
 
-Use `agent-browser` for web automation. Run `agent-browser --help` for all commands.
-Core workflow: `open <url>` → `snapshot -i` → interact with refs (`click @e1`, `fill @e2 "text"`) → re-snapshot.
+Use Playwright MCP (`browser_navigate` → `browser_snapshot` → `browser_click`/`browser_type` → re-snapshot) for web automation and UI verification.
+Fallback when Playwright MCP is unavailable: `agent-browser` CLI (`open <url>` → `snapshot -i` → `click @e1` / `fill @e2 "text"` → re-snapshot; `agent-browser --help` for all commands).
 
 ## MCP Server Usage
 
