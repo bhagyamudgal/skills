@@ -57,6 +57,9 @@ npx skills add bhagyamudgal/skills
 | `qa` | Smart browser testing with Playwright automation |
 | `reuse-first` | Search-first discipline before writing any new utility, type, schema, component, hook, or constant — 3-layer search, reuse hierarchy, duplicate smells |
 | `backend-perf` | Performance checklist for backend services and DB queries — parallel async, N+1 nuance, index coverage, EXPLAIN-evidence for rewrites |
+| `executing-tickets-with-subagents` | Execute a multi-sub-task GitHub ticket via subagents — full-thread intake, in-ticket progress tracking, follow-up triage, manual-QA handoff doc |
+| `resolving-merge-conflicts` | Resolve in-progress merge/rebase conflicts — lose no changes, deep git-diff review of both sides, ask when ambiguous |
+| `git-commit` | Conventional commits from diff analysis — intelligent staging, message generation, suggest-only mode |
 
 ## Bundled tooling (not slash commands)
 
@@ -80,6 +83,9 @@ npx skills add bhagyamudgal/skills
 /design-director     # Design + branding direction
 /reuse-first         # Search-first check before writing new utilities/types/components
 /backend-perf        # Perf checklist for backend services and DB queries
+/executing-tickets-with-subagents  # Run a bundled ticket end-to-end via subagents
+/resolving-merge-conflicts         # Resolve merge/rebase conflicts safely
+/git-commit          # Conventional commit (or suggest-only message)
 ```
 
 ## Reference
