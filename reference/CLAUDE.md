@@ -116,24 +116,9 @@ The `/done` skill runs the full verification pipeline in sequence:
 
 ## Task Management
 
-### Per-Project Tracking
-
-Use `tasks/todo.md` in each project for active work:
-
-1. Write plan with checkable items before starting
-2. Confirm plan before implementation — don't build on shaky assumptions
-3. Mark items complete as you go
-4. Provide high-level summary of changes at each step
-5. Add review section when done
-
-### Self-Improvement Loop
-
-After ANY correction from user:
-
-1. Update project lessons: `tasks/lessons.md`
-2. Update global lessons: `~/.claude/lessons.md`
-3. Write rules that prevent the same mistake
-4. Review relevant lessons at session start before diving into work
+- Track multi-step work with the todo tool; confirm the plan before implementation — don't build on shaky assumptions. Give a high-level summary of changes at each step.
+- After completing changes: update the project's README.md and CLAUDE.md if conventions, exports, or workflows changed.
+- After ANY correction from me: turn it into a rule that prevents the same mistake — in the project CLAUDE.md if project-specific, or in the global CLAUDE.md / a skill if universal.
 
 ## TypeScript Rules
 
@@ -208,6 +193,7 @@ Full checklist lives in the `backend-perf` skill — invoke it when writing or r
 - **Never log secrets**: passwords, tokens, OIDC bearer tokens, API keys, encryption keys, raw PII
 - **Secrets in env vars**: never commit them, never hardcode them, never echo them in error messages
 - **CSRF/CORS**: respect existing project setup — don't disable security middleware to make local dev work
+- **Schema-mutating DB commands need explicit per-use permission**: never run `db:push`, `db:migrate`, `db:generate`, or any other migration/DDL command unless I explicitly ask for that specific run
 
 ## Test Discipline
 
@@ -263,6 +249,7 @@ Use simple `-m` flag for commit messages. Do NOT use heredoc/EOF format (`cat <<
 - **Review your own diff before pushing** — read every changed line and justify why it exists. If you can't justify it, delete it.
 - **No commits with debug noise** — no leftover `console.log`, commented-out code, or `TODO: remove this before merge` markers
 - **Never commit without explicit user permission** — even when a skill says to commit, ask first
+- **Discover the PR base branch before the first PR in a repo** — check `gh repo view --json defaultBranchRef` and look for an active `dev`/`develop` integration branch; never assume `main` is the base
 
 ## Git Worktree Naming Convention
 
