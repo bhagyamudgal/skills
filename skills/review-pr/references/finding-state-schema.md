@@ -12,7 +12,7 @@ This document defines the per-PR state file `.claude/review-state/<pr-number>.ym
 <repo-root>/.claude/review-state/<pr-number>.yml
 ```
 
-One file per PR, scoped to the repo's working tree. The file is local-only (gitignored, `.claude/` is already user-scoped).
+One file per PR, scoped to the repo's working tree. The file is local-only: Phase 1 seeds `review-state/.gitignore` with `*` when it creates the directory, so the whole dir self-ignores. Don't assume `.claude/` is already ignored — many repos commit it for settings and skills, and unignored state files show up as untracked noise in `git status`.
 
 In **cross-repo mode** (running `/review-pr` from a directory that's not the PR's repo), state lives at `~/.claude/review-state/<owner>__<repo>__<pr-number>.yml` (double underscore separator to avoid path collisions).
 
@@ -42,6 +42,14 @@ findings:
     last_message: "INSERT_RETURNED_NO_ROW error code/message wrong for UPDATE branch"
     github_thread_id: PRRT_kwDO123abc      # for resolveReviewThread on rolling re-review
     github_comment_id: 2145678901          # for follow-up comments
+
+    # --- convergence fields (see SKILL.md steps 4.55, 4.56, 4.9) ---
+    inverse_risk: "returning early leaves the bundle row uncommitted"
+    caused_by: null                 # id of the finding whose FIX created this one
+    depends_on: null                # for dismissed/wontfix: the code condition the rationale rests on
+    class_sites:                    # every site of this rule_class, not just the cited one
+      - { site: "upsert-bundle.helper.ts:118", handled: true }
+      - { site: "upsert-item.helper.ts:64",   handled: true }
 
   - id: 7e2b1c9f4a
     file: src/handlers/import-pdf.ts
@@ -78,6 +86,10 @@ findings:
 | `findings[].round_first_seen` | int | yes | Round number when the finding was first emitted |
 | `findings[].round_resolved` | int | nullable | Round when status flipped to `resolved` |
 | `findings[].commit_sha_resolved` | string | nullable | Head commit SHA when the resolving change landed |
+| `findings[].inverse_risk` | string | nullable | Failure mode the suggested fix trades into. Round N+1 checks this FIRST — it is the highest-yield regression predictor in the file. `"none — pure addition"` when the fix trades nothing away |
+| `findings[].caused_by` | string | nullable | ID of the finding whose *fix* created this one. Drives the convergence trend line and the regression-dominance signal |
+| `findings[].depends_on` | string | nullable | For `dismissed`/`wontfix` only: the code condition the rationale rests on (e.g. `"the early-break at search.ts:88 keeps serial decrypt cheap"`). When a later commit voids it, the dismissal is void |
+| `findings[].class_sites` | list | nullable | Every site of this `rule_class` with a `handled` flag. Resolution is gated on ALL sites handled — not just the cited one. This is what prevents a 3-of-4-sites fix from being marked resolved |
 | `findings[].dismissal_reason` | string | nullable | Free-form note when status = `dismissed` or `wontfix` |
 | `findings[].last_message` | string | yes | Most-recent `Issue:` text — used in audit logs / human-readable diffs |
 | `findings[].github_thread_id` | string | nullable | `PRRT_...` GraphQL node ID, for resolveReviewThread / re-comments |

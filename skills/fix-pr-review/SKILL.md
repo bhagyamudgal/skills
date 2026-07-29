@@ -22,6 +22,7 @@ Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding
 | 3 | Triage subagent: classify each finding via R-rubric | Triage plan (FIX/DISMISS/DEFER/DISAGREE/NEEDS-INPUT) |
 | 4 | Plan approval gate: validate + user confirmation | Approved plan |
 | 5 | Execute fixes: sequential edits + per-file type-check (β) | Modified files, `fix_status` per item |
+| 5.5 | Convergence verification subagent: class completeness, inverse risk, new siblings | Per-fix verdicts; missing sites applied |
 | 6 | /done pipeline: fix-ts-errors → parallel-review → simplify | Clean code |
 | 7 | Reply + resolve on GitHub (skipped for local files) | Threads resolved |
 | 8 | Finalize: restore stash, report, suppressions write, next actions | Final report |
@@ -419,6 +420,35 @@ Treat each group as a single meta-finding with a shared fix plan and a
 shared reply template. Apply the fix once per callsite but mark every
 member thread for resolution in Phase 7.
 
+STEP 1.5 — CLASS SWEEP (MANDATORY, for each comment or meta-finding
+classified FIX):
+
+STEP 1 groups callsites the REVIEWER reported. It cannot group what nobody
+reported. This step finds those.
+
+For each finding, derive a searchable signature from the defect itself — the
+literal or structural pattern, not the prose — and search outward: the cited
+file, then its directory, then the package. If the finding cites an exported
+or shared symbol, search its CALLERS too.
+
+  class_sweep:
+    signature: <what you actually searched>
+    search: <tool>("<query>", "<path>") → <N> sites
+    sites:
+      - <file:line>: affected | not-affected — <one clause why>
+    unreported: <count of affected sites no comment mentioned>
+
+Fold every affected site into the SAME fix plan. One finding, N sites.
+
+Fixing only the cited site is the single largest cause of a follow-up review
+round: the reviewer re-reads the file, finds the sibling you left, and files
+it as a new finding. Real cases — a fix added error branches to three sibling
+hooks and missed the fourth in the same file; another added `role="alert"` to
+two components and missed the third.
+
+If a sweep turns up sites you decide NOT to fix, say so explicitly in the
+reply with the reason. Silence reads as "missed it" and earns another round.
+
 STEP 2 — MECHANICAL GROUNDING (MANDATORY, for each comment or meta-finding
 BEFORE classifying): In one line each, state:
   (a) What code does this comment point at? (file path, symbol, line range,
@@ -589,10 +619,39 @@ instead of the weaker "pure style" reason. R3 comes after. R6-R9 are action
 buckets.
 
 STEP 5 — For each FIX, write a concrete fix plan:
-  - Which file(s) to edit
+  - Which file(s) to edit — ALL sites from the STEP 1.5 class sweep, not just
+    the cited one
   - What change to make (1–3 sentences, >= 30 chars)
   - Any dependencies on other fixes ("depends on F1" if F1 renames a symbol
     this fix calls)
+  - `inverse_risk:` — what this fix trades INTO if applied literally, or
+    `none — pure addition`
+  - `blast_radius:` — if the fix touches an exported or shared symbol, list
+    every caller and the behavioral delta at each. Otherwise `local only`
+
+STEP 5.5 — INVERSE-RISK CHECK (MANDATORY, before the plan is presented):
+
+A reviewer's suggestion is a hypothesis, not a specification. Reviewers here
+emit a one-sentence `Suggested fix` that no critic step vets — implementing it
+verbatim is how the next round's findings get written.
+
+For each fix plan ask: *if I apply this exactly as described and nothing else,
+what breaks?* Answer with a named failure mode, not "could have issues".
+
+Observed cases, all from suggestions applied verbatim:
+  - "fail closed on decrypt" → placeholder text re-encrypted over real ciphertext
+  - "key={dataUpdatedAt} to re-seed the form" → discards unsaved edits on refetch
+  - "treat a missing reference as an empty run" → dead schedule reports success forever
+  - "widen the backend gate" → frontend mirror still blocks; inverts the bug
+
+If the inverse risk is worse than the finding, do NOT apply the suggestion.
+Either write a fix that doesn't trade the defect for a bigger one, or route to
+NEEDS-INPUT with both options laid out. A fix you believe is a net negative is
+not a fix.
+
+If the fix touches a shared symbol with more than 3 callers, route to
+NEEDS-INPUT rather than deciding unilaterally — a shared-component change is
+the user's call. One real case changed behavior at 7 pre-existing callers.
 
 STEP 6 — Write replies:
   - For DISMISS / DEFER / DISAGREE: write SPECIFIC reply text following the
@@ -969,6 +1028,48 @@ fix_status[idx] = ok | retried_ok | inconclusive | skipped | aborted | type_chec
 ```
 
 This feeds the final report in Phase 8.
+
+---
+
+## Phase 5.5: Convergence verification (subagent)
+
+Run after all fixes are applied, BEFORE the `/done` pipeline. This is the step that
+decides whether the next review round finds anything — catching a half-applied fix here
+costs one subagent; catching it after push costs a full review round.
+
+Dispatch ONE `general-purpose` subagent. It gets `git diff HEAD` plus, per fix, the
+`class_sweep` site list and the `inverse_risk` string. It fetches whatever else it needs.
+Keep it in a subagent: it re-reads files and greps the repo, and main only needs verdicts.
+
+```
+For each fix below, verify against the working tree — not against the fix plan's claims.
+
+1. CLASS COMPLETENESS — every site in `sites: affected` must actually be changed.
+   A fix that landed on 3 of 4 sites is INCOMPLETE, not done.
+2. INVERSE RISK — the named failure mode must NOT be present in the applied code.
+3. NEW SIBLINGS — did the fix itself introduce a new instance of the pattern it fixes,
+   or a new branch (error state, empty state, early return) that its siblings have but
+   this one lacks?
+
+Report per fix, nothing else:
+  fix: <idx>
+  class_complete: yes | no — <unfixed site if no>
+  inverse_risk_present: no | yes — <file:line + one sentence>
+  new_siblings: none | <file:line + one sentence>
+
+Default to "no problem found" when you lack evidence. Do not speculate, do not
+re-review the PR, do not report style issues.
+```
+
+Handling:
+- `class_complete: no` → apply the missing sites now, then re-verify. Do not proceed
+  with a knowingly partial fix.
+- `inverse_risk_present: yes` → revert that fix via its pre-edit snapshot and route to
+  NEEDS-INPUT. The suggestion was wrong; applying it anyway ships a worse defect.
+- `new_siblings` → treat as part of the same fix and handle it now.
+
+Record the outcome per fix; Phase 8 reports it. If the subagent fails, run the three
+checks inline and note `convergence verification run inline`.
 
 ---
 

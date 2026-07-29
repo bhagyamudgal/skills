@@ -194,7 +194,12 @@ STATE_FILE=".claude/review-state/<pr-number>.yml"
 [ "$CROSS_REPO_MODE" = "true" ] && \
   STATE_FILE="$HOME/.claude/review-state/<owner>__<repo>__<pr-number>.yml"
 
-mkdir -p "$(dirname "$STATE_FILE")"
+STATE_DIR="$(dirname "$STATE_FILE")"
+mkdir -p "$STATE_DIR"
+# Review state is per-machine scratch, never shared. A self-ignoring dir keeps it
+# out of `git status` in repos that DO commit `.claude/` (settings, skills).
+[ -f "$STATE_DIR/.gitignore" ] || printf '*\n' > "$STATE_DIR/.gitignore"
+
 if [ -f "$STATE_FILE" ]; then
   PRIOR_STATE=$(cat "$STATE_FILE")
 else
@@ -446,6 +451,11 @@ Launch in a **single message with multiple Agent tool calls** based on `SIZE_MOD
 - Split diff by file into ~500-line chunks (don't split a file across chunks).
 - Dispatch ONE Subagent 1 PER CHUNK with full intent model + prior review timeline + repo map + schema context, but only its chunk's files in scope. Prompt: "Your scope is the files listed above. Do not report findings in other files."
 - Dispatch ONE silent-failure hunter at full PR scope.
+- Dispatch ONE **cross-cutting reviewer** (Subagent 3) at full PR scope — see below. Chunk
+  reviewers are forbidden from reporting across files, so without this nothing in the run
+  can see a defect class that spans two chunks. That blind spot is a documented source of
+  repeat rounds: a fix lands on the sites in one chunk while identical sites in another go
+  untouched and resurface as "new" findings a round later.
 - Phase 3 critic dedupes across chunks via the existing `(file, line, symbol)` key — chunks are file-disjoint so within-chunk dupes are impossible; cross-chunk dupes only occur when findings span files.
 
 **`SIZE_MODE == "parallel-chunked-confirm"`** (> 2000 lines):
@@ -567,13 +577,66 @@ If true, ALSO load and follow `references/schema-design-checks.md` for Q7-Q9.
          For each search where N > 0, `verified:` is MANDATORY.
          If STEP A was empty: `reusability_searches: N/A (no new top-level definitions in diff)`
 
-5. Additionally flag:
+5. **CLASS SWEEP — MANDATORY for every finding that proposes a code change.**
+
+   Do this when the finding is FIRST RAISED, not when it is resolved. A finding
+   reported at one site while three identical sites go unmentioned is the single
+   most common cause of an extra review round.
+
+   For each finding, derive a searchable signature from its `Rule-class` — the
+   literal or structural pattern, not the prose — and search the blast radius:
+   the touched files first, then the enclosing module, then the package.
+
+   REQUIRED audit field — use this EXACT name `class_completeness:`:
+
+     class_completeness:
+       - finding: <the Issue, trimmed>
+         rule_class: <slug>
+         signature: <the literal/pattern actually searched>
+         search: <tool>("<query>", "<path>") → <N> sites
+         sites:
+           - <file:line or symbol>: affected | not-affected — <one clause why>
+         verdict: COMPLETE (all N sites reported) | INCOMPLETE (<M> unreported sites)
+
+   If the sweep finds sites the finding did not cover, either fold them into the
+   SAME finding (preferred — one finding, N sites) or raise them as siblings. Never
+   report one site and stay silent about the others.
+
+   Sweep at least the files in the diff. If `Rule-class` names a shared or exported
+   symbol, extend to every caller — a fix to shared code changes behavior at call
+   sites nobody asked about.
+
+   If a finding proposes no code change: `class_completeness: N/A (no code change proposed)`.
+
+6. **INVERSE-RISK PASS — MANDATORY, run after drafting every `Suggested fix`.**
+
+   Treat your own remedy as code under review. Ask, for each suggested fix:
+   *if a competent engineer implements this literally and nothing else, what breaks?*
+
+   Answer concretely, naming the failure mode — not "could have issues". Real
+   examples from this skill's own history:
+     - "fail-closed decrypt" → placeholder value that can be re-encrypted over real ciphertext
+     - "key={dataUpdatedAt} to re-seed the form" → silently discards unsaved edits on refetch
+     - "treat missing reference as an empty run" → dead schedule now reports success forever
+     - "widen the backend gate" → frontend mirror still restricts; inverts the bug
+
+   Write it into the finding's `Inverse risk:` field. If the fix is a pure addition
+   with no behavior traded away, say `none — pure addition` and mean it.
+
+   A fix whose inverse risk is worse than the original finding is not a fix. Rewrite
+   the suggestion or downgrade the finding to an observation.
+
+7. Additionally flag:
    - Silent failures (caught errors swallowed without logging)
    - Removed error handling
    - Breaking changes to public APIs not mentioned in PR description
    - Architectural issues (wrong layer / wrong package / wrong abstraction boundary)
+   - **New error values / sentinels / thrown exceptions**: trace each to EVERY
+     downstream consumer in this pass, including consumers the diff does not touch.
+     Deep error chains are static and fully traceable — reviewing them one layer per
+     round is what turns a two-round PR into a five-round one.
 
-6. **Schema-specific checks (Q7–Q9)** — only when `INCLUDE_SCHEMA_CHECKS = true`. Load `references/schema-design-checks.md` and follow its Q7/Q8/Q9 instructions. Skip entirely if false.
+8. **Schema-specific checks (Q7–Q9)** — only when `INCLUDE_SCHEMA_CHECKS = true`. Load `references/schema-design-checks.md` and follow its Q7/Q8/Q9 instructions. Skip entirely if false.
 ```
 
 #### Anti-slop rules (MANDATORY)
@@ -588,6 +651,8 @@ If true, ALSO load and follow `references/schema-design-checks.md` for Q7-Q9.
 - **Permission to abstain**: if answering needs code you haven't seen, either fetch via `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>` or write `Cannot assess — would need <file>`. DO NOT guess.
 - Low-confidence findings at Moderate or Minor WILL be dropped by the critic. Only flag if a human should still take a second look.
 - For Q6, populate `reusability_searches:` with actual tool calls or the N/A sentinel. Empty/missing audit = Q6 claims INVALID.
+- Populate `class_completeness:` with actual tool calls or the N/A sentinel. Missing audit = the finding is treated as UNSWEPT and the critic runs the sweep itself.
+- Never emit a `Suggested fix:` without an `Inverse risk:`. "I didn't think about it" is not an answer; `none — pure addition` is, when true.
 
 #### Line number convention
 
@@ -609,7 +674,15 @@ Enclosing-symbol: <function/class/component containing the cited line, or "<modu
 Issue:       <one sentence>
 Why it matters: <one sentence>
 Suggested fix:  <one sentence, actionable>
+Inverse risk:   <the failure mode this fix trades INTO if implemented literally,
+                 or "none — pure addition">
+Class-sites:    <H handled / N total> — from the class_completeness audit below
 ```
+
+`Inverse risk` and `Class-sites` are REQUIRED on every finding that proposes a code
+change. They exist because the two largest sources of repeat review rounds are
+(a) the reviewer's own suggested fix introducing a new defect, and (b) a fix landing
+on the cited site while identical sibling sites go untouched.
 
 `Rule-class` and `Enclosing-symbol` are NEW required fields — they let the critic compute a stable finding ID (`sha1(file::enclosing_symbol::rule_class)`) that survives line shifts and rewordings across review rounds. See `references/finding-state-schema.md`.
 
@@ -629,13 +702,121 @@ Only dispatch if `INCLUDE_SILENT_FAILURE_HUNTER = true`.
 - `subagent_type`: `pr-review-toolkit:silent-failure-hunter`
 - Prompt: `"Check for silent failures, swallowed errors, and inadequate error handling in the GitHub PR at <url>. Fetch the diff yourself via 'gh pr diff <url>'."`
 
+Pass it the SAME context packet as Subagent 1 — intent model, prior findings, and the
+resolved `rule_class` list from `PRIOR_STATE`. Dispatched with only a URL it re-finds
+already-settled issues and misses anything the diff doesn't make obvious, because it has no
+idea what the PR is for or what earlier rounds already closed.
+
+### Subagent 3 (conditional) — Cross-cutting reviewer
+
+Dispatch when `SIZE_MODE` is `parallel-chunked` or `parallel-chunked-confirm`. Skip otherwise
+— in unchunked modes Subagent 1 already sees every file.
+
+- `subagent_type`: `general-purpose`
+- Scope: the WHOLE PR. It is the only reviewer permitted to report across file boundaries.
+
+```
+You are reviewing a GitHub PR at <url> for CROSS-FILE patterns ONLY. Other reviewers cover
+each file in isolation — do not duplicate them. Fetch the diff yourself.
+
+Goal: <intent model>
+Prior findings already reported: <list>
+
+Report ONLY findings that require seeing two or more files at once:
+
+1. Same defect class in sibling files — one call site handled, an identical one not.
+   Example shape: three hooks in a component get an error branch and the fourth doesn't;
+   two components get role="alert" and the third doesn't.
+2. One concern handled inconsistently across files — differing validation, error handling,
+   auth checks, or null handling for the same logical thing.
+3. A value, sentinel, or thrown error introduced in one file whose consumers in OTHER files
+   don't handle it.
+4. A guard or contract asserted in one file and contradicted in another.
+
+For each finding, cite EVERY file:line involved — a finding naming only one file is by
+definition not cross-cutting; drop it. Use the standard output format including
+`Rule-class`, `Class-sites`, `Inverse risk`, and the `class_completeness:` audit.
+
+"No cross-file findings" is a complete and acceptable answer. Do not manufacture one.
+```
+
 ---
 
 ## Phase 3: Critic pass (main context)
 
-After ALL subagents return, main Claude does the critic pass directly. **No subagent.** Main already holds intent model + prior reviews + prior_state.
+After ALL subagents return, main Claude runs the critic pass, splitting the work on one line:
+
+- **Judgment stays in main.** Dedupe, the 3-prong test, false-positive rules, suppressions,
+  ranking, verdict. These need the intent model and the prior-review timeline, which main
+  already holds. Shipping them to a subagent would mean re-sending all of it.
+- **Evidence-gathering goes to subagents.** Anything that means grepping the repo,
+  enumerating callers, or re-reading files at HEAD. These burn context proportional to the
+  codebase and return a few lines of verdict. Main should hold the verdict, not the search.
+
+Steps 4.55, 4.9 and 6 dispatch subagents (see **Phase 3 verification subagents** below).
+Everything else runs inline. The subagent returns a compact structured verdict; main decides
+what to do with it. Never let a verification subagent decide severity, drop a finding, or
+write to the state file — it reports, main rules.
 
 Execute in order:
+
+### Phase 3 verification subagents
+
+All three are `general-purpose`, dispatched in ONE message so they run in parallel, and all
+three fetch what they need themselves (`gh pr diff`, Grep, Read) rather than being handed the
+diff. Each returns a compact block — no prose, no restated file contents.
+
+Cap: batch findings into at most 4 subagents. If a batch would exceed ~12 findings, split it.
+If a verifier errors or returns empty, run its step inline in main and note
+`<verifier> unavailable — verified inline` in the Phase 4 header. Never skip the step.
+
+**V1 — Class-sweep verifier** (step 4.55). Dispatch when ANY finding has a missing
+`class_completeness` audit, a verdict of `INCOMPLETE`, or an `Enclosing-symbol` that is
+exported or lives in a shared package.
+
+```
+For each finding below, find EVERY site in the repo matching its rule_class signature —
+not just the cited one. If the symbol is exported, include its callers.
+Report per finding, nothing else:
+  finding: <id>
+  signature: <what you actually searched>
+  searches: <tool>("<query>", "<path>") → <N>
+  sites:
+    - <file:line>: affected | not-affected — <one clause>
+  unreported_sites: <count of affected sites the finding did not mention>
+Do not judge severity. Do not suggest fixes. Report sites.
+```
+
+**V2 — Regression sweep verifier** (step 4.9). Dispatch when `CURRENT_ROUND >= 2` and
+`PRIOR_STATE.findings` contains any entry with `status in {resolved, dismissed, wontfix}`.
+Pass each entry's `id`, `rule_class`, `class_sites`, `inverse_risk`, `depends_on`,
+`commit_sha_resolved`, and the current `head_sha`.
+
+```
+These findings were closed in earlier rounds. At the CURRENT head, verify each is still
+closed. For each, check in this order:
+  1. class_sites — is every listed site still handled? Are there NEW sites of this
+     rule_class that the current diff introduced?
+  2. inverse_risk — has that specific failure mode appeared in the resolving code?
+  3. depends_on — is the code condition the dismissal rested on still true?
+Report per finding, nothing else:
+  id: <id>
+  verdict: still-closed | regressed | dismissal-void
+  evidence: <file:line + one sentence — REQUIRED when not still-closed>
+Default to still-closed when you cannot find evidence of a regression. Do not speculate.
+```
+
+**V3 — Deep gap check** (step 6). Dispatch when `additions + deletions >= 500` — exactly
+the case where step 6's own caveat tells main to skip the gap check. A subagent has the
+context budget main lacks, so the gap check runs on big PRs instead of being skipped.
+
+```
+Fetch the diff yourself. The reviewers reported findings in these categories: <list>.
+For each category with NO findings — Q1 intent, Q2 unnecessary, Q3 DRY, Q4 performance,
+Q5 security, Q6 reusability — check whether the diff genuinely has nothing, or whether it
+was overlooked. Report ONLY genuine gaps, in the standard finding format. "No gaps" is a
+complete and acceptable answer.
+```
 
 ### 1. Dedupe
 
@@ -649,6 +830,10 @@ Dedupe priority when merging:
 1. Severity wins: `Serious > Moderate > Minor`.
 2. Category precedence for ties: `Security > Reusability > Silent-failure > Breaking-change > Performance > DRY > Unnecessary > Intent > Architecture`.
 3. Confidence: keep highest.
+4. **Site list always survives.** When a cross-file finding (Subagent 3) merges with a
+   single-file one, keep the UNION of their sites in `Class-sites`. Collapsing a
+   "3 of 4 hooks handled" finding down to the one hook a chunk reviewer happened to cite
+   re-creates the exact blind spot Subagent 3 exists to close.
 
 ### 1.5. Cheap line-count sanity
 
@@ -721,6 +906,50 @@ Three outcomes:
    Additionally: for each entry where `N > 0` but `verified:` is missing or says `no`, mark the corresponding Q6a claim (if any) as low-confidence and log `search returned hits but reviewer did not verify semantic match`.
 
 #### 4.5c — Log all drops to Filtered Out for auditability.
+
+### 4.55. Class-completeness verification
+
+For each surviving finding that proposes a code change, check its `class_completeness:` audit.
+
+Batch every finding needing verification into **V1 — Class-sweep verifier** and dispatch it
+alongside V2/V3. Main applies the rules below to what V1 returns.
+
+1. **Field missing entirely** — the sweep was not run. Do NOT drop the finding; V1 runs the
+   sweep. Derive the signature from `Rule-class`, and append V1's result to the finding. Log
+   `class sweep run by verifier — reviewer omitted audit`.
+
+2. **`verdict: INCOMPLETE`** — the reviewer found sites it did not report. Fold every
+   unreported site into the finding's `Class-sites` count and list them in the finding
+   body. A finding covering 1 of 4 sites, reported as if it covered the defect, is how a
+   round-N finding becomes a round-N+1 finding.
+
+3. **`verdict: COMPLETE` with `search:` naming zero tool calls** — treat as missing (case 1).
+
+4. **Shared-symbol escalation**: if the finding's file sits in a shared package (use the
+   Phase 1 repo map) OR `Enclosing-symbol` is exported, the sweep MUST cover callers, not
+   just the defining file. If it doesn't, run the caller search yourself and note the
+   behavioral delta at each call site. Fixes to shared code change behavior at call sites
+   nobody asked about — enumerate them before the fix ships, not after.
+
+Findings are never dropped by this step; they are widened. Log every widening.
+
+### 4.56. Inverse-risk verification
+
+For each surviving finding with a `Suggested fix:`:
+
+1. **`Inverse risk:` missing** — derive it yourself before printing. Ask what breaks if
+   the suggestion is implemented literally and nothing else changes.
+
+2. **Inverse risk is worse than the finding** — the suggestion is not a fix. Either
+   rewrite it into one that doesn't trade the defect for a bigger one, or keep the
+   finding and replace the suggestion with `no safe one-line fix — needs design`.
+   Never ship a remedy the review itself believes is a net negative.
+
+3. **Record it.** The `inverse_risk` string is persisted to `.claude/review-state/<pr>.yml`
+   on the finding. Round N+1 checks it FIRST, before hunting anything new — see step 4.9.
+
+This step exists because the reviewer's own suggestions are implemented verbatim by
+`/fix-pr-review`. An unvetted one-sentence remedy becomes production code.
 
 ### 4.6. Apply false-positive rules table
 
@@ -802,6 +1031,38 @@ rules:
 
 Apply each rule sequentially. Log every fire. The rules table is the single source of truth for false-positive filtering — adding a new false-positive class is a one-row YAML edit, not a new prose section.
 
+### 4.9. Proactive regression sweep (runs BEFORE suppression)
+
+Skip entirely when `CURRENT_ROUND == 1`.
+
+Step 4.95 below only re-examines a resolved finding if a reviewer happened to re-raise
+its exact ID. That catches regressions by luck. This step catches them on purpose.
+
+Dispatch **V2 — Regression sweep verifier** over EVERY finding in `PRIOR_STATE` with
+`status in {resolved, dismissed, wontfix}`, regardless of whether any reviewer mentioned it
+this round. V2 gathers the evidence; main applies the rules below to its verdicts:
+
+1. **Re-verify by `rule_class`, not by ID hash.** The ID is
+   `sha1(file::enclosing_symbol::rule_class)`, so the same defect resurfacing in a
+   sibling symbol produces a DIFFERENT id and escapes matching entirely. Search the
+   stored `class_sites` — plus any new sites the current diff added — for the class
+   signature. A resolved finding whose class has an unhandled site is not resolved:
+   reopen it with `status: regression` and cite the specific site.
+
+2. **Check the stored `inverse_risk`.** If the fix that resolved this finding recorded
+   an inverse risk, verify that failure mode has NOT appeared. This is the single
+   highest-yield check in the whole pass — the dominant cause of round-N findings is
+   round-N−1's fix landing on its own inverse.
+
+3. **Re-validate dismissals against `depends_on`.** A `wontfix` records the code
+   condition its rationale rests on. If a later commit invalidated that condition, the
+   dismissal is void — reopen with `status: still-active` and note which commit voided it.
+
+4. **Attribute the lineage.** Any finding this sweep reopens, or any new finding whose
+   cited lines were introduced by a commit that fixed an earlier finding, gets
+   `caused_by: <prior finding id>`. Phase 4 reports the count. The lineage is already
+   visible in practice — recording it is what lets the verdict act on it.
+
 ### 4.95. Apply prior-state suppression (multi-round dedup)
 
 For each remaining finding:
@@ -839,7 +1100,11 @@ If ALL specified conditions match: DROP, log `suppressed by .claude/review-suppr
 
 For any question category where Subagent 1 said nothing, briefly think about whether the diff has anything in that category. Add findings if you spot misses. Include Q7–Q9 only if `INCLUDE_SCHEMA_CHECKS = true`.
 
-**Large-PR caveat**: if `additions + deletions >= 500` AND you don't have full diff loaded in main, **skip Step 6** and log `gap check not run — PR too large for main context`. Do NOT hallucinate gaps from file list alone.
+**Large-PR routing**: if `additions + deletions >= 500` AND you don't have the full diff
+loaded in main, do NOT hallucinate gaps from the file list — but do NOT skip the check
+either. Route it to **V3 — Deep gap check** instead, and fold its findings in here.
+Skipping the gap check on large PRs meant the check was absent exactly when it mattered
+most; delegating it costs one subagent and restores coverage.
 
 ### 7. Rank by severity
 
@@ -852,6 +1117,32 @@ Critical > Serious > Moderate > Minor.
 - Any other Serious → `comment`
 - Only Moderate/Minor → `approve` (with comments)
 - No findings → `approve`
+
+#### Severity ratchet (`CURRENT_ROUND >= 3`)
+
+From round 3 onward, **only Critical and Serious may block.** Moderate and Minor
+findings do NOT hold the PR: route them to `ship-with-followups` — report them in the
+body under a `Follow-ups (non-blocking)` heading and offer to file them as issues in
+the Phase 4 post-review prompt.
+
+Rationale: a PR that has already absorbed two rounds of fixes is being held by a
+long tail, and each additional round of Moderate-chasing has a measurable chance of
+introducing a Serious defect. The tail is worth less than the churn it costs.
+
+The ratchet changes the VERDICT only. It never suppresses a finding, never lowers a
+severity, and never applies to Critical or Serious.
+
+#### Regression-dominance signal
+
+Compute `regression_share` = (findings with `caused_by` set) / (total active findings).
+
+If `regression_share > 0.5` at any round, prepend to the verdict reason:
+
+> Over half of this round's findings were introduced by the previous round's fixes.
+> Patching site-by-site is not converging — this module needs a design pass.
+
+Say it plainly. A reviewer that documents a fix-cascade round after round without
+naming it lets the loop continue unchallenged.
 
 ### 9. Decide Senior-engineer approval
 
@@ -878,6 +1169,8 @@ Write a one-sentence approval reason grounded in the most important finding (or 
 **Size**: <additions>/<deletions> across <N> files
 **Reviewers**: <list, with "(unavailable)" marker for any failed subagent>
 **Round**: <CURRENT_ROUND> (<active>/<resolved>/<dismissed> findings carried across rounds)
+**Convergence**: <N> new · <C> caused by earlier fixes · <R> regressions reopened · <F> carried
+<trend line — omit at round 1>
 
 ## Summary
 <2-3 sentence summary>
@@ -896,6 +1189,10 @@ Write a one-sentence approval reason grounded in the most important finding (or 
 ### Minor
 <entries>
 
+## Follow-ups (non-blocking)
+<round >= 3 only: Moderate/Minor findings the severity ratchet released from blocking.
+ Omit this heading entirely at rounds 1-2, where they appear under their own severity.>
+
 ## Filtered out (<count>)
 <dropped findings with reasons — for auditability>
 
@@ -910,6 +1207,25 @@ Write a one-sentence approval reason grounded in the most important finding (or 
 **Severity headers**: Critical → 🔴 · Serious → 🟠 · Moderate → 🟡 · Minor → 🔵
 
 The Senior engineer approval line goes on top — single field a human wants to see first. Filtered out section is mandatory in terminal output — without it, you can't tell when the critic is over-filtering. Multi-round status is mandatory when `PRIOR_STATE.findings` is non-empty.
+
+### Convergence trend line
+
+Mandatory from round 2. One sentence, stating whether the PR is converging and why not:
+
+```
+Convergence: 4 new · 3 caused by earlier fixes · 1 regression reopened · 2 carried
+Trend: 75% of this round's findings came from round 4's fixes. Not converging.
+```
+
+Pick the trend sentence from what the numbers say:
+- `caused_by` share > 0.5 → `Not converging — the fixes are generating the findings.`
+- New findings falling round over round, none caused_by → `Converging — tail is shrinking.`
+- New count flat across 3+ rounds → `Stalled — same volume each round; scope may be growing.`
+
+If a verdict REVERSES an earlier approval, say so explicitly in the Summary with the
+reason and the two SHAs, e.g. *"I approved this at `dd142e0`. I'm reversing that,
+because `e4f7432` made one thing worse than it was."* An unexplained reversal reads
+as the tool moving the goalposts; a stated one reads as the review doing its job.
 
 ### Wall-time instrumentation (end)
 
