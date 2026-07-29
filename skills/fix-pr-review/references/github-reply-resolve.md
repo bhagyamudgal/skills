@@ -8,7 +8,7 @@ Loaded by main in Phase 7, once the local-file skip check has passed. SKILL.md k
 
 The classifier wrote `reply_placeholder` during Phase 3 BEFORE fixes existed. Between Phase 3 and now, fixes were applied (Phase 5) and possibly modified by self-heal (Phase 6). The placeholder may no longer match reality.
 
-For each FIX item with `fix_status ∈ {ok, retried_ok, inconclusive}`:
+For each FIX item with `fix_status ∈ {ok, retried_ok, inconclusive, type_check_skipped}`:
 
 1. Compute the diff for its target file(s): `git diff HEAD -- <file1> <file2>` (nothing is committed yet, so HEAD = pre-Phase-5 state; the diff IS the applied fix).
 2. Extract the relevant hunk(s) for the referenced file:line.
@@ -21,7 +21,9 @@ For each FIX item with `fix_status ∈ {ok, retried_ok, inconclusive}`:
 
 4. Store as `reply_final[idx]`.
 
-Skipped/aborted FIX items get no reply (they land in NEEDS-INPUT for the final report instead). The same applies to Phase 5.5's outcomes: `fix_status ∈ {partial, reverted_inverse_risk}` gets no reply and no thread resolution — a partially-applied or reverted fix must not close the reviewer's conversation. Both surface in the Phase 8 report.
+`type_check_skipped` is a landed fix, not a failure — it means the repo has no TS tooling for the narrow check to run (Phase 5 step 4), and `/done` in Phase 6 still covered it. Excluding it would leave every fix in a non-TypeScript repo without a reply, so it replies like any other landed fix.
+
+Skipped/aborted FIX items get no reply (they land in NEEDS-INPUT for the final report instead). The same applies to Phase 5.5's outcomes: `fix_status ∈ {partial, reverted_inverse_risk}` gets no reply and no thread resolution — a partially-applied or reverted fix must not close the reviewer's conversation. Both surface in the Phase 8 report. So the no-reply set is exactly `fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk}`; Step 7c excludes it.
 
 ## Step 7b — Reply validator (pre-post mechanical check)
 
@@ -54,7 +56,7 @@ if comment.reusability_context?.flagged:
     reusability_rule_passes =
         (classification == "FIX" AND reply contains a destination file path
             that points at an existing module — one of:
-              - a `@fileseye/...` or `@<scope>/...` package reference
+              - a `@<scope>/...` package reference
               - a `packages/.../<file>.ts` path
               - an `apps/.../<file>.ts` path
               - a relative import path pattern `from './...'` or `from '../...'`)
@@ -71,7 +73,7 @@ if comment.reusability_context?.flagged:
 ```
 
 Concretely this catches:
-- `"Fixed — now importing from @fileseye/utils/format.ts:45 instead of reimplementing"` → PASSES (FIX with destination)
+- `"Fixed — now importing from @<scope>/utils/format.ts:45 instead of reimplementing"` → PASSES (FIX with destination)
 - `"Fixed — refactored to a helper"` → FAILS (no destination)
 - `"Moved to helpers"` → FAILS (no concrete target)
 - `"Valid but requires packages/shared refactor; tracking in #4321"` → PASSES (DEFER with scope reason)
@@ -83,7 +85,7 @@ On failure: dispatch a 1-off `general-purpose` subagent with the original commen
 
 ## Step 7c — Post loop
 
-For each item with a non-null `thread_id` (actionables only — NOT nitpicks, NOT NEEDS-INPUT, NOT skipped in Phase 5, NOT `reply_invalid`):
+For each item with a non-null `thread_id` (actionables only — NOT nitpicks, NOT NEEDS-INPUT, NOT `reply_invalid`, and NOT any FIX item Step 7a left without a `reply_final`, i.e. `fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk}`):
 
 ```bash
 # 1. Post reply — pass every ID with -f (raw string); -F applies JSON type

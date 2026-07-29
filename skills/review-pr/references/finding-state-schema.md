@@ -10,7 +10,7 @@ This document defines both of `/review-pr`'s per-PR persistence files — the st
 
 | File | Holds | Written by |
 |---|---|---|
-| `.claude/review-state/<pr-number>.yml` | Per-finding lifecycle — `active` / `resolved` / `dismissed` / `wontfix` / `regression`, plus the cascade fields | Phase 4 write-back; `/fix-pr-review` when it ships a fix |
+| `.claude/review-state/<pr-number>.yml` | Per-finding lifecycle — `active` / `resolved` / `dismissed` / `wontfix` / `regression`, plus the cascade fields | Phase 4 write-back — the only automated writer (see the writer caveat at the end of "Phase 4 — write back") |
 | `$HOME/.claude/skills/review-pr/cache/<owner>_<repo>_<pr-number>.json` | Per-run and per-comment GitHub facts — last reviewed SHA, last posted review IDs, and `posted_comments` (for `resolveReviewThread` + dedup against re-posting) | End of Phase 4, independent of GitHub state |
 
 `posted_comments` works alongside the state file: the cache holds per-comment GitHub IDs, the state file holds per-finding lifecycle. Both are necessary; neither is sufficient alone. The state file is the schema described first below; the cache follows under "Run-over-run cache".
@@ -165,7 +165,7 @@ One id, not a list — the single *nearest* cause. When several closed findings 
    the dismissal is void, the finding reopens as active)
 ```
 
-- **`resolved`**: subagent saw the fix in the diff between `commit_sha_resolved` and the prior round's HEAD, **and** every `class_sites` entry is `handled: true`. A fix that lands on the cited site while a sibling site stays unhandled leaves the finding `active`. `/fix-pr-review` writes this when it ships a fix.
+- **`resolved`**: subagent saw the fix in the diff between `commit_sha_resolved` and the prior round's HEAD, **and** every `class_sites` entry is `handled: true`. A fix that lands on the cited site while a sibling site stays unhandled leaves the finding `active`. No automated writer sets this today — see the writer caveat at the end of "Phase 4 — write back".
 - **`dismissed`**: user explicitly dropped the finding via the post-review AskUserQuestion. `dismissal_reason` is required.
 - **`wontfix`**: user rejected the finding as wrong / out-of-scope. `dismissal_reason` is required (e.g., "intentional design — see issue #4001").
 - **`regression`**: subagent emits a finding whose `id` matches an existing `resolved` entry, AND the diff shows the resolving code was reverted/edited. Treat as a fresh active finding but keep the history.
@@ -297,14 +297,14 @@ After successful posting (or after "Keep local"):
    - If `id` already exists with `status: active`: append `<this-round-label>` to `label_history`, update `last_message`. Status stays `active`. Also refresh `inverse_risk` when the suggested fix changed this round, and rewrite `class_sites` with this round's `handled` flags — including sites the current diff newly introduced.
    - If `id` already exists with `status: regression` (entered via Phase 3 step 4.95 because the resolving code was reverted): treat exactly like `active` — append to `label_history`, update `last_message`, refresh `class_sites`. Set `caused_by` when the sweep traced the reopen to another finding's fix. The finding stays in `regression` until the user resolves OR dismisses it (rules below). The history of `round_resolved` + `commit_sha_resolved` is **preserved** (do NOT clear them — they document the prior resolve that got reverted).
 2. For each finding the user explicitly dismissed via the post-review AskUserQuestion: write `status: dismissed` + `dismissal_reason: <user reason>` regardless of prior status (including `regression`). A regression that the user dismisses goes to `dismissed` (the prior `round_resolved` + `commit_sha_resolved` from before the regression are kept in the entry as historical context). Write `depends_on` at the same moment — the code condition the rationale rests on, in the user's own terms. It is required for `wontfix` and for any `dismissed` whose reason rests on how the code behaves today; a dismissal with `depends_on: null` can never be voided and will outlive the condition that justified it.
-3. For each finding that `/fix-pr-review` ships a fix for: it writes `status: resolved` + `commit_sha_resolved: <new HEAD sha>` regardless of prior status — but **only when every `class_sites` entry is `handled: true`**. If any site is still unhandled, keep the prior status (`active` / `regression`), write the updated `handled` flags, and leave `commit_sha_resolved` untouched: a fix covering part of the class is not a resolution. A regression that gets fully re-fixed goes back to `resolved` with the *new* commit SHA; the prior `commit_sha_resolved` is overwritten (only the latest resolving commit is kept — `label_history` retains the full timeline).
+3. For each finding whose fix has shipped (writer caveat below — this transition is currently made by hand): `status: resolved` + `commit_sha_resolved: <sha of the resolving commit>` regardless of prior status — but **only when every `class_sites` entry is `handled: true`**. If any site is still unhandled, keep the prior status (`active` / `regression`), write the updated `handled` flags, and leave `commit_sha_resolved` untouched: a fix covering part of the class is not a resolution. A regression that gets fully re-fixed goes back to `resolved` with the *new* commit SHA; the prior `commit_sha_resolved` is overwritten (only the latest resolving commit is kept — `label_history` retains the full timeline).
 4. For each closed finding the Phase 3 regression sweep reopened: an entry reopened because a `class_sites` site went unhandled or its `inverse_risk` failure mode materialized becomes `status: regression`; a `dismissed`/`wontfix` entry whose `depends_on` condition was voided becomes `status: active`, keeping `dismissal_reason` and `round_resolved` as history and naming the voiding commit in `last_message`.
 5. Increment `last_round`. Update `updated_at`.
 6. Write the file atomically (temp + rename).
 
 State transitions in Phase 4:
 
-| Prior status     | Subagent emits finding? | User dismisses? | `/fix-pr-review` ships fix? | New status           |
+| Prior status     | Subagent emits finding? | User dismisses? | Fix shipped? | New status           |
 |------------------|-------------------------|-----------------|------------------------------|----------------------|
 | (no entry)       | yes                     | no              | no                           | `active` (new entry) |
 | `active`         | yes                     | no              | no                           | `active`             |
@@ -318,7 +318,9 @@ State transitions in Phase 4:
 | `dismissed`/`wontfix` | yes (suppressed)   | (n/a)           | (n/a)                        | unchanged (suppressed in Phase 3 step 4.95) |
 | `dismissed`/`wontfix`, `depends_on` condition voided at current head | (n/a) | (n/a) | (n/a)  | `active` (reopened; `dismissal_reason` + `round_resolved` kept as history) |
 
-`/fix-pr-review` is responsible for setting `status: resolved` + `commit_sha_resolved` when it ships a fix — and for checking the `class_sites` gate before it does.
+**Writer caveat — `resolved` has no automated writer yet.** Every other transition in the table above is written by Phase 4 write-back, which is also the only writer of `class_sites`. `resolved` is the exception: `/fix-pr-review` applies fixes and resolves the GitHub threads, but it never opens this file — it has no `review-state` code path at all. Wiring that write-back into `/fix-pr-review` (locate the state file, match its FIX items to entries, check the gate, write) is follow-up work, out of scope here.
+
+Until it lands, set the transition by hand: edit the YAML, flip `status` to `resolved`, record the resolving commit SHA in `commit_sha_resolved`, and do it **only once every `class_sites` entry is `handled: true`** — a partial-class fix is not a resolution. Everything downstream reads only what is written here: round-over-round dedup (Phase 3 step 4.95), the regression sweep's `{resolved, dismissed, wontfix}` input set, and the thread resolution in `github-posting.md` step 8d. A state file where nothing is ever marked `resolved` degrades all three to user dismissals alone.
 
 ---
 

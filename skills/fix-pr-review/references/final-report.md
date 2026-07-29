@@ -64,17 +64,23 @@ Convergence: converged — all <F> fixes class-complete, inverse risk absent, no
 
 # Rendering rules for this section:
 #   - Every [F<n>] item in the classifier plan MUST appear in exactly one of
-#     the three subsections above. Partition by (change_class, narrow
-#     type-check status, fix_status):
-#       change_class=hardening    AND type-check pass AND fix_status ∈ {ok,
-#         retried_ok, inconclusive, type_check_skipped}  → Hardening-only
-#       change_class=logic-change AND type-check pass AND fix_status ∈ {ok,
-#         retried_ok, inconclusive, type_check_skipped}  → Logic-changing
-#       type-check failed twice (either class), OR fix_status ∈ {skipped,
-#         aborted, partial, reverted_inverse_risk}       → Skipped / not landed clean
-#     fix_status outranks the type-check result — a fix that type-checked
-#     clean but was reverted or left partial by Phase 5.5 belongs in the
-#     third subsection, never in the first two.
+#     the three subsections above. Partition on fix_status alone, then split
+#     the landed set by change_class:
+#       fix_status ∈ {ok, retried_ok, inconclusive, type_check_skipped}
+#         — landed:  change_class=hardening     → Hardening-only
+#                    change_class=logic-change  → Logic-changing
+#       fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk}
+#         — not landed clean                    → Skipped / not landed clean
+#     The two sets are disjoint and cover the whole Phase 5 fix_status enum,
+#     so every item lands in exactly one subsection. fix_status carries the
+#     type-check result already (a type-check that failed twice ends the item
+#     as `skipped` or `aborted`), and it outranks that result — a fix that
+#     type-checked clean but was reverted or left partial by Phase 5.5 belongs
+#     in the third subsection, never in the first two.
+#   - The `type-check (this file):` line renders the Phase 5 outcome for that
+#     item — `pass`, `inconclusive — preexisting errors`, or `skipped (no TS
+#     tooling)` for fix_status=type_check_skipped. Never print `pass` for a
+#     check that did not run.
 #   - The `Convergence:` line under the title reads `converged` only when
 #     EVERY fix is class-complete with inverse risk absent and no new
 #     siblings. Otherwise `NOT converged`, with the count that fell short.

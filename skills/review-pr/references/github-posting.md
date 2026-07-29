@@ -171,9 +171,19 @@ Each finding with a valid file reference becomes a review comment. Format as sel
 **Why it matters**: <one sentence>
 
 **Suggested fix**: <one sentence, actionable>
+
+**Inverse risk**: <the failure mode this fix trades INTO if implemented literally, or "none — pure addition">
+
+**Class-sites**: <A>/<N> — affected sites over sites searched
 ```
 
 Severity emojis: 🔴 Critical, 🟠 Serious, 🟡 Moderate, 🔵 Minor.
+
+**Inverse risk and Class-sites are not decoration.** They are the two cascade fields Phase 3
+steps 4.56 and 4.55 derived, and `/fix-pr-review` seeds its own inverse-risk check and class
+sweep straight off these two lines instead of re-deriving them. Emit both on every finding
+that proposes a code change — `none — pure addition` is a valid `Inverse risk`, an omitted
+line is not.
 
 **Comment payload shape**:
 
@@ -437,7 +447,7 @@ The only part specific to posting: `github_thread_id` (from 8b) and `github_comm
 
 ### 8d. Resolve threads for findings now in `status: resolved`
 
-For each finding transitioning to `resolved` this round (because `/fix-pr-review` shipped a fix between rounds and updated the state file), call:
+For each finding transitioning to `resolved` this round (a fix shipped between rounds and the state file records it — see the writer caveat in `references/finding-state-schema.md`; that transition is currently made by hand), call:
 
 ```bash
 gh api graphql -f query='

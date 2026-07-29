@@ -169,19 +169,25 @@ Search where the code actually lives before answering — on a non-monorepo, a z
 
 ---
 
-## Q6a — reporting format
+## Q6a — reporting
 
-Default Severity: **SERIOUS** (escalate to **CRITICAL** if the existing thing lives in an auth / validation / crypto package).
+A Q6a finding uses the SAME shape as every other finding — the one in
+`<SKILL_DIR>/references/finding-output-format.md`. Do not invent a shorter one here: a Q6a
+finding printed without `Rule-class`, `Enclosing-symbol`, `Inverse risk` and `Class-sites`
+loses its stable ID and both cascade fields, and the Phase 3 critic cannot sweep it.
 
-```
-Severity:    Serious
-Confidence:  high | medium
-File:        <path:line of the new duplicate>
-Category:    Reusability
-Issue:       <new symbol> at <new file:line> reimplements <existing symbol> at <existing file:line>
-Why it matters: Divergent implementations drift over time, creating dual-fix burden and skill silos.
-Suggested fix:  Import from <existing file> instead of redefining.
-```
+Q6a-specific values for that shape:
+
+- **Severity**: `Serious` by default; escalate to `Critical` if the existing thing lives in
+  an auth / validation / crypto package.
+- **Category**: `Reusability`.
+- **Issue**: `<new symbol> at <new file:line> reimplements <existing symbol> at <existing file:line>`.
+- **Why it matters**: divergent implementations drift over time, creating dual-fix burden
+  and skill silos.
+- **Suggested fix**: import from `<existing file>` instead of redefining.
+- **File**: the `<path:line>` of the new duplicate.
+
+Plus the `reusability_searches:` audit above, which is specific to Q6.
 
 OR `No issues` (with a populated `reusability_searches:` field — empty audit invalidates this claim).
 

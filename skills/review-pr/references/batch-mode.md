@@ -12,6 +12,27 @@ For "all open PRs", enumerate via `gh pr list --json number,url,title --limit 50
 - Spawn **ONE `general-purpose` subagent PER PR**. Each subagent runs the single-PR flow (Phases 1–3) independently against its own PR and returns its Phase 4 terminal block as its result. Dispatch in parallel batches of 3–4.
 - Subagents NEVER post to GitHub and NEVER ask questions — all posting and all AskUserQuestion checkpoints belong to the orchestrator, at the end.
 
+### `<SKILL_DIR>` on the batch branch
+
+Every per-PR subagent runs the full single-PR flow, so it loads the same reference files main would — the Q6 search algorithm, the false-positive table, the state schema, the verifier prompts — and it dispatches its own Subagent 1 / Subagent 3 / verifiers, whose prompts carry `<SKILL_DIR>` placeholders of their own. A subagent has no way to derive that value: its working directory is the user's repo, not the skill directory, so every bare `references/...` load silently finds nothing and it reviews from memory.
+
+The orchestrator resolves `<SKILL_DIR>` once — the absolute directory of the SKILL.md it is executing, resolved through any symlink, per "Subagent 1" in SKILL.md Phase 2 — and opens every per-PR subagent prompt with it:
+
+```
+SKILL_DIR: <SKILL_DIR>
+
+You are running the full /review-pr single-PR flow (Phases 1-3) against <pr-url>.
+Your working directory is the user's repo, not the skill directory. Load every
+reference file by its absolute `<SKILL_DIR>/references/...` path — a bare relative
+path resolves against the repo and silently finds nothing.
+
+Substitute this same SKILL_DIR value into every prompt YOU dispatch — Subagent 1,
+Subagent 3, and the Phase 3 verifiers all carry `<SKILL_DIR>` placeholders, and you
+are the only source of the value they have.
+
+Do not post to GitHub and do not ask questions. Return your Phase 4 terminal block.
+```
+
 ---
 
 ## "Don't stop" semantics

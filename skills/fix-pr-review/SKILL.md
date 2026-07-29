@@ -23,7 +23,7 @@ Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding
 | 5.5 | Convergence subagent: class completeness, inverse risk, new siblings | Per-fix verdicts; missing sites applied |
 | 6 | /done pipeline: fix-ts-errors → parallel-review → simplify | Clean code |
 | 7 | Reply + resolve on GitHub (skipped for local files) | Threads resolved |
-| 8 | Finalize: restore stash, report, suppressions write, next actions | Final report |
+| 8 | Finalize: restore stash, report, NEEDS-INPUT triage, suppressions write, next actions | Final report |
 
 ### R-Rubric Summary (Phase 3 STEP 4 — first match wins)
 
@@ -53,9 +53,9 @@ Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding
 
 ### Reference files
 
-Each is loaded at exactly one point in the run; the firing condition is repeated in the pointer at that point.
+Each carries its firing condition in the pointer at the point of use; load it there, not up front.
 
-- `references/fetch-review-data.md` — per-input-type GraphQL/REST fetch, CodeRabbit review-body anatomy, `Comment` schema. Loaded by main in Phase 2.
+- `references/fetch-review-data.md` — per-input-type GraphQL/REST fetch, CodeRabbit review-body anatomy, `Comment` schema. Loaded by main in Phase 2 — at the GitHub fetch step, and again at the `Comment`-schema normalisation step if the local-file path meant it was not read there.
 - `references/triage-prompt.md` — the whole Phase 3 subagent prompt (STEP 0 → STEP 6 + output format). Read by main in Phase 3, placeholder-substituted, passed verbatim.
 - `references/triage-rubric.md` — R1–R9 detail, NEEDS-INPUT calibration, `change_class` worked examples, reply formats. Loaded by the triage SUBAGENT at STEP 4.
 - `references/github-reply-resolve.md` — Steps 7a–7d posting/resolving mechanics. Loaded by main in Phase 7; never loaded for local-file input.
@@ -229,7 +229,7 @@ A fetch that errors — GraphQL rate limit, 404, private repo, or a per-page fai
 
 Parse the `/review-pr` output format. Extract findings from the `## Findings` section, preserving `Severity / File / Category / Issue / Why it matters / Suggested fix` **plus `Rule-class` / `Enclosing-symbol` / `Inverse risk` / `Class-sites`** when present — `/review-pr` emits these per finding and dropping them forces this skill to re-derive work the reviewer already did.
 
-**Seed, don't re-derive**: when `Inverse risk:` is present, seed STEP 5's `inverse_risk` from it and VERIFY it against the code (confirm the named failure mode is real and still applies) rather than deriving a new one from scratch. When `Class-sites: <H>/<N>` is present, seed STEP 1.5's `class_completeness` with those `N` sites and verify the count against your own search — re-run the search only to catch sites the reviewer missed, not to rebuild the list. `Rule-class` and `Enclosing-symbol` seed the class sweep's `signature`. If a seeded value contradicts what you read in the code, the code wins — record the discrepancy in the field.
+**Seed, don't re-derive**: when `Inverse risk:` is present, seed STEP 5's `inverse_risk` from it and VERIFY it against the code (confirm the named failure mode is real and still applies) rather than deriving a new one from scratch. When `Class-sites: <A>/<N>` is present, seed STEP 1.5's `class_completeness` with those `N` sites and verify the count against your own search — re-run the search only to catch sites the reviewer missed, not to rebuild the list. `Rule-class` and `Enclosing-symbol` seed the class sweep's `signature`. If a seeded value contradicts what you read in the code, the code wins — record the discrepancy in the field.
 
 **Severity mapping**: `/review-pr` uses `Critical | Serious | Moderate | Minor` while CodeRabbit uses `Critical | Major | Minor | Refactor | Nitpick`. Both are valid — normalize to the internal `Comment` schema which accepts either convention. Map for triage priority: `Critical` = highest, `Serious`/`Major` = high, `Moderate` = medium, `Minor`/`Refactor` = low, `Nitpick` = default-dismiss.
 
@@ -262,7 +262,7 @@ Dispatch **one** `general-purpose` subagent with `Read`, `Grep`, and `Bash` tool
 
 The whole prompt is `references/triage-prompt.md` — read it now, substitute its `<...>` placeholders (`<SKILL_DIR>` = this skill's absolute directory, plus the Phase 1 context values, the `git diff <BASE_SHA>...HEAD` output, the repo maps, `SUPPRESSIONS`, and the Phase 2 `Comment[]` array), and pass the result to the subagent VERBATIM. It is the string the subagent runs, not instructions for you to follow, summarise, or restate inline.
 
-Its STEP 4 sends the subagent to `references/triage-rubric.md` on its own — you do not read that file; the R-Rubric Summary table above is the main-agent view. What comes back is what Phase 4 validates: per FIX the prompt emits `fix_plan`, `change_class`, `test_scenario`, `inverse_risk:`, `class_completeness:` and `reusability_context:`.
+Its STEP 4 sends the subagent to `references/triage-rubric.md` on its own — you do not read that file; the R-Rubric Summary table above is the main-agent view. What comes back is what Phase 4 validates: per FIX the prompt emits `fix_plan`, `change_class`, `test_scenario`, `inverse_risk:` and `class_completeness:`; `reusability_context:` rides on every item, not just FIX.
 
 ---
 
@@ -337,7 +337,7 @@ For each selected item, use a follow-up AskUserQuestion:
        - label: "Keep as-is"
          description: "Selected by mistake — keep the original classification"
 
-On "FIX": re-dispatch the classifier scoped to just this item to produce the full FIX field set — `fix_plan`, `change_class`, `test_scenario`, `inverse_risk`, and `class_completeness` (class sweep included; a reclassified item has never been swept) — then re-run plan validation on the changed item. Producing a partial field set here fails validation and burns the single retry. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
+On "FIX": re-dispatch the classifier scoped to just this item to produce the full FIX field set — `fix_plan`, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (class sweep included; a reclassified item has never been swept), and `reusability_context` (carry the contested item's own value through unless the sweep changed it) — then re-run plan validation on the changed item. Producing a partial field set here fails validation and burns the single retry. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
 
 Nothing is posted or resolved during this step — Phase 7 remains the only place GitHub is touched, and it acts **only** on items that survived this confirmation. Resolving a thread is irreversible noise in the reviewer's conversation: a DISMISS, DEFER, or DISAGREE that skipped this gate stays open and unanswered until it has been through it.
 

@@ -300,6 +300,8 @@ Return the plan in this EXACT format. Missing required fields cause rejection.
      grounding_a: <what code>
      grounding_b: <what ask>
      reason: <concrete 1 sentence>
+     reusability_context: { flagged: <bool>, matches: [...], verified: <yes|no> }
+                                   # from STEP 2.5; { flagged: false } when nothing found
      reply: "<specific reply per rubric format>"
 
 ## DEFER (<count>)
@@ -308,6 +310,8 @@ Return the plan in this EXACT format. Missing required fields cause rejection.
      grounding_a: <what code>
      grounding_b: <what ask>
      reason: <why out of scope>
+     reusability_context: { flagged: <bool>, matches: [...], verified: <yes|no> }
+                                   # from STEP 2.5; { flagged: false } when nothing found
      reply: "Valid but out of scope — <specific>"
 
 ## DISAGREE (<count>)
@@ -316,6 +320,8 @@ Return the plan in this EXACT format. Missing required fields cause rejection.
      grounding_a: <what code>
      grounding_b: <what ask>
      disagree_rationale: <concrete counter-argument>
+     reusability_context: { flagged: <bool>, matches: [...], verified: <yes|no> }
+                                   # from STEP 2.5; { flagged: false } when nothing found
      reply: "Disagree — <specific>. Keeping current approach."
 
 ## NEEDS-INPUT (<count>)
