@@ -7,6 +7,7 @@ This file owns:
 - Pre-posting hunk validation (line vs file-level routing)
 - Three-phase REST/GraphQL posting (PENDING review → file-level threads → submit)
 - **Rolling-review fix**: detect prior `/review-pr` review on the PR via marker comment, edit its body in place instead of posting a duplicate.
+- Pre-posting preflight on re-runs: verdict-body sync check, thread resolution for findings now `resolved`
 - Failure recovery (Phase A/B/C disclosed partial state)
 - State + cache write-back
 
@@ -67,6 +68,50 @@ PRIOR_REVIEW_DB_ID=$(... same query, take .databaseId ...)
 
 ---
 
+## Step 0b — Verdict-body sync check (re-runs)
+
+If `last_posted_review_id` exists in cache, compare last-posted body verdict against GitHub state:
+
+```bash
+LAST_POSTED_REVIEW_ID=$(jq -r '.last_posted_review_id // empty' "$CACHE_FILE")
+if [ -n "$LAST_POSTED_REVIEW_ID" ]; then
+  LAST_POSTED_STATE=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews/$LAST_POSTED_REVIEW_ID" --jq .state)
+  LAST_POSTED_BODY_VERDICT=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews/$LAST_POSTED_REVIEW_ID" --jq .body | grep -oE '\*\*Verdict\*\*:\s*`?(approve|comment|request-changes)`?' | sed 's/.*\(approve\|comment\|request-changes\).*/\1/')
+fi
+```
+
+If they drifted:
+
+> **Previous review's body verdict (`<body>`) does NOT match GitHub state (`<state>`).** Likely cause: self-review coerced to `comment`, or manual edit in GitHub UI. The current run's output will not re-post over the previous review — add a NEW review via "Post now" if you want to update. (Rolling-review path will edit the body in place — see Step 0 above.)
+
+---
+
+## Step 0c — Re-review thread resolution (before posting)
+
+If this is a re-review AND `posted_comments` cache exists:
+
+1. **Identify resolved findings**: compare current findings against `posted_comments` via dedupe key. A cached finding NOT in current findings AND whose `id` is now `status: resolved` in `PRIOR_STATE` is "resolved this round."
+
+2. **Resolve their threads** on GitHub:
+
+   ```bash
+   gh api graphql -f query='
+     mutation($threadId: ID!) {
+       resolveReviewThread(input: {threadId: $threadId}) {
+         thread { isResolved }
+       }
+     }
+   ' -f threadId="<thread_id>"
+   ```
+
+3. **Track resolved findings** for the "Resolved since last review" line in the summary body. Use exact wording: `Resolved since last review: S1 (<file:line> <one-line issue>, round 4 commit <sha>), ...`. NEVER use "deferred", "fixed", or other ambiguous wording — use `resolved` with the commit SHA.
+
+4. **Filter review comments**: only post comments for findings NEW or STILL ACTIVE — do NOT re-post findings already present from a previous round (they already have threads). A finding is "still present" if its `id` matches a cached `posted_comments` entry — skip the comment.
+
+5. **Error handling**: failed `resolveReviewThread` (already resolved, permission issue) is best-effort — log and continue. Never blocks posting.
+
+---
+
 ## Step 1 — Compose the summary body
 
 Build a lean summary body (NO "Filtered out" section — internal only). **Always** include the marker comment so future runs can detect this review:
@@ -108,7 +153,7 @@ All three tiers create resolvable, replyable GitHub threads. Body fallback is th
 **Resolved since last review**: S1 (`auth.ts:47` missing null check, round 4 commit `abc1234`), S4 (`db.ts:123` N+1 query, round 5 commit `def5678`) *(threads resolved)*
 ```
 
-NEVER use "deferred" — it's ambiguous. Use one of: `resolved` (with commit SHA), `dismissed` (with reason), or `still-active`.
+Every finding status is exactly one of `active`, `resolved` (with commit SHA), `dismissed` (with reason), `wontfix` (with reason), or `regression` — the enum in `references/finding-state-schema.md`. "Deferred" is not one of them: it leaves the reader unable to tell a shipped fix from an open one.
 
 ---
 
@@ -386,14 +431,9 @@ Match each line-level comment's `databaseId` (from REST `.comments[].id`) to a t
 
 ### 8c. Update `.claude/review-state/<pr>.yml`
 
-For each finding posted/active in this round:
+`references/finding-state-schema.md` is the single source of truth for what Phase 4 writes — the full entry shape, which fields are required, and every status transition. Follow its "Phase 4 — write back" section; do NOT reconstruct the entry shape from this file. An entry written without `file`, `enclosing_symbol`, and `rule_class` breaks the next round's ID computation, and one written without the cascade fields silently disables the next round's regression sweep.
 
-- If `id` not in `state.findings`: append with `status: active`, `round_first_seen: <current_round>`, `github_thread_id`, `github_comment_id`, `last_message`, `label_history: [<this-round-label>]`, `severity`.
-- If `id` exists: append `<this-round-label>` to `label_history`, update `last_message`, `severity`, `github_thread_id`/`github_comment_id` if newly created.
-
-For findings the user dismissed via post-review AskUserQuestion: write `status: dismissed` + `dismissal_reason: <reason>`.
-
-Increment `last_round`. Update `updated_at`. Write atomically (temp + rename).
+The only part specific to posting: `github_thread_id` (from 8b) and `github_comment_id` (REST `databaseId`) are written onto the entry of each finding posted this round.
 
 ### 8d. Resolve threads for findings now in `status: resolved`
 
