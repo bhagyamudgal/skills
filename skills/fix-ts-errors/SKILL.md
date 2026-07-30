@@ -1,89 +1,74 @@
 ---
 name: fix-ts-errors
-description: Fix TypeScript errors in changed or specified files. Use when user says "ts errors", "typescript errors", "fix types", "type errors", "this file has ts error", "still not working" (in TS context), or after writing code that may have type issues. Also use proactively after editing TypeScript files.
+description: Fix TypeScript errors and loop the type-check until green. Use when the user says "ts errors" or "fix types", when a change "still isn't working" in a TS context, after editing any TypeScript file, and when another skill needs the type-check loop (/done, /parallel-review, /fix-pr-review).
 ---
 
 # Fix TypeScript Errors
-
-Autonomous TypeScript error detection and fixing loop. Eliminates the manual "check → fix → still broken → fix again" cycle.
-
-## Trigger Conditions
-
-- User reports TS errors in a file
-- User says "not working" after a TS change
-- After writing/editing TypeScript files (proactive)
-- User says "fix types", "ts errors", "type errors"
 
 ## Workflow
 
 ### Step 1: Identify Target Files
 
-Determine which files to check:
 - If user specifies files → use those
 - If user says "changed files" → run `git diff --name-only` to get modified `.ts`/`.tsx` files
-- If after a code edit → check the files just edited
 - If unclear → ask which files
 
-### Step 2: Get Diagnostics
+### Step 2: Go red
 
-Use the IDE integration to get TypeScript diagnostics:
+Run the workspace type-check — `pnpm type-check` / `turbo type-check`, or `bunx tsc --noEmit` for a plain TS project. **That output is the loop's ground truth.**
 
-```
-Use the LSP tool (or mcp__ide__getDiagnostics) to get diagnostics for each target file.
-```
-
-If IDE integration is unavailable, fall back to reading the file and analyzing types manually based on imports and type definitions.
+Use IDE diagnostics (the LSP tool, or `mcp__ide__getDiagnostics`) only to localise an error the check already reported. IDE diagnostics are per-file and unreliable across workspace package boundaries, so they narrow — they never decide.
 
 ### Step 3: Fix Errors
 
 For each error found:
+
 1. Read the file around the error location
-2. Understand the root cause (don't just suppress the error)
+2. Understand the root cause, then fix at the source
 3. Fix with proper type-safe patterns
 
 **Fix priority:**
+
 - Missing imports → add the import
-- Type mismatches → fix the type, not add `as` cast
+- Type mismatches → correct the declaration at its source
 - Missing properties → check the source type definition and align
-- Null/undefined issues → add proper narrowing (no `!` assertions)
+- Null/undefined → narrow with a type guard or an early return
 - Generic type issues → provide explicit type parameters
 
-**Never do:**
-- Add `// @ts-ignore` or `// @ts-expect-error`
-- Use `as any` or `as unknown as X`
-- Use non-null assertions (`!.`)
-- Suppress errors without understanding them
+**Every error exits through a real type:** add the missing import, narrow the union, widen the signature at its source, or derive it from the schema (`z.infer`). An `as` survives only with a comment naming the third-party gap.
 
 ### Step 4: Re-verify
 
-After fixing, re-run diagnostics on the same files to confirm all errors are resolved.
+Re-run the same workspace check. **Green means it exits 0.**
 
-If new errors appeared (cascade effect), go back to Step 3.
+A file whose squiggles cleared is not green — a type change breaks its importers, so chase the cascade to the workspace edge before reporting. If new errors appeared, go back to Step 3.
 
 ### Step 5: As-Cast Audit
 
-Once diagnostics are clean, grep the changed lines for `as ` assertions (excluding `as const`):
+Once green, grep the changed lines for `as ` assertions (excluding `as const`):
 
 ```bash
 git diff -U0 -- '*.ts' '*.tsx' | grep '^+' | grep -w 'as' | grep -v 'as const'
 ```
 
 Skip import aliases (`import { x as y }`). For every remaining `as`:
+
 1. Attempt to remove it with proper typing — inference, narrowing, type guards, generics, or schema-derived types (`z.infer`)
-2. Re-run diagnostics after each removal; if errors appear, go back to Step 3
+2. Re-run the check after each removal; if errors appear, go back to Step 3
 3. An `as` may survive only if genuinely unavoidable (e.g., a third-party library type gap) — and it must carry a comment explaining why
 
 ### Step 6: Report
 
-Once clean, briefly report:
+Once green, briefly report:
+
 - How many errors were found
 - What was fixed
 - Surviving `as` casts: the count, with a one-line justification each (target: 0)
-- Any remaining concerns
 
 ## Loop Breaker
 
 If after 3 fix-verify cycles errors persist:
+
 1. Stop and explain the root cause
 2. Show the remaining errors
 3. Suggest whether the issue is in the file itself or in a dependency
@@ -91,8 +76,5 @@ If after 3 fix-verify cycles errors persist:
 
 ## Important Rules
 
-- Always understand the error before fixing — read surrounding code and type definitions
-- Prefer fixing at the source over fixing at the symptom
-- If a type is wrong in a shared package (@gsm3/types, @gsm3/validators), flag it — don't work around it
-- Check if the error is in generated code (drizzle schema) vs authored code
-- For Drizzle schema errors, check if `db:generate` needs to run
+- A wrong type in a shared workspace package is fixed in that package: report it and stop
+- Check whether the error is in generated code or authored code — if a codegen step is stale, suggest the command, do not run it

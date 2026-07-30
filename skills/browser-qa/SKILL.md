@@ -1,19 +1,16 @@
 ---
 name: browser-qa
-description: Automated browser testing of UI flows via Playwright MCP + agent-browser. Use when user says "browser qa", "test the flow", "verify the UI", "test this page", "check if it works", "end-to-end check", or after completing code changes that affect UI and need manual verification replaced by automation. NOT for conversational bug-reporting sessions — that's /qa.
+description: Drive a real browser through a UI flow with Playwright — navigate, click, fill, screenshot every step, and check network and console. Use when the user names a flow to run against a URL, or after a UI change lands and needs verifying in the browser.
 ---
-
-# QA — Smart Browser Testing
-
-Automates what a developer does manually: navigate, interact, trigger API calls, verify results. Uses Playwright MCP for interactions and agent-browser for video recording and visual diffs.
 
 ## Input
 
-Accept either:
 - **Natural language flow**: "Create a recipe with 3 ingredients, verify nutrition calculates"
 - **URL + instructions**: `http://localhost:3000/orders` + "Click New Order, fill supplier, submit"
 
 If no URL provided, default to `http://localhost:3000`.
+
+If a UI change just landed and no flow was named, ask: "What flow should I QA? (e.g., 'test the order creation at localhost:3000/orders')"
 
 ## Step 1: Prepare
 
@@ -34,63 +31,30 @@ Check if dev server is running: `curl -s -o /dev/null -w "%{http_code}" <url>`. 
 
 ## Step 3: Execute Test Flow
 
-Parse the user's flow into numbered steps. Launch a **single subagent** that uses smart tool selection:
+Parse the user's flow into numbered steps. Launch a **single subagent**.
 
-### Tool Selection Rules
-
-| Task | Tool | Command |
-|------|------|---------|
-| Start video | agent-browser | `agent-browser open <url>` then `agent-browser record start .qa/recording.webm` |
-| Navigate | Playwright MCP | `browser_navigate` |
-| Get element refs | Playwright MCP | `browser_snapshot` (re-snapshot before EVERY interaction) |
-| Click / Fill / Select | Playwright MCP | `browser_click`, `browser_fill_form`, `browser_select_option` |
-| Wait for response | Playwright MCP | `browser_wait_for` |
-| Check API calls | Playwright MCP | `browser_network_requests` |
-| Check console errors | Playwright MCP | `browser_console_messages` with level "error" |
-| Take screenshot | Playwright MCP | `browser_take_screenshot` with filename `.qa/<NN>-<step>.png` |
-| Visual before/after diff | agent-browser | `agent-browser diff screenshot --baseline .qa/<before>.png` |
-| Stop video | agent-browser | `agent-browser record stop` |
+Playwright MCP is the only driver. If Playwright MCP is unavailable, fall back to the `agent-browser` CLI.
 
 ### Subagent Prompt Template
 
-> Execute the following QA test flow at {URL}. Use Playwright MCP tools for all interactions and agent-browser for video recording.
->
-> **Setup:**
-> 1. `agent-browser open {URL}` — connect to the page
-> 2. `agent-browser record start .qa/recording.webm` — start video
+> Execute the following QA test flow at {URL} using Playwright MCP tools. The browser session is already open at {URL} from the auth check.
 >
 > **Test steps:**
 > {numbered steps from user's flow description}
 >
 > For EACH step:
-> - `browser_snapshot` first to get fresh element refs
+> - `browser_snapshot` first — refs go stale the instant the page changes, so re-snapshot before EVERY interaction
 > - Execute the interaction via Playwright MCP
-> - `browser_take_screenshot` with filename `.qa/<NN>-<step-name>.png`
-> - `browser_network_requests` after any action that triggers an API call
-> - `browser_console_messages` to check for new errors
-> - Report: PASS or FAIL with what was observed
+> - Capture evidence: screenshot to `.qa/<NN>-<step-name>.png`, `browser_network_requests` after any API-triggering action, `browser_console_messages` for new errors. A step with no evidence is a FAIL.
 >
-> **Teardown:**
-> 1. `agent-browser record stop` — save video
-> 2. `browser_close` — close Playwright browser
-> 3. `agent-browser close` — close agent-browser
+> Report each step in the Step 4 format below. Every numbered step must appear with PASS or FAIL — a step you could not execute is FAIL, never omitted.
 >
-> **Report format per step:**
-> Step N: <description>
->   Result: PASS/FAIL
->   Observed: <what happened>
->   API: <method endpoint -> status> (if applicable)
->   Screenshot: .qa/<NN>-<step>.png
->   Errors: <console errors or "none">
+> **Teardown:** `browser_close`.
 
 ## Step 4: Report
 
-After the subagent completes, output the combined report:
-
 ```
-======================================
 QA: <flow description>
-======================================
 
 Step 1: <description>
   PASS — <observation>
@@ -104,20 +68,9 @@ Step 3: <description>
   Screenshot: .qa/03-step-name.png
 
 Console errors: <list or "none">
-Video: .qa/recording.webm
 Screenshots: .qa/ (<N> files)
 
-======================================
 VERDICT: <ALL PASS | PARTIAL | FAIL> (N/M steps)
-======================================
 ```
 
-On failure: include exact expected vs actual, reference the screenshot, and note the video has the full recording for debugging.
-
-## Auto-trigger Usage
-
-After completing code changes that affect UI, ask the user:
-
-> "What flow should I QA? (e.g., 'test the order creation at localhost:3000/orders')"
-
-Then run the full QA flow above.
+On failure: include exact expected vs actual and reference the screenshot.

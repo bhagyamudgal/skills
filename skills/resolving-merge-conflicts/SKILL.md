@@ -1,21 +1,20 @@
 ---
 name: resolving-merge-conflicts
-description: "Use when you need to resolve an in-progress git merge/rebase conflict."
+description: "Resolve an in-progress git conflict without a silent drop. Use when the worktree is mid-merge, mid-rebase, mid-cherry-pick or mid-stash-pop — `CONFLICT (content)`, `<<<<<<<` markers, `Unmerged paths`, or `fix conflicts and then commit the result`."
 ---
 
-**Guiding principles**
+1. **Orient before you touch anything.** Establish from `git status` whether you are in a merge, a rebase, or a cherry-pick — under a rebase `ours` is the upstream you are replaying onto and `theirs` is your own commit, the inverse of a merge, and getting this backwards is the most common wrong resolution.
 
-- Lose **no** changes from either side — the merge is done only when both branches' work survives.
-- Deep-review the git diffs of both branches around every conflict before resolving anything.
-- Merge semantically, not mechanically — understand what each side means; don't just pick hunks.
-- When intent is genuinely ambiguous, ask the user instead of guessing.
+   Then split the conflicted files: generated artifacts and lockfiles (`bun.lock`, `pnpm-lock.yaml`, `_generated/`, snapshots) are **regenerated from source, never hand-merged**. Only hand-written files go through steps 2-3.
 
-1. **See the current state** of the merge/rebase. Check git history, and the conflicting files.
+2. **Find the primary sources** for each conflict. Understand why each change was made and what the original intent was. Read the commit messages, check the PRs, check original issues/tickets.
 
-2. **Find the primary sources** for each conflict. Understand deeply why each change was made, and what the original intent was. Read the commit messages, check the PRs, check original issues/tickets.
+3. **Resolve each hunk against the primary sources**, not against the markers. Preserve both intents. Where incompatible, pick the one matching the merge's stated goal and note the trade-off. Every line in the resolution traces to one side's original or to a mechanical combination of both.
 
-3. **Resolve each hunk.** Preserve both intents where possible. Where incompatible, pick the one matching the merge's stated goal and note the trade-off. Do **not** invent new behaviour. Always resolve; never `--abort`.
+   Before staging, diff your resolution against both parents for every conflicted file (`git diff --merge`, or `git diff :2:<file> <file>` and `git diff :3:<file> <file>`). Place **every** hunk from both sides in exactly one bucket: kept, superseded (name what replaced it), or dropped (name why). A hunk you cannot place is a **silent drop** — an unresolved conflict wearing a resolution. State the ledger before you commit.
 
-4. Discover the project's **automated checks** and run them — typically typecheck, then tests, then format. Fix anything the merge broke.
+   Always resolve. When the two intents are genuinely incompatible and no stated goal decides between them, stop and put both candidate resolutions to the user rather than guessing.
 
-5. **Finish the merge/rebase.** Stage everything and commit. If rebasing, continue the rebase process until all commits are rebased.
+4. **Run the project's checks** — `/done` owns this pipeline. Fix anything the merge broke.
+
+5. **Finish the merge/rebase.** Stage everything and commit. If rebasing, continue until all commits are replayed — the same conflict often resurfaces at each replayed commit, and your resolution must stay consistent across them.

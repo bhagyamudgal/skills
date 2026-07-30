@@ -1,13 +1,11 @@
 ---
 name: audit-ticket
-description: Audit a stale GitHub issue/ticket against the current codebase — what's done, what's left, is it still needed? Then update or sunset it. Use when user says "audit this ticket", "is this ticket still needed", "update this old ticket", "what's done and what's left on this issue", or "should we sunset this issue".
+description: Audit a stale GitHub issue against the current codebase, then update or sunset it. Use when the user says "audit this ticket", or asks whether an old issue is still needed or should be sunset.
 ---
 
 # /audit-ticket — Audit a Stale Issue Against Current Code
 
 Takes a GitHub issue that was written weeks or months ago and checks every requirement in it against the codebase AS IT IS TODAY. Old tickets rot: half the items ship in unrelated PRs, some become obsolete after a refactor, and the rest silently block planning because nobody trusts the ticket anymore. This skill produces a per-item verdict with evidence, then lets the user decide the ticket's fate.
-
-**Use AskUserQuestion for the ticket-fate decision** — cursor-selectable, options concrete, strongest first marked "(Recommended)". Never present the choice as a numbered prose list, and never touch the ticket without that explicit choice.
 
 ## Usage
 
@@ -73,7 +71,7 @@ Record the sha — every verdict in the report is "as of `<sha>`", so the audit 
 
 ## Phase 2: Investigate (parallel subagents)
 
-Dispatch **ONE `general-purpose` subagent PER requirement**, in parallel batches of 3-4. Main context is the orchestrator — it never greps the codebase for a verdict itself. Trivially-coupled requirements (e.g., "add the column" + "expose it in the API response") may share one subagent; unrelated ones never do.
+Dispatch **ONE `general-purpose` subagent PER requirement**, in parallel batches of 3-4. Main context is the orchestrator — it never greps for a verdict itself, which also keeps the verdicts independent. Share a subagent only when two requirements are the same edit to the same file (e.g., "add the column" + "expose it in the API response").
 
 ### Subagent prompt
 
@@ -114,7 +112,7 @@ obsolete_reason: <REQUIRED for obsolete — what changed and where (file:line)>
 - Every done/partially-done verdict MUST cite at least one file:line.
 - "obsolete" needs evidence of the superseding change — not a hunch.
 - If you genuinely cannot determine it, say verdict: not-done with
-  confidence: low and explain what you'd need. Do NOT invent evidence.
+  confidence: low and explain what you'd need.
 ```
 
 ### Degraded-mode rule
@@ -125,7 +123,11 @@ A failed or empty subagent doesn't stop the audit — mark that requirement `unv
 
 ## Phase 3: Report (main)
 
-Verify each returned `file:line` exists before printing (quick `Read` of the cited range) — drop fabricated citations and downgrade that verdict's confidence to `low`. Then print:
+Verify each returned `file:line` exists before printing (quick `Read` of the cited range) — drop fabricated citations and downgrade that verdict's confidence to `low`.
+
+Every `Rn` from Phase 1 appears exactly once in the table; N equals d + p + nd + o + u. A requirement with no returned verdict is `unverified`, not omitted.
+
+Then print:
 
 ```
 # Ticket Audit: <title> (#<n>)
@@ -172,30 +174,7 @@ When every requirement is done or obsolete, reorder: "Sunset (close)" goes first
 
 ## Phase 5: Execute (gh)
 
-Multi-line bodies always go through `--body-file` with a temp file — never heredoc, never inline `-b` with embedded quoting.
-
-### Update in place
-
-1. Compose the status comment: the Phase 3 table + recommendation + `Audited against <sha> on <date>`. Post via `gh issue comment <n> --body-file <tmp>`.
-2. Compose the edited body: preserve the author's original intent/context paragraphs, then a task list — `- [x]` for done items, `- [ ]` with a one-line status for partial/not-done, `- [x] ~<text>~ (obsolete: <reason>)` for obsolete. Footer: `_Audited <date> against <sha>._`
-3. Apply via `gh issue edit <n> --body-file <tmp>`.
-
-### Sunset (close)
-
-1. Post the reasoning comment (table + why this ticket no longer needs to exist) via `--body-file`.
-2. `gh issue close <n> --reason completed` when the work shipped, `--reason "not planned"` when it's obsolete.
-
-### Split remainder
-
-1. Create the follow-up: title `<original title> (remaining work)`, body = open items with their gaps + `Split from #<n> after audit (<sha>, <date>)`, via `gh issue create --title <t> --body-file <tmp> --assignee @me`.
-2. Comment on the original linking the new issue and listing what moved.
-3. Close the original with `--reason completed`.
-
-### Leave unchanged
-
-Print `Report kept local — #<n> untouched.` and exit.
-
-After any write, print the affected URLs (`gh` echoes them) so the result is one click away.
+Phase 5 runs on the Phase 4 fate choice. Read `references/execute.md` for the chosen fate's recipe.
 
 ---
 
@@ -204,17 +183,3 @@ After any write, print the affected URLs (`gh` echoes them) so the result is one
 - **`gh` not installed/authed** → fail fast: `Run 'gh auth login' and retry.`
 - **Issue not found / no access** → `Couldn't access issue #<n>. Check the number and repo access.`
 - **Issue already closed** → still audit (the user may want to verify the close or reopen), note `State: closed` prominently in the report; on "Update in place", ask whether to also reopen.
-- **No extractable requirements** → ask the user what to verify; don't dispatch blind subagents.
-- **Image download fails** → note it in the report; never claim an image showed nothing when it couldn't be fetched.
-- **Subagent failure** → mark `unverified`, continue; abort only if all fail.
-- **`gh issue edit`/`close` fails mid-execute** → report exactly which steps landed (comment posted? body edited?) so the user isn't left with a half-updated ticket unknowingly.
-
-## Rules
-
-- **NEVER** close, edit, comment on, or create an issue without the explicit Phase 4 choice — the report itself is always safe; writes never are.
-- **NEVER** trust the ticket's own checkboxes — a `- [x]` in a stale body is a claim to verify, not a verdict.
-- **NEVER** emit a done/partial verdict without file:line evidence that survived the Phase 3 citation check.
-- **NEVER** audit requirements inline in main context — one subagent per requirement keeps main free for orchestration and keeps verdicts independent.
-- **NEVER** use heredoc for `gh` bodies — `--body-file` with a temp file, always.
-- **ALWAYS** read the full comment thread — the last comment often rewrites the ticket.
-- **ALWAYS** anchor the audit to a commit sha so "done" means something next month.
