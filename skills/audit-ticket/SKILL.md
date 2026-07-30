@@ -41,10 +41,12 @@ Extract attachment URLs from the body AND every comment:
 For each, download with auth (private-repo attachments 404 without it), then Read the file to actually look at it:
 
 ```bash
-curl -sL -H "Authorization: token $(gh auth token)" -o /tmp/audit-ticket-<n>-img<i>.png "<url>"
+curl -fsSL -H "Authorization: token $(gh auth token)" -o /tmp/audit-ticket-<n>-img<i>.png "<url>"
 ```
 
-Screenshots and mockups often ARE the spec — a UI mock in the body can carry requirements no text mentions. Fold what the images show into the requirement list below. If a download fails, note `image <i> unavailable` in the report instead of pretending it didn't exist.
+`-f` is load-bearing: without it a 404 exits 0 and writes the error body into the `.png`, and you Read a non-image believing it is the spec. Check the exit code before the Read.
+
+Screenshots and mockups often ARE the spec — a UI mock in the body can carry requirements no text mentions. Fold what the images show into the requirement list below. If the download exits non-zero, note `image <i> unavailable` in the report instead of pretending it didn't exist.
 
 ### Extract the requirement list
 
@@ -174,7 +176,7 @@ When every requirement is done or obsolete, reorder: "Sunset (close)" goes first
 
 ## Phase 5: Execute (gh)
 
-Phase 5 runs on the Phase 4 fate choice. Read `references/execute.md` for the chosen fate's recipe.
+Phase 5 runs on the Phase 4 fate choice, and only on it — the report is always safe to print, but every `gh` write waits for that explicit choice. Read `references/execute.md` for the chosen fate's recipe.
 
 ---
 

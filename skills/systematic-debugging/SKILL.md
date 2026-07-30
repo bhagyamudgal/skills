@@ -62,7 +62,7 @@ Scientific method:
 
 Fix the root cause, not the symptom:
 
-1. **Regression test.** `/diagnosing-bugs` Phase 5 owns turning the reproduction into a failing test.
+1. **Regression test, before the fix.** Turn the reproduction into a failing test and watch it fail *first* — the ordering is the point, since a test written after the fix proves nothing about the bug. `/diagnosing-bugs` Phase 5 owns the mechanics.
 2. **Single fix.** Address the identified root cause. The diff contains only the root-cause fix.
 3. **Verify.** Test passes, no other tests broken, issue actually resolved. Then run `/done`.
 4. **Log each attempt as you make it** — "attempt N — hypothesis — result". After the third failure, stop fixing and open the architecture question with the user.

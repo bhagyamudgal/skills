@@ -102,10 +102,12 @@ Heuristic: would a senior engineer be embarrassed if the user found a gap you di
 
 The `/done` skill runs the full verification pipeline in sequence:
 
-1. `/fix-ts-errors` — type-check loop until clean
-2. `/parallel-review` — code-review + coderabbit in parallel
-3. `/simplify` — code quality and reuse check
-4. Verify correctness — logic review, run tests if applicable
+1. `/fix-ts-errors` — workspace type-check loop until it exits 0
+2. `/parallel-review` — every reviewer in parallel; fix critical + serious, re-run until zero remain
+3. `/simplify` — code quality and reuse, plus a blocking scan of every added comment
+4. Verify correctness — account for every item in the request against the diff; tests must pass
+5. Report what was checked and fixed
+6. Commit via `/git-commit` when the task is a discrete unit of work
 
 **If you are tempted to skip `/done` because the change is small — that is exactly when bugs slip through. Run it.**
 

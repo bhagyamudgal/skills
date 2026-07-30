@@ -11,10 +11,10 @@ description: "Resolve an in-progress git conflict without a silent drop. Use whe
 
 3. **Resolve each hunk against the primary sources**, not against the markers. Preserve both intents. Where incompatible, pick the one matching the merge's stated goal and note the trade-off. Every line in the resolution traces to one side's original or to a mechanical combination of both.
 
-   Before staging, diff your resolution against both parents for every conflicted file (`git diff --merge`, or `git diff :2:<file> <file>` and `git diff :3:<file> <file>`). Place **every** hunk from both sides in exactly one bucket: kept, superseded (name what replaced it), or dropped (name why). A hunk you cannot place is a **silent drop** — an unresolved conflict wearing a resolution. State the ledger before you commit.
+   Before staging, diff your resolution against both parents for every conflicted file (`git diff --cc <file>`, or `git diff :2:<file> <file>` and `git diff :3:<file> <file>`). Place **every** hunk from both sides in exactly one bucket: kept, superseded (name what replaced it), or dropped (name why). A hunk you cannot place is a **silent drop** — an unresolved conflict wearing a resolution. State the ledger before you commit.
 
    Always resolve. When the two intents are genuinely incompatible and no stated goal decides between them, stop and put both candidate resolutions to the user rather than guessing.
 
-4. **Run the project's checks** — `/done` owns this pipeline. Fix anything the merge broke.
+4. **Run the project's checks** — `/done` steps 1-4 own this pipeline. Stop before its commit step: committing mid-merge concludes the merge with a generated conventional subject instead of the merge message. Fix anything the merge broke.
 
 5. **Finish the merge/rebase.** Stage everything and commit. If rebasing, continue until all commits are replayed — the same conflict often resurfaces at each replayed commit, and your resolution must stay consistent across them.

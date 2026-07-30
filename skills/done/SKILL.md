@@ -60,4 +60,4 @@ Briefly report:
 
 ### Step 6: Commit
 
-Run `/git-commit`.
+Run `/git-commit` if the user asked to commit, or the task is a discrete unit of work. Otherwise print the two message variants and stop.

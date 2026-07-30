@@ -16,7 +16,7 @@ Options:
 - "Diff — print only" — shows a unified diff; you apply manually
 - "Exit — leave untouched" — keeps the plan file as-is
 
-On `(a)`:
+On **Write**:
   - For each `accepted_additions[]` entry, locate its `plan_step_ref`
     in the plan file using the step quote
   - Insert the addition as a new sub-bullet or sub-heading BELOW the
@@ -31,13 +31,15 @@ On `(a)`:
   - If the write fails (file locked, permissions), print the diff
     instead and tell the user to apply it manually
 
-On `(b)`:
+On **Diff**:
   - Generate a unified diff showing what WOULD be inserted
   - Print to terminal, do NOT write anything
   - Remind user: `git apply` does not work on printed diffs — they
     must save to a file first
 
-**If `PLAN_SOURCE=inline` or `PLAN_SOURCE=plan-mode`**:
+On **Exit**: print nothing; leave the plan file untouched.
+
+**If `PLAN_SOURCE=inline` or `PLAN_SOURCE=conversation`**:
 
 Skip the write-back prompt. Print the accepted additions in a copy-
 pasteable code block so the user can splice them into their plan

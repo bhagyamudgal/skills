@@ -16,4 +16,4 @@
   - End every critique with a one-line verdict: **Ship**, **Hold (fix top item first)**, or **Kill (start over)**.
 
 - **File save**: no
-- **Next step**: if user wants to act on the fixes → `/figma-implement-design` (if Figma) or `/frontend-design` (if code)
+- **Next step**: if user wants to act on the fixes → `/figma-design-to-code` (if Figma) or `/frontend-design:frontend-design` (if code)

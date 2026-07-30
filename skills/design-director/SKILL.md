@@ -71,7 +71,6 @@ Print the mode's `Next step` verbatim, prefixed `Next:`, on exactly one line. Th
 ## Out of scope
 
 - Marketing copy → `copywriting`
-- Landing page conversion → `landing-page-design`, `page-cro`
 - Implementing in Figma → `figma-generate-library`, `figma-generate-design`
-- Implementing in code → `figma-implement-design`, `frontend-design`
+- Implementing in code → `figma-design-to-code`, `frontend-design:frontend-design`
 - Naming, taglines, mood boards and iconography systems are outside this skill

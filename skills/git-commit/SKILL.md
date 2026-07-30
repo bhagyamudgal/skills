@@ -51,4 +51,6 @@ git commit -m "<type>[scope]: <description>
 
 One atomic change per commit.
 
-Every git operation here is **append-only** — stage, commit, and if a hook fails, fix it and land a new commit on top.
+Every git operation here is **append-only** — stage, commit, and if a hook fails, fix it and land a new commit on top rather than amending.
+
+Four things sit outside that word and need saying: leave `git config` alone, let hooks run (no `--no-verify`), keep `--force` and hard resets behind an explicit request, and never force-push `main`.

@@ -16,7 +16,8 @@ If a UI change just landed and no flow was named, ask: "What flow should I QA? (
 
 ```bash
 mkdir -p .qa
-grep -qxF '.qa/' .gitignore 2>/dev/null || echo '.qa/' >> .gitignore
+[ -s .gitignore ] && [ -n "$(tail -c1 .gitignore)" ] && printf '\n' >> .gitignore
+grep -qxF '.qa/' .gitignore 2>/dev/null || printf '.qa/\n' >> .gitignore
 ```
 
 Check if dev server is running: `curl -s -o /dev/null -w "%{http_code}" <url>`. If not reachable, ask user to start it.

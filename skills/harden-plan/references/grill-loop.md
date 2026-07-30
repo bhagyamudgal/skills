@@ -29,9 +29,10 @@ Do NOT include a plain-text `(y / n / other / skip)` line — the options are en
 Mark finding resolved. Append the `recommended_answer` to
 `accepted_additions[]` with its `plan_step_ref`. Move to next.
 
-**`n <reason>` — dismissed**
+**`n` — dismissed**
 
-Dismissal reason is REQUIRED and must be ≥ 10 characters. If missing
+The reason arrives from the follow-up AskUserQuestion that fires once the
+user picks Dismiss. It is REQUIRED and must be ≥ 10 characters. If missing
 or shorter, reject with:
 > Dismiss reason must be at least 10 chars. Try again or type `skip`.
 

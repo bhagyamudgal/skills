@@ -6,6 +6,10 @@ Phase 1 values in their `<placeholders>` — `stated_goal`, `stated_steps`,
 `repo_map_exports`, `existing_services_inventory`,
 `existing_history_tables`.
 
+Subagent A's template also references `${CLAUDE_SKILL_DIR}` — substitute
+it too, with the absolute skill directory path main already resolved when
+it loaded SKILL.md. The subagent gets a real path, not the placeholder.
+
 ## Subagent A — Category analyzer (`general-purpose`)
 
 ```
@@ -58,7 +62,7 @@ NOT style nitpicks, NOT generic advice, NOT hypothetical issues.
 2. Answer all 11 categories EXPLICITLY. Each must be addressed even if
    just `"No concerns for P<n>"`.
 
-   Load `<SKILL_DIR>/references/category-checks.md` before answering
+   Load `${CLAUDE_SKILL_DIR}/references/category-checks.md` before answering
    anything. It holds P1–P11: each category's scope, its default
    severity, its invalidity gate, and one worked example. Answer all 11
    from that file — a category you did not open is a category you did

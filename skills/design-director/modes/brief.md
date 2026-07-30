@@ -10,4 +10,4 @@
   - **Deliverables** (bulleted list of concrete artifacts)
   - **Open questions** (anything the brief leaves ambiguous)
 - **File save**: optional
-- **Next step**: → Brand Identity mode (if greenfield) or Layout Compose (if a single deliverable)
+- **Next step**: → re-run `design-director` in `identity` mode (greenfield) or `layout` mode (single deliverable)

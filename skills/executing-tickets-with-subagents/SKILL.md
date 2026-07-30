@@ -24,7 +24,7 @@ The main conversation is an **orchestrator only**. Every edit, review, and QA pa
    - **Ledger** (e.g. `docs/<ticket>-progress.md`) — THE recovery map, see contract below
    - `tasks/todo.md` checklist
    - **One editable GitHub checklist comment** on the issue (status + root cause per item; save its comment id in the ledger; update via `gh api ... -X PATCH -F body=@file`). Read back after every mutating command; retry only when the read-back shows no effect — empty stdout is not failure.
-   - Harness tasks (TaskCreate/TaskUpdate)
+   - The harness todo list (`TodoWrite`)
 
 ## Ledger contract
 
@@ -41,7 +41,7 @@ Written for a reader with **zero context** — assume the next writer remembers 
 
    Reports arrive **unverified** — SHAs, counts, file:lines, and ran-vs-inspected are the evidence that clears them.
 5. **`browser-qa`** for UI tasks: records original data, restores it, proves restoration; artifacts to scratchpad only. Run it between waves, with no implementer active — hot reload contaminates the session mid-test.
-6. **Bookkeeping**: tick todo, PATCH checklist comment, TaskUpdate, ledger — then next task.
+6. **Bookkeeping**: tick `tasks/todo.md`, PATCH the checklist comment, update the harness todo list, write the ledger — then next task.
 
 A **wedged** agent gets replaced, not re-nudged: dispatch a fresh one.
 

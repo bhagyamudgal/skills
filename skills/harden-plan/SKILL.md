@@ -23,8 +23,8 @@ Each one is loaded only on the branch that reaches it — some by main, some by 
 ```
 /harden-plan <path-to-plan-file>         # file input (enables write-back)
 /harden-plan "<pasted plan text>"        # inline input (print-only)
-/harden-plan                             # auto-detect plan-mode buffer
-/harden-plan --plan-mode                 # explicit plan-mode grab
+/harden-plan                             # reuse a plan pasted earlier in
+                                         # this conversation (print-only)
 ```
 
 ---
@@ -38,16 +38,18 @@ Each one is loaded only on the branch that reaches it — some by main, some by 
    the Phase 5 write-back check.
 2. Else if `$ARG` matches `*/*` or ends in `.md` / `.txt` and
    `[ ! -f "$ARG" ]` → `Plan file not found: <path>`, abort.
-3. Else if `$ARG` is empty OR `$ARG == "--plan-mode"` → if a plan-mode
-   buffer is active, grab its contents and set `PLAN_SOURCE=plan-mode`.
-   If no plan-mode buffer is active, fall to the stop-and-ask block (5).
+3. Else if `$ARG` is empty → if the user pasted or wrote out a plan
+   earlier in this conversation, use that text verbatim and set
+   `PLAN_SOURCE=conversation`. Echo the first 3 lines back and confirm
+   it's the plan they mean before proceeding. If no plan appears earlier
+   in the conversation, fall to the stop-and-ask block (5).
 4. Else if `$ARG` length > 40 chars OR contains newline → treat as
    inline plan text. Set `PLAN_SOURCE=inline`.
 5. Otherwise: stop-and-ask:
    > **Need a plan to harden.** Usage:
    > - `/harden-plan <path>` — harden a plan file
    > - `/harden-plan "pasted text"` — harden inline text
-   > - `/harden-plan` — harden the current plan-mode buffer
+   > - `/harden-plan` — harden a plan pasted earlier in this conversation
 
 Once the plan text is in hand: if it is empty or under 10 lines, print
 `Plan is too short to harden — expand it first` and abort.
@@ -185,7 +187,7 @@ Stash as `existing_history_tables`.
 
 ## Phase 2: Parallel grounding subagents
 
-Load `<SKILL_DIR>/references/subagent-prompts.md`. It holds both
+Load `${CLAUDE_SKILL_DIR}/references/subagent-prompts.md`. It holds both
 templates and the Phase 1 placeholders each takes. Fill the placeholders
 and dispatch both `general-purpose` agents in **one message with two
 Agent tool calls** — A for category analysis, B for sibling-pattern
@@ -317,18 +319,26 @@ Stash `findings_queue` (sorted).
 
 If `findings_queue` is empty, skip to Phase 5.
 
-Findings remain. Load `<SKILL_DIR>/references/grill-loop.md` and run its
+Findings remain. Load `${CLAUDE_SKILL_DIR}/references/grill-loop.md` and run its
 loop over `findings_queue` in severity order — one AskUserQuestion per
 finding — until **every** finding is resolved, dismissed, skipped, or
 self-heal-dropped.
 
 **ALWAYS use the AskUserQuestion tool** for every finding presented to
-the user. Each finding gets a single AskUserQuestion call with these
-options:
+the user, **one question at a time** — never batch findings, never stack
+two questions in one message. Each finding opens with an AskUserQuestion
+carrying these options:
 - "Accept recommendation (y)" — description includes the recommended_answer text
 - "Dismiss (n)" — description: "Provide a specific reason why this doesn't apply (≥10 chars required)"
 - "Custom answer (other)" — description: "Provide your own resolution instead of the recommendation"
 - "Skip" — description: "Leave unresolved for now, revisit later"
+
+AskUserQuestion returns only the selected option's label — no free text.
+So **Dismiss routes to a follow-up AskUserQuestion that collects the
+dismissal reason**, asked after the user picks Dismiss, never alongside
+the first question. `references/grill-loop.md` holds the ≥10-character
+rule and the forbidden-reason list that reason is validated against; a
+rejected reason re-prompts through that same follow-up question.
 
 Never fall back to plain-text "(y / n / other / skip)" prompts. The
 question block format in `references/grill-loop.md` defines the CONTENT
@@ -382,9 +392,9 @@ of the AskUserQuestion's `question` field, not standalone text output.
 
 ### 2. Write-back option
 
-If `PLAN_SOURCE=file`, load `<SKILL_DIR>/references/write-back.md` — it
+If `PLAN_SOURCE=file`, load `${CLAUDE_SKILL_DIR}/references/write-back.md` — it
 holds the external-modification check, the three write-back options, and
-the insertion format. For `inline` / `plan-mode`, print the accepted
+the insertion format. For `inline` / `conversation`, print the accepted
 additions as a copy-paste block and stop.
 
 ### 3. Verdict recommendation
