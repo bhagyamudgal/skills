@@ -42,7 +42,7 @@ If no URL is provided, ask the user for one. Bare `gh` commands infer a PR from 
 
 ## Batch mode (multiple PRs)
 
-Fires when the user provides **2+ PR URLs** or asks to review **all open PRs** — a single-PR run skips this entirely and drops straight into Phase 1. On that branch, load `references/batch-mode.md` before doing anything else: it holds the PR enumeration, the orchestration rules (one subagent per PR, main never reviews inline, subagents never post or ask), the "don't stop" semantics that turn every checkpoint into a pending decision, the consolidated-report template, and the single end-of-run decision prompt.
+Fires when the user provides **2+ PR URLs** or asks to review **all open PRs** — a single-PR run skips this entirely and drops straight into Phase 1. On that branch, load `${CLAUDE_SKILL_DIR}/references/batch-mode.md` before doing anything else: it holds the PR enumeration, the orchestration rules (one subagent per PR, main never reviews inline, subagents never post or ask), the "don't stop" semantics that turn every checkpoint into a pending decision, the consolidated-report template, and the single end-of-run decision prompt.
 
 ---
 
@@ -134,7 +134,7 @@ This enables (a) accurate dedupe in Phase 3, (b) "Resolved but still present" de
 
 ### Load review-state (multi-round dedup)
 
-Load `references/finding-state-schema.md` before reading the state file — it defines the schema, the legal `status` values, and the finding-ID strategy every later phase writes against.
+Load `${CLAUDE_SKILL_DIR}/references/finding-state-schema.md` before reading the state file — it defines the schema, the legal `status` values, and the finding-ID strategy every later phase writes against.
 
 ```bash
 # Local mode: state lives next to the working tree
@@ -253,7 +253,7 @@ After successful run, write result to `$CACHE_FILE` at end of Phase 4 (cache is 
 
 ### Compute shared-package repo map (for Q6)
 
-If `packages/` or `apps/` exists, load `references/q6-reusability-search.md` and run its "Phase 1 — compute the shared-package repo map" section: it holds both shell blocks (the cross-repo `gh api` tree fetch and the local `bash -c` find/grep pair, each truncating at 500 lines) and stashes `repo_map_files` + `repo_map_exports` for Subagent 1's prompt.
+If `packages/` or `apps/` exists, load `${CLAUDE_SKILL_DIR}/references/q6-reusability-search.md` and run its "Phase 1 — compute the shared-package repo map" section: it holds both shell blocks (the cross-repo `gh api` tree fetch and the local `bash -c` find/grep pair, each truncating at 500 lines) and stashes `repo_map_files` + `repo_map_exports` for Subagent 1's prompt.
 
 If neither directory exists, skip the shell: set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false` — Subagent 1 reroutes greps to `src/`.
 

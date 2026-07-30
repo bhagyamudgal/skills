@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
-"""Structural verifier for review-pr / fix-pr-review.
+"""Structural verifier for the skills repo.
 
 Exists because a naive fence COUNT gave a false pass while the prompt template
 was actually broken: an inner ``` closed the outer fence, silently ejecting 54
 lines of output-format spec out of the prompt. Count parity is not nesting.
+
+Two tiers:
+  * repo-wide — every directory under ROOT that holds a SKILL.md. File-agnostic
+    structure: fences, frontmatter, pointer form, reference existence, the
+    shared severity ladder, cross-skill duplication.
+  * pair-only — the review-pr <-> fix-pr-review field contracts. Those field
+    chains exist in no other skill; running them repo-wide is pure noise.
+
+A directory without a SKILL.md is bundled tooling, not a skill, and is skipped.
 """
-import re, sys, pathlib
+import hashlib, re, sys, pathlib
 
 ROOT = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 \
     else pathlib.Path.home() / ".agents/skills"
@@ -17,15 +26,33 @@ fails, warns = [], []
 
 
 def rel(p):
-    return f"{p.parent.name}/{p.name}" if hasattr(p, "parent") else str(p)
+    try:
+        return str(pathlib.Path(p).relative_to(ROOT))
+    except ValueError:
+        return str(p)
 
 
-def fail(t, m): fails.append(f"[{t}] {m}")
-def warn(t, m): warns.append(f"[{t}] {m}")
+def fail(t, m): fails.append((t, m))
+def warn(t, m): warns.append((t, m))
 
 
 def read(p):
     return p.read_text(encoding="utf-8").split("\n") if p.exists() else None
+
+
+# --- skill discovery -------------------------------------------------------
+
+SKILLS = sorted(
+    (p for p in ROOT.iterdir() if p.is_dir() and (p / "SKILL.md").exists()),
+    key=lambda p: p.name,
+) if ROOT.exists() else []
+
+SKILL_MD = {s.name: sorted(s.rglob("*.md")) for s in SKILLS}
+EVERY_MD = [p for files in SKILL_MD.values() for p in files]
+
+
+def skill_dir_of(path):
+    return ROOT / rel(path).split("/")[0]
 
 
 def check_fences(path, lines):
@@ -70,6 +97,268 @@ def check_nested_prompt(path, lines):
             open_at = None
         else:
             inner += 1
+
+
+# --- frontmatter -----------------------------------------------------------
+
+KNOWN_FRONTMATTER_KEYS = {
+    "name", "description", "disable-model-invocation", "allowed-tools",
+}
+
+
+def _parse_frontmatter(lines):
+    """Return (keys_in_order, values) or None if there is no frontmatter block.
+    Continuation lines of a folded scalar are indented, so only column-0
+    `key:` lines start a new key."""
+    if not lines or lines[0].strip() != "---":
+        return None
+    end = next((i for i, l in enumerate(lines[1:], 1) if l.strip() == "---"), None)
+    if end is None:
+        return None
+    keys, values, current = [], {}, None
+    for l in lines[1:end]:
+        m = re.match(r"^([A-Za-z][A-Za-z0-9_-]*):\s?(.*)$", l)
+        if m:
+            current = m.group(1)
+            keys.append(current)
+            values[current] = m.group(2).strip()
+        elif current and l.strip():
+            values[current] = (values[current] + " " + l.strip()).strip()
+    return keys, values
+
+
+def check_frontmatter():
+    """The harness reads `name` to route the skill and `description` to decide
+    whether to fire it. A name that disagrees with the directory routes to
+    nothing. Unknown keys are ignored by the harness — informational only."""
+    for skill in SKILLS:
+        path = skill / "SKILL.md"
+        parsed = _parse_frontmatter(read(path))
+        if parsed is None:
+            fail(skill.name, "SKILL.md has no parseable `---` frontmatter block")
+            continue
+        keys, values = parsed
+        name = values.get("name", "").strip().strip("\"'")
+        if not name:
+            fail(skill.name, "frontmatter has no `name:`")
+        elif name != skill.name:
+            fail(skill.name, f"frontmatter `name: {name}` does not match its "
+                             f"directory `{skill.name}` — the harness routes on "
+                             f"the name, so this skill is unreachable")
+        if not values.get("description", "").strip().strip("\"'"):
+            fail(skill.name, "frontmatter has no non-empty `description:` — the "
+                             "harness decides when to fire the skill from it")
+        for key in keys:
+            if key not in KNOWN_FRONTMATTER_KEYS:
+                warn(skill.name, f"frontmatter key `{key}` is not one of "
+                                 f"{sorted(KNOWN_FRONTMATTER_KEYS)} — the harness "
+                                 f"ignores it")
+
+
+# --- severity ladder (repo-wide) -------------------------------------------
+
+CANONICAL_LADDER = ["Critical", "Serious", "Moderate", "Minor"]
+FOREIGN_RUNGS = ["Important", "Major", "Blocker"]
+
+# A line quoting another tool's taxonomy legitimately names rungs we do not use.
+# CodeRabbit's ladder is Critical|Major|Minor|Refactor|Nitpick and fix-pr-review
+# has to document the mapping.
+FOREIGN_TAXONOMY_MARKERS = ("CodeRabbit", "Nitpick", "Refactor suggestion")
+
+# `Critical / Important`, `Critical | Major`, `Critical and Serious` — a rung
+# word sitting next to another rung word across a list separator is a ladder,
+# not prose that happens to contain the word "critical".
+_LADDER_SEP = r"[\s`*]*(?:[/|>,]|\band\b|\bor\b)[\s`*]*"
+_CANON_ALT = "|".join(CANONICAL_LADDER)
+
+# A gate is a sentence that decides whether work may close. Kept to phrases that
+# only ever appear in a closing condition — "before merging" was tried and
+# matched the body text of a finding message, which is prose, not a gate.
+GATE_MARKERS = (
+    "zero open", "no open", "no remaining", "not complete", "closes at",
+    "blocks the merge",
+)
+
+
+def check_severity_ladder_consistency():
+    """The repo ladder is Critical > Serious > Moderate > Minor. A skill that
+    invents a rung, or gates on a subset with a hole in it, silently passes
+    every finding that lands on the unnamed rung — which is exactly how
+    `Serious` findings sailed through executing-tickets-with-subagents while
+    its callee parallel-review was emitting them."""
+    for path in EVERY_MD:
+        for i, l in enumerate(read(path) or [], 1):
+            if any(marker in l for marker in FOREIGN_TAXONOMY_MARKERS):
+                continue
+            for rung in FOREIGN_RUNGS:
+                adjacent = (rf"\b(?:{_CANON_ALT})\b{_LADDER_SEP}\b{rung}\b"
+                            rf"|\b{rung}\b{_LADDER_SEP}\b(?:{_CANON_ALT})\b")
+                if re.search(adjacent, l):
+                    fail(rel(path), f"line {i}: `{rung}` used as a severity rung "
+                                    f"next to the canonical ladder — the repo "
+                                    f"ladder is {' > '.join(CANONICAL_LADDER)}; a "
+                                    f"caller emitting a rung this skill never "
+                                    f"names is silently ignored")
+            if not any(marker in l.lower() for marker in GATE_MARKERS):
+                continue
+            named = [r for r in CANONICAL_LADDER if re.search(rf"\b{r}\b", l)]
+            if not named:
+                continue
+            prefix = CANONICAL_LADDER[:len(named)]
+            if named != prefix:
+                missing = [r for r in prefix if r not in named]
+                fail(rel(path), f"line {i}: gate names {named} but skips "
+                                f"{missing} — a finding on the skipped rung "
+                                f"passes the gate silently")
+
+
+# --- pointer form (repo-wide) ----------------------------------------------
+
+# A path not already anchored to the skill directory. The lookbehind rejects
+# `${CLAUDE_SKILL_DIR}/references/...` and `<SKILL_DIR>/references/...`.
+BARE_POINTER = re.compile(r"(?<![\w/}>-])(references|modes)/([a-z0-9._-]+\.md)")
+
+# Verbs that make the path an instruction to open the file rather than a
+# sentence about it. Third-person/participle forms (`loaded by main`, `reads`)
+# are deliberately excluded — those only ever appear in descriptive tables.
+_LOAD_VERB = re.compile(r".*\b(load|read|open|consult)\b(.*)$", re.I)
+# All that may sit between the verb and the path. Anything else — a preposition,
+# a clause ("read — is defined in") — means the sentence describes the file
+# rather than instructing anyone to open it.
+_LOAD_FILLER = re.compile(
+    r"[\s`*:,]*(?:the|this|that|now|all|its|file|files|four)?[\s`*:,]*"
+)
+
+
+def _is_load_instruction(prefix_text):
+    tail = re.sub(r"[`*_\s]+$", "", prefix_text)
+    m = _LOAD_VERB.match(tail)
+    return bool(m and _LOAD_FILLER.fullmatch(m.group(2)))
+
+
+def check_pointer_form():
+    """`Load references/x.md` resolves against the user's repo, not the skill
+    directory, so it silently finds nothing and the skill answers from memory.
+    `${CLAUDE_SKILL_DIR}/references/x.md` is the form that resolves.
+
+    A DESCRIPTIVE mention is a different thing and must not be flagged: the
+    `## Reference files` table row "`references/x.md` — holds P1-P11, loaded by
+    Subagent A" is naming the file, not opening it. The discriminator is
+    whether a load verb governs the path, not whether the path is bare."""
+    for path in EVERY_MD:
+        for i, l in enumerate(read(path) or [], 1):
+            for m in BARE_POINTER.finditer(l):
+                if not _is_load_instruction(l[:m.start()]):
+                    continue
+                fail(rel(path), f"line {i}: load instruction with a bare "
+                                f"`{m.group(0)}` — resolves against the user's "
+                                f"repo, not the skill dir, and fails silently. "
+                                f"Use ${{CLAUDE_SKILL_DIR}}/{m.group(0)}")
+
+
+# --- orphan references (repo-wide) -----------------------------------------
+
+BUNDLE_DIRS = ("references", "modes")
+# `modes/<MODE>.md` is filled at runtime from a slug list declared in prose.
+PARAMETERIZED = re.compile(r"\b(references|modes)/<[A-Za-z_]+>\.md")
+
+
+def check_orphan_reference_files():
+    """A file under references/ or modes/ that no SKILL.md points at is either
+    dead weight or a disclosure the skill forgot to wire up."""
+    for skill in SKILLS:
+        body = "\n".join(read(skill / "SKILL.md") or [])
+        for bundle in BUNDLE_DIRS:
+            directory = skill / bundle
+            if not directory.is_dir():
+                continue
+            named = set(re.findall(rf"{bundle}/([a-z0-9._-]+\.md)", body))
+            if PARAMETERIZED.search(body):
+                slugs = {s for l in body.split("\n") if "slug" in l.lower()
+                         for s in re.findall(r"`([a-z0-9-]+)`", l)}
+                named |= {f"{s}.md" for s in slugs}
+            for f in sorted(directory.glob("*.md")):
+                if f.name not in named:
+                    warn(f"{skill.name}/{bundle}",
+                         f"{f.name} is not pointed at by SKILL.md — dead file, "
+                         f"or a disclosure that was never wired up")
+
+
+# --- cross-skill duplication (repo-wide, WARN) -----------------------------
+
+# One- and two-line fences are bare commands (`bun check-types`) that repeat
+# across skills carrying no signal. Everything longer is hashed.
+MIN_CODE_BLOCK_LINES = 3
+MIN_PROSE_RUN_LINES = 5
+
+# sha1[:12] of a normalized block -> why the duplication is accepted.
+# Skills install independently and cannot import a shared file, so some copies
+# are irreducible. Every entry MUST name its reason; an unexplained entry is
+# indistinguishable from a silenced bug. Example of the shape:
+#   "0123456789ab": "review-pr Phase 1 repo-map bash, copied into harden-plan —
+#                    the two skills install separately and cannot share a file",
+DUPLICATE_ALLOWLIST = {}
+
+
+def _hash(text):
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+
+
+def _blocks(path):
+    """Yield (kind, first_line, line_count, normalized_text) for every fenced
+    code block and every run of consecutive non-blank prose lines."""
+    lines = read(path) or []
+    fence, buf, start = None, [], 0
+    run, run_start = [], 0
+    for i, l in enumerate(lines, 1):
+        m = re.match(r"^\s*(`{3,})(.*)$", l)
+        if fence is None and m:
+            if run:
+                if len(run) >= MIN_PROSE_RUN_LINES:
+                    yield "prose", run_start, len(run), "\n".join(run)
+                run = []
+            fence, buf, start = m.group(1), [], i
+            continue
+        if fence is not None:
+            if m and len(m.group(1)) >= len(fence) and not m.group(2).strip():
+                if len(buf) >= MIN_CODE_BLOCK_LINES:
+                    yield "code", start, len(buf), "\n".join(buf)
+                fence = None
+            else:
+                buf.append(l.rstrip())
+            continue
+        if l.strip():
+            if not run:
+                run_start = i
+            run.append(l.rstrip())
+        elif run:
+            if len(run) >= MIN_PROSE_RUN_LINES:
+                yield "prose", run_start, len(run), "\n".join(run)
+            run = []
+    if run and len(run) >= MIN_PROSE_RUN_LINES:
+        yield "prose", run_start, len(run), "\n".join(run)
+
+
+def check_cross_skill_duplication():
+    """Byte-identical blocks living in 2+ skills. WARN, never FAIL: some of it
+    is irreducible (skills install independently), some of it is a fork waiting
+    to drift. Only a human can tell which, so this surfaces and does not block."""
+    seen = {}
+    for path in EVERY_MD:
+        skill = rel(path).split("/")[0]
+        for kind, line, count, text in _blocks(path):
+            entry = seen.setdefault(_hash(text), {"kind": kind, "lines": count,
+                                                  "sites": [], "skills": set()})
+            entry["sites"].append(f"{rel(path)}:{line}")
+            entry["skills"].add(skill)
+    for digest, entry in sorted(seen.items(), key=lambda kv: -kv[1]["lines"]):
+        if len(entry["skills"]) < 2 or digest in DUPLICATE_ALLOWLIST:
+            continue
+        warn("duplication",
+             f"{entry['lines']}-line {entry['kind']} block [{digest}] is "
+             f"byte-identical across {len(entry['skills'])} skills: "
+             f"{', '.join(entry['sites'])} — allowlist it with a reason if the "
+             f"copy is deliberate")
 
 
 STATUS_ENUM = {"active", "resolved", "dismissed", "wontfix", "regression"}
@@ -163,7 +452,7 @@ def check_produced_fields_are_validated():
 def check_dangling_refs():
     """Pointers to sibling skills that are not installed."""
     installed = {p.name for p in ROOT.iterdir() if p.is_dir() or p.is_symlink()}
-    for path in (RP, FP):
+    for path in EVERY_MD:
         ls = read(path)
         if not ls:
             continue
@@ -221,14 +510,15 @@ def check_forbidden_prefix_sync():
 
 
 def check_reference_files_exist():
-    for path in (RP, FP):
+    for path in EVERY_MD:
         ls = read(path)
         if not ls:
             continue
+        skill = skill_dir_of(path)
         for i, l in enumerate(ls, 1):
-            for m in re.finditer(r"references/([a-z0-9-]+\.md)", l):
-                if not (path.parent / "references" / m.group(1)).exists():
-                    fail(rel(path), f"line {i}: references/{m.group(1)} does not exist")
+            for m in re.finditer(r"\b(references|modes)/([a-z0-9._-]+\.md)", l):
+                if not (skill / m.group(1) / m.group(2)).exists():
+                    fail(rel(path), f"line {i}: {m.group(1)}/{m.group(2)} does not exist")
 
 
 def check_step_refs():
@@ -249,7 +539,7 @@ def check_step_refs():
                     warn(rel(path), f"line {i}: refers to step {m.group(1)}, no such heading")
 
 
-def check_duplicate_ratio():
+def check_review_pr_ratio_naming():
     ls = read(RP)
     if not ls:
         return
@@ -260,7 +550,7 @@ def check_duplicate_ratio():
         fail("review-pr", f"two names for one ratio: {sorted(names)} — collapse to cascade_share")
 
 
-def check_severity_ladder():
+def check_review_pr_severity_line():
     ls = read(RP)
     if not ls:
         return
@@ -269,44 +559,65 @@ def check_severity_ladder():
             fail("review-pr", f"line {i}: severity ladder omits Critical — {l.strip()[:70]}")
 
 
+def _emit(label, items):
+    print(f"{label} ({len(items)}):")
+    groups = {}
+    for tag, msg in items:
+        groups.setdefault(tag.split("/")[0], []).append((tag, msg))
+    known = {s.name for s in SKILLS}
+    for group in sorted(groups, key=lambda g: (g not in known, g)):
+        print(f"\n  {group}")
+        for tag, msg in groups[group]:
+            where = tag[len(group) + 1:]
+            print(f"    {'x' if label == 'FAIL' else '!'} {where + ': ' if where else ''}{msg}")
+    print()
+
+
 def main():
+    if not SKILLS:
+        fail("setup", f"no skills found under {ROOT}")
+
+    for skill in SKILLS:
+        for path in SKILL_MD[skill.name]:
+            check_fences(path, read(path) or [])
+
     for p in (RP, FP, SCHEMA):
         ls = read(p)
         if ls is None:
             fail("setup", f"missing {p}")
             continue
-        check_fences(p, ls)
         check_nested_prompt(p, ls)
+
+    check_frontmatter()
+    check_pointer_form()
+    check_severity_ladder_consistency()
+    check_orphan_reference_files()
+    check_reference_files_exist()
+    check_dangling_refs()
+    check_cross_skill_duplication()
+
     check_status_values()
     check_banned_status_words()
     check_cross_skill_fields()
     check_produced_fields_are_validated()
-    check_dangling_refs()
     check_field_chains()
     check_required_field_in_all_item_blocks()
     check_compute_before_read()
     check_forbidden_prefix_sync()
     check_subagent_relative_paths()
-    check_reference_files_exist()
     check_step_refs()
-    check_duplicate_ratio()
-    check_severity_ladder()
+    check_review_pr_ratio_naming()
+    check_review_pr_severity_line()
 
-    for p in (RP, FP):
-        if p.exists():
-            print(f"  {p.parent.name}/{p.name}: {len(read(p))} lines")
+    print(f"  {len(SKILLS)} skills, {len(EVERY_MD)} markdown files under {ROOT}")
     print()
     if fails:
-        print(f"FAIL ({len(fails)}):")
-        for f in fails:
-            print("  x", f)
+        _emit("FAIL", fails)
     if warns:
-        print(f"\nWARN ({len(warns)}):")
-        for w in warns:
-            print("  !", w)
+        _emit("WARN", warns)
     if not fails and not warns:
         print("all checks pass")
-    print()
+        print()
     return 1 if fails else 0
 
 
@@ -316,6 +627,7 @@ def main():
 # Relational checks. Every defect that survived three "verified green" rounds
 # was relational: a field produced in one file, validated in a second, consumed
 # in a third, with one link missing. Textual checks cannot see those.
+# Scoped to review-pr + fix-pr-review: these field chains exist nowhere else.
 # ---------------------------------------------------------------------------
 
 # Fields that must complete a produce -> validate -> consume chain.
