@@ -29,9 +29,11 @@ npx skills update bhagyamudgal/skills@review-pr
 
 # Restrict to project- or user-level scope
 npx skills update --project    # only project-level skills
-npx skills update --global     # only user-level (~/.claude/skills/)
+npx skills update -g           # only user-level (~/.claude/skills/)
 npx skills update -y           # skip scope prompt; auto-detect from cwd
 ```
+
+`update` only refreshes skills you already have — it will not pick up a newly added one. Run `add` for those.
 
 If anything looks wedged, remove and re-add:
 
@@ -44,29 +46,32 @@ npx skills add bhagyamudgal/skills
 
 | Skill | Description |
 |-------|-------------|
-| `done` | MANDATORY post-task verification — type-check, parallel code review, code simplification |
-| `parallel-review` | Run code-review + CodeRabbit review in parallel on locally-changed code |
+| `done` | MANDATORY post-task verification — six blocking steps: type-check, parallel review to zero critical/serious, simplify + blocking comment scan, correctness against the request, roll-call report, commit |
+| `parallel-review` | Build a reviewer roster, dispatch it in parallel over a local diff, and merge to one ranked list — the merge is not done while any reviewer is outstanding |
 | `review-pr` | Deep anti-slop review of a GitHub PR with critic-pass filtering, persistent multi-round state, and rolling-review posting — batch mode reviews multiple PRs via one subagent per PR with a consolidated report |
 | `fix-pr-review` | Triage and fix CodeRabbit / `review-pr` findings, then reply + resolve PR conversations |
-| `audit-ticket` | Audit a stale GitHub issue against current code — per-requirement verdicts with evidence, then update, sunset, or split it |
-| `fix-ts-errors` | Autonomous TypeScript error detection and fixing loop |
-| `harden-plan` | Pre-code quality gate — validates plans against 11 category checks before implementation |
-| `grill-me` | Interview-style stress-test of a plan or design, one decision at a time, until aligned |
-| `project-discovery` | Deep project discovery and architecture planning for new projects |
-| `design-director` | Senior creative-director voice — 7 modes (brief simplify, logo, layout, typography, color, critique, brand identity) |
-| `browser-qa` | Automated browser testing of UI flows — Playwright MCP interactions, agent-browser video + visual diffs |
-| `reuse-first` | Search-first discipline before writing any new utility, type, schema, component, hook, or constant — 3-layer search, reuse hierarchy, duplicate smells |
-| `backend-perf` | Performance checklist for backend services and DB queries — parallel async, N+1 nuance, index coverage, EXPLAIN-evidence for rewrites |
-| `systematic-debugging` | Four-phase root-cause loop for mid-debugging-session discipline — no fix without an understood cause, evidence at component boundaries, bandaid budget zero |
-| `executing-tickets-with-subagents` | Execute a multi-sub-task GitHub ticket via subagents — full-thread intake, in-ticket progress tracking, follow-up triage, manual-QA handoff doc |
-| `resolving-merge-conflicts` | Resolve in-progress merge/rebase conflicts — lose no changes, deep git-diff review of both sides, ask when ambiguous |
-| `git-commit` | Conventional commits from diff analysis — intelligent staging, message generation, suggest-only mode |
+| `audit-ticket` | Audit a stale GitHub issue against current code — per-requirement verdicts with file:line evidence that is re-checked before printing, then update, sunset, or split it |
+| `fix-ts-errors` | Fix TypeScript errors and loop the **workspace** type-check until it exits 0 — a file whose squiggles cleared is not green |
+| `harden-plan` | Pre-code quality gate — grounds a written plan against the real codebase and runs 11 category checks before any code exists |
+| `grill-me` | Interview-style stress-test of a plan, one decision at a time, against an enumerated list — no "grill complete" until every decision has an answer |
+| `project-discovery` | Discovery interview before writing code on a new project — interrogate requirements and stack, then emit `CLAUDE.md`, `PATTERNS.md` and the `lib/` scaffolding |
+| `design-director` | Senior creative-director direction — 7 modes (brief simplify, logo, layout, typography, color, critique, brand identity) |
+| `browser-qa` | Drive a real browser through a UI flow with Playwright MCP — screenshot every step, check network and console, and account for every step with PASS or FAIL |
+| `reuse-first` | Search-first discipline before writing any new utility, type, schema, component, hook, or constant — 3-layer search you must print, reuse ladder, fork smells |
+| `backend-perf` | Performance checklist for backend endpoints and DB queries — walk every check and name a verdict on each; a check you did not name is a check you did not run |
+| `systematic-debugging` | Four-phase root-cause loop for mid-debugging discipline — no fix without an understood cause, every phase ends on a checkable bar, bandaid budget zero |
+| `executing-tickets-with-subagents` | Execute a multi-sub-task GitHub ticket via subagents — one wave per task, ledger-tracked so a compaction can resume, follow-up triage, manual-QA handoff doc |
+| `resolving-merge-conflicts` | Resolve an in-progress git conflict without a **silent drop** — every hunk from both sides placed as kept, superseded, or dropped before you commit |
+| `git-commit` | Conventional commits from diff analysis — every file classified into exactly one commit; append-only, with a message-only mode |
+
+Several skills use progressive disclosure — `SKILL.md` holds the spine, and branch-specific material sits in `references/` (or `modes/` for `design-director`), loaded only when that branch fires. Load instructions use `${CLAUDE_SKILL_DIR}/` so they resolve against the skill directory rather than the user's repo.
 
 ## Bundled tooling (not slash commands)
 
 | Folder | Purpose |
 |---|---|
 | `skills/coderabbit-config/` | `.coderabbit.yaml` template + persistent-learnings sidecar. Copy into a repo so CodeRabbit absorbs style + convention findings before `/review-pr` runs. See [`skills/coderabbit-config/README.md`](skills/coderabbit-config/README.md) for bootstrap instructions. |
+| `tools/verify_skills.py` | Structural verifier across all 17 skills — frontmatter, code fences, pointer form, severity-ladder consistency, dangling and orphan references, cross-skill duplication. Plus produce → validate → consume dataflow checks scoped to `review-pr` and `fix-pr-review`. Run `python3 tools/verify_skills.py ./skills`; exits non-zero on failure. |
 
 ## Usage
 
@@ -76,8 +81,8 @@ npx skills add bhagyamudgal/skills
 /review-pr <pr-url>  # Review a GitHub PR (or several at once — batch mode)
 /fix-pr-review       # Triage and apply CodeRabbit / review-pr findings
 /audit-ticket <n>    # Audit a stale issue against current code — update or sunset it
-/fix-ts-errors       # Fix TypeScript errors
-/browser-qa          # Automated browser testing of UI flows
+/fix-ts-errors       # Fix TypeScript errors, loop until the workspace check is green
+/browser-qa          # Drive a UI flow in a real browser
 /harden-plan         # Stress-test a written plan before coding
 /grill-me            # Interview-style plan/design refinement
 /project-discovery   # Plan a new project
@@ -87,7 +92,7 @@ npx skills add bhagyamudgal/skills
 /systematic-debugging  # Root-cause loop once you're inside a debugging session
 /executing-tickets-with-subagents  # Run a bundled ticket end-to-end via subagents
 /resolving-merge-conflicts         # Resolve merge/rebase conflicts safely
-/git-commit          # Conventional commit (or suggest-only message)
+/git-commit          # Conventional commit (or message-only)
 ```
 
 ## Reference
@@ -96,9 +101,6 @@ npx skills add bhagyamudgal/skills
 
 ## How `review-pr` + `coderabbit-config` work together
 
-`/review-pr` is structured as two layers:
+**CodeRabbit is the sieve; `/review-pr` is the critic-pass.** The sieve catches style, convention, and standard-pattern findings so the critic-pass only ever sees what needs judgement — intent grounding, codebase-wide reusability (Q6a), multi-round state, and anti-slop filtering on the merged findings.
 
-- **CodeRabbit** (configured via `coderabbit-config/coderabbit.yaml.template`) handles style, convention, and standard-pattern findings — `any` usage, `!.` non-null assertions, magic numbers, missing `Promise.all`, N+1 queries, etc.
-- **Claude reviewer** (the `/review-pr` skill itself) handles intent grounding, codebase-wide reusability checks (Q6a), multi-round state tracking, and anti-slop critic filtering on the merged findings.
-
-Adopting `coderabbit-config` per-repo is what makes `/review-pr` runs tight — CodeRabbit catches routine issues before the skill loads, so the reviewer subagent can focus on what only deep semantic + codebase-wide work can do. See [`skills/coderabbit-config/README.md`](skills/coderabbit-config/README.md) for the per-repo bootstrap.
+Adopting `coderabbit-config` per-repo is what makes `/review-pr` runs tight. See [`skills/coderabbit-config/README.md`](skills/coderabbit-config/README.md) for the per-repo bootstrap.
