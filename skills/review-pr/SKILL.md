@@ -1,6 +1,6 @@
 ---
 name: review-pr
-description: Deep, anti-slop review of a GitHub PR. Grounds findings in the linked issue's intent, runs a Claude reviewer (+ conditional silent-failure hunter) in parallel with existing CodeRabbit comments fetched from the PR, then critic-passes the findings before printing. Use when user says "review this pr", pastes a GitHub PR URL, or asks "check this pull request". Also handles multiple PRs or "review all open PRs" via batch mode — one subagent per PR, consolidated report, decisions deferred to the end. NOT for local uncommitted changes — use /parallel-review for those.
+description: Review a GitHub PR — deep, anti-slop, grounded in the linked issue's intent. Use on a PR URL when the ask is to produce findings; when findings already exist and the ask is to act on them, use /fix-pr-review. Batch mode covers 2+ PRs or "review all open PRs". For local uncommitted changes, use /parallel-review.
 ---
 
 # /review-pr — Deep GitHub PR Review
@@ -9,30 +9,28 @@ Reviews a remote GitHub PR with anti-slop filtering. Input: **PR URL only**.
 
 Goal: produce an accurate, critical, actionable PR review that surfaces what a human reviewer should double-check — and filters out noise (style nitpicks, hallucinated references, duplicates, generic advice).
 
-This skill assumes CodeRabbit is configured on the repo via `.coderabbit.yaml` (template at `~/.claude/skills/coderabbit-config/`). CodeRabbit catches style + convention findings before this skill runs; `/review-pr` focuses on what only deep semantic + codebase-wide review can do.
+**Cascade** is the failure this review is built to prevent: a fix shipped for round N's finding becomes round N+1's finding. Two things feed it — the suggested fix carries a defect of its own, and the fix lands on the cited site while identical sibling sites go untouched. So every finding proposing a code change carries an `Inverse risk:` and a `Class-sites:` count, one field per feeder. Phase 3 measures the result as `cascade_share` at step 7.5, the verdict at step 8 reads it to say whether the PR is converging, and Phase 4 prints it.
 
-**Use AskUserQuestion for ALL user-facing decisions** — stop-and-ask, cache replay, large-PR confirmation, self-review, findings selection, post-review, post-failure, post-completion. Always cursor-selectable, never plain-text numbered lists. Options must be concrete, considered answers — never generic placeholders. Put the strongest option first and mark it "(Recommended)".
+This skill assumes CodeRabbit is configured on the repo via `.coderabbit.yaml`. CodeRabbit catches style + convention findings before this skill runs; `/review-pr` focuses on what only deep semantic + codebase-wide review can do.
 
-**Anti-patterns — NEVER do these:**
-- NEVER present choices as a numbered markdown list in terminal text. That short-circuits the tool call.
-- NEVER end a response with `Would you like me to... ?` followed by options in prose.
-- NEVER ask `What's next — do X or are we done?` after a tool-call decision.
-- Self-test: if you catch yourself writing a sentence that asks the user to pick between 2+ labeled paths, STOP and use `AskUserQuestion`.
+**Use AskUserQuestion for ALL user-facing decisions** — stop-and-ask, cache replay, large-PR confirmation, self-review, findings selection, post-review, post-failure, post-completion. Any sentence that offers the user 2+ labeled paths is an AskUserQuestion call, including the one that ends the run. Options are cursor-selectable, concrete, and considered — put the strongest first and mark it "(Recommended)".
 
-## Reference files (loaded on demand by subagent)
+## Reference files
 
-The Claude reviewer subagent loads these when relevant — keep them in mind so this file stays small:
+Each one is loaded only on the branch that reaches it — some by main, some by a subagent. Loader and firing condition:
 
-- `references/q6-reusability-search.md` — STEP A enumeration + STEP B search algorithm + Q6 control-flow gap. Loaded when the diff has 1+ new top-level definitions.
-- `references/schema-design-checks.md` — Q7 (overlap), Q8 (1:1 consolidation), Q9 (cross-table FK) checks. Loaded when `INCLUDE_SCHEMA_CHECKS = true`.
-- `references/github-posting.md` — three-phase REST/GraphQL posting flow + rolling-review fix + failure recovery. Loaded by Phase 4 when posting.
-- `references/finding-state-schema.md` — `.claude/review-state/<pr>.yml` schema + finding-ID strategy + state machine.
+- `references/batch-mode.md` — orchestration rules, "don't stop" semantics, consolidated-report template, end-of-run decision prompt. Loaded by **main** at Phase 1 when the user gives 2+ PR URLs or asks for all open PRs.
+- `references/q6-reusability-search.md` — Phase 1 repo-map shell + STEP A enumeration + STEP B search algorithm + Q6 control-flow gap. Loaded by **main** in Phase 1 when `packages/` or `apps/` exists, and by **Subagent 1** when the diff has 1+ new top-level definitions.
+- `references/finding-output-format.md` — the per-finding field block, the `class_completeness:` audit shape, and the run-level closing block. The one copy of the finding shape. Loaded by **Subagent 1**, **Subagent 3** and **V3** before they write any finding.
+- `references/schema-design-checks.md` — Q7 (overlap), Q8 (1:1 consolidation), Q9 (cross-table FK) checks. Loaded by **Subagent 1** when `INCLUDE_SCHEMA_CHECKS = true`, and by **V3** when the gap check covers Q7–Q9.
+- `references/verification-subagents.md` — V1/V2/V3 dispatch conditions + the exact prompt each is given. Loaded by **main** in Phase 3 at the first of steps 4.55 / 4.9 / 6 that fires.
+- `references/false-positive-rules.md` — the four-rule YAML table (`wrapped-coercion`, `intent-alignment`, `library-behavior-citation`, `default-fallback`) each surviving finding is run through. Loaded by **main** at Phase 3 step 4.6 when any finding survives step 4.5.
+- `references/finding-state-schema.md` — both persistence files: `.claude/review-state/<pr>.yml` (schema, finding-ID strategy, state machine, Phase 4 write-back) and the run-over-run cache (schema + the three replay branches). Loaded by **main** in Phase 1 before the review-state read and the cache check, and again in Phase 4 before the state write-back.
+- `references/github-posting.md` — three-phase REST/GraphQL posting flow + rolling-review fix + re-run preflight (verdict-body sync, thread resolution) + failure recovery. Loaded by **main** in Phase 4 when the user chooses to post.
 
-## Superpowers planning pipeline (optional pre-review context)
+## Planning-doc grounding (optional pre-review context)
 
-If the repo has `docs/superpowers/specs/` or `~/.claude/plans/*.md` referencing this PR, the typical pipeline is `/brainstorming` → `/grill-me` → `/harden-plan` → `/writing-plans` → `/executing-plans` → `/done`.
-
-If spec/plan files exist, check whether the PR aligns with documented design decisions. Deviations without justification can be flagged under Q1 (Intent). If they don't exist, skip this check.
+If `docs/superpowers/specs/` or `~/.claude/plans/*.md` reference this PR, check the diff against those documented design decisions and flag undocumented deviations under Q1 (Intent); if no such files exist, skip this check.
 
 ## Usage
 
@@ -40,60 +38,11 @@ If spec/plan files exist, check whether the PR aligns with documented design dec
 /review-pr https://github.com/owner/repo/pull/123
 ```
 
-If no URL is provided, ask the user for one. Don't infer from the current branch.
+If no URL is provided, ask the user for one. Bare `gh` commands infer a PR from the current branch — this skill reviews the URL it was given.
 
 ## Batch mode (multiple PRs)
 
-Triggers when the user provides **2+ PR URLs** or asks to review **all open PRs**. For "all open PRs", enumerate via `gh pr list --json number,url,title --limit 50`, print the list in the kickoff message, then start — no confirmation prompt (batch mode is unattended by design; a wrong list is visible in the report).
-
-### Orchestration
-
-- Main context is the **orchestrator** — oversight only. It never reviews a PR inline, regardless of `SIZE_MODE` (solo-main routing applies inside each subagent, not in main).
-- Spawn **ONE `general-purpose` subagent PER PR**. Each subagent runs the single-PR flow (Phases 1–3) independently against its own PR and returns its Phase 4 terminal block as its result. Dispatch in parallel batches of 3–4.
-- Subagents NEVER post to GitHub and NEVER ask questions — all posting and all AskUserQuestion checkpoints belong to the orchestrator, at the end.
-
-### "Don't stop" semantics
-
-The run continues unattended through the WHOLE list — batch mode implies the user may be away. Do NOT stop between PRs. Every would-be checkpoint is collected as a **pending decision** instead of asked:
-
-- Stop-and-ask intent gap → review with just the diff; tag that PR's report `intent not grounded — findings may be generic`.
-- PR > 2000 lines → proceed with chunked review; note the size in that PR's report header.
-- Findings selection + post decision → deferred to end-of-run.
-- A failed subagent doesn't stop the batch — record `<pr>: review failed (<reason>)` in the consolidated report and continue with the rest.
-
-### Consolidated report
-
-After all subagents return, write ONE report document to `/tmp/review-pr-batch-<timestamp>.md` (and print it):
-
-```
-# Batch PR Review — <N> PRs (<date>)
-
-| PR | Title | Approval | Verdict | C | S | M | m |
-|----|-------|----------|---------|---|---|---|---|
-<one row per PR; "review failed" rows included>
-
-## Pending decisions (<count>)
-<one entry per deferred checkpoint, clearly marked:
-  PENDING — #<num>: post decision (<verdict>, <F> findings)
-  PENDING — #<num>: intent was not grounded — re-run with intent text?>
-
-## Per-PR reviews
-<each PR's full Phase 4 terminal block, in list order>
-```
-
-### End-of-run decisions
-
-Ask ONCE, only after the consolidated report is written — so if the user is away, the complete report with clearly-marked pending decisions is already on disk and nothing is lost:
-
-```
-header: "Batch done"
-text: "<N> PRs reviewed — <M> have findings to post, <K> pending decisions. Walk through them now?"
-options:
-  - "Triage now (Recommended)" — Walk each PR's findings selection + post decision in turn
-  - "Report only" — Keep the consolidated report; posting decisions stay pending
-```
-
-On "Triage now": for each PR with findings, run the single-PR "Select findings to post" multiSelect followed by its "Post review" prompt, in list order. On "Report only": exit — pending decisions remain marked in the report for a later run.
+Fires when the user provides **2+ PR URLs** or asks to review **all open PRs** — a single-PR run skips this entirely and drops straight into Phase 1. On that branch, load `references/batch-mode.md` before doing anything else: it holds the PR enumeration, the orchestration rules (one subagent per PR, main never reviews inline, subagents never post or ask), the "don't stop" semantics that turn every checkpoint into a pending decision, the consolidated-report template, and the single end-of-run decision prompt.
 
 ---
 
@@ -185,7 +134,7 @@ This enables (a) accurate dedupe in Phase 3, (b) "Resolved but still present" de
 
 ### Load review-state (multi-round dedup)
 
-This is the fix for the "M3 deferred" multi-round bug. See `references/finding-state-schema.md` for the full schema.
+Load `references/finding-state-schema.md` before reading the state file — it defines the schema, the legal `status` values, and the finding-ID strategy every later phase writes against.
 
 ```bash
 # Local mode: state lives next to the working tree
@@ -194,7 +143,12 @@ STATE_FILE=".claude/review-state/<pr-number>.yml"
 [ "$CROSS_REPO_MODE" = "true" ] && \
   STATE_FILE="$HOME/.claude/review-state/<owner>__<repo>__<pr-number>.yml"
 
-mkdir -p "$(dirname "$STATE_FILE")"
+STATE_DIR="$(dirname "$STATE_FILE")"
+mkdir -p "$STATE_DIR"
+# Review state is per-machine scratch, never shared. A self-ignoring dir keeps it
+# out of `git status` in repos that DO commit `.claude/` (settings, skills).
+[ -f "$STATE_DIR/.gitignore" ] || printf '*\n' > "$STATE_DIR/.gitignore"
+
 if [ -f "$STATE_FILE" ]; then
   PRIOR_STATE=$(cat "$STATE_FILE")
 else
@@ -229,7 +183,7 @@ options:
   - "I'll provide intent" — Wait for user to type intent text
 ```
 
-On "I'll provide intent": wait for follow-up text, then build the intent model from it. This is your first anti-slop gate.
+On "I'll provide intent": wait for follow-up text, then build the intent model from it.
 
 ### Size warning
 
@@ -267,9 +221,9 @@ gh api "repos/<owner>/<repo>/contents/.coderabbit.yaml" >/dev/null 2>&1 \
 
 If `CR_CONFIG_PRESENT=false` AND this is the first run of `/review-pr` against this repo in the current session, hint once after Phase 4 output:
 
-> No `.coderabbit.yaml` in `<owner>/<repo>` — see `~/.claude/skills/coderabbit-config/` for a template that pushes style + convention checks into CodeRabbit. Future `/review-pr` runs in this repo will be tighter.
+> No `.coderabbit.yaml` in `<owner>/<repo>` — adding one pushes style + convention checks into CodeRabbit. The `coderabbit-config` skill carries a template (`npx skills add bhagyamudgal/skills@coderabbit-config`). Future `/review-pr` runs in this repo will be tighter.
 
-Don't gate posting on the hint. It's purely informational.
+The hint is informational — it never gates posting.
 
 ### Size-based routing (determine SIZE_MODE)
 
@@ -293,88 +247,15 @@ CACHE_FILE="$CACHE_DIR/<owner>_<repo>_<pr-number>.json"
 CURRENT_HEAD=$(gh pr view <url> --json headRefOid -q .headRefOid)
 ```
 
-Cache schema:
-
-```json
-{
-  "last_run_sha": "abc123...",
-  "last_run_timestamp": "2026-04-11T13:29:50Z",
-  "last_run_verdict": "request-changes",
-  "findings": [...],
-  "filtered_out": [...],
-  "last_posted_review_id": 12345678,
-  "last_posted_review_node_id": "PRR_kwDO...",
-  "last_posted_verdict": "request-changes",
-  "last_posted_at": "2026-04-11T13:30:15Z",
-  "posted_comments": [
-    { "finding_key": "(file.ts, 47, processrequest)", "finding_id": "<id-hash>",
-      "github_comment_id": 12345, "github_thread_id": "PRRT_abc123",
-      "finding_severity": "Serious" }
-  ]
-}
-```
-
-`posted_comments` works alongside `.claude/review-state/<pr>.yml` — the cache holds per-comment GitHub IDs (for resolveReviewThread + dedup against re-posting), the state file holds per-finding lifecycle (active/resolved/dismissed). Both are necessary; neither is sufficient alone.
-
-Three branches:
-
-1. **`last_run_sha == CURRENT_HEAD`** — no new commits. AskUserQuestion: `Replay cached (Recommended)` vs `Fresh review`. On replay, print cached findings and exit (Phase 2/3/4 skipped).
-
-2. **New commits since last run** (cached SHA is an ancestor of HEAD) — PARTIAL re-review:
-   - `git diff <last_run_sha>..<CURRENT_HEAD>` (or `gh api compare` cross-repo) for new-commits diff.
-   - Dispatch Phase 2 with NEW diff + FULL file context, prompted to ONLY report findings on new commits.
-   - Phase 3 merges new findings with cached findings still applicable (re-verify each cached finding against current HEAD; drop with `stale after new commits` if changed).
-   - Phase 4 header: `Mode: partial re-review (N new commits since cached run at <sha>)`.
-
-3. **Cache exists but `last_run_sha` is NOT an ancestor** (force-push, branch reset): invalidate cache, full fresh run.
+Comparing `last_run_sha` to `CURRENT_HEAD` selects one of three branches: replay the cached run unchanged, re-review only the new commits, or invalidate and start fresh. The cache schema and the full body of each branch live in `references/finding-state-schema.md` under "Run-over-run cache" — already loaded above for the review-state read.
 
 After successful run, write result to `$CACHE_FILE` at end of Phase 4 (cache is local, independent of GitHub state).
 
 ### Compute shared-package repo map (for Q6)
 
-Inventory shared packages AND apps so Phase 2 reviewer can cross-check new additions. Scan BOTH `packages/` and `apps/` — a helper in `apps/web` may duplicate one in `apps/cli`, and monorepos split reusable code across both.
+If `packages/` or `apps/` exists, load `references/q6-reusability-search.md` and run its "Phase 1 — compute the shared-package repo map" section: it holds both shell blocks (the cross-repo `gh api` tree fetch and the local `bash -c` find/grep pair, each truncating at 500 lines) and stashes `repo_map_files` + `repo_map_exports` for Subagent 1's prompt.
 
-**Branch on `CROSS_REPO_MODE`**:
-
-```bash
-if [ "$CROSS_REPO_MODE" = "true" ]; then
-  HEAD_BRANCH=$(gh pr view <url> --json headRefName -q .headRefName)
-  gh api "repos/<owner>/<repo>/git/trees/${HEAD_BRANCH}?recursive=1" \
-    --jq '.tree[] | select(.type == "blob" and (.path | test("^(packages|apps)/.*\\.(ts|tsx)$")) and (.path | test("node_modules|dist|build|\\.test\\.|\\.spec\\.") | not)) | .path' \
-    | awk 'NR<=500{print} END{if(NR>500)print "[truncated at 500 of " NR " lines]"}'
-  repo_map_files="<output>"
-  repo_map_exports="N/A (cross-repo mode — fetch via 'gh api repos/<owner>/<repo>/contents/<path>?ref=<sha>' on-demand)"
-fi
-```
-
-Local mode (default) — wrap globs in `bash -c '...'` (zsh aborts on `packages/*/src` before `2>/dev/null` can suppress):
-
-```bash
-# Repo map files
-bash -c '
-if [ -d packages ] || [ -d apps ]; then
-  { [ -d packages ] && find packages -type f \( -name "*.ts" -o -name "*.tsx" \) \
-      -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
-      -not -name "*.test.*" -not -name "*.spec.*" 2>/dev/null
-    [ -d apps ] && find apps -type f \( -name "*.ts" -o -name "*.tsx" \) \
-      -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
-      -not -path "*/.next/*" -not -name "*.test.*" -not -name "*.spec.*" 2>/dev/null
-  } | awk "NR<=500{print} END{if(NR>500)print \"[truncated at 500 of \" NR \" lines]\"}"
-fi
-'
-# Repo map exports
-bash -c '
-if [ -d packages ] || [ -d apps ]; then
-  find packages apps 2>/dev/null -type d \( -name src -o -name lib -o -name source \) \
-    -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
-    -not -path "*/.next/*" 2>/dev/null \
-    | xargs -I{} grep -rhnE "^export (default (async )?function|function|const|class|type|interface|async function) \w+" {} 2>/dev/null \
-    | awk "NR<=500{print} END{if(NR>500)print \"[truncated at 500 of \" NR \" lines]\"}"
-fi
-'
-```
-
-Stash as `repo_map_files`, `repo_map_exports`. If neither `packages/` nor `apps/` exists, set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false` — Subagent 1 reroutes greps to `src/`.
+If neither directory exists, skip the shell: set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false` — Subagent 1 reroutes greps to `src/`.
 
 ### Check for error-handling touches (flag for Phase 2)
 
@@ -384,7 +265,7 @@ Grep the diff content for error-handling patterns in **added or modified lines**
 try \{ | catch \( | catch \{ | throw new | throw \s | \.catch\( | Result< | rescue | err := | raise
 ```
 
-If any pattern appears OR user mentions error handling, set `INCLUDE_SILENT_FAILURE_HUNTER = true`. Filename-based detection is unreliable.
+If any pattern appears OR user mentions error handling, set `INCLUDE_SILENT_FAILURE_HUNTER = true`.
 
 ### Check for new database tables (flag for Phase 2)
 
@@ -422,7 +303,7 @@ suppressions:
 
 `pattern` (required): case-insensitive substring matched against finding's `Issue` text. `category`/`file` (optional): scope the suppression. `reason` (required): logged in Filtered Out for auditability.
 
-If file exists, pass into Subagent 1 prompt as "Review suppressions — do NOT flag these patterns". Phase 3 step 5.5 also applies as safety net.
+If file exists, pass into Subagent 1 prompt as "Review suppressions — patterns this project has already accepted; skip them". Phase 3 step 5.5 also applies as safety net.
 
 Cross-repo: fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<head-sha>`. Skip on 404.
 
@@ -430,14 +311,13 @@ Cross-repo: fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppr
 
 ## Phase 2: Reviewer subagents
 
-Launch in a **single message with multiple Agent tool calls** based on `SIZE_MODE`.
+Launch in a **single message with multiple Agent tool calls** based on `SIZE_MODE`. One dispatch per invocation: the reviewer subagents go out once here, Phase 3's verifiers go out once there, and that is the whole review. If the PR needs a second look, that is a fresh `/review-pr` run — never a re-dispatch inside this one.
 
 ### Dispatch strategy
 
 **`SIZE_MODE == "solo-main"`** (PR < 100 lines):
 - Run Subagent 1 prompt inline in main context (no Agent tool call). Main reads stashed diff once, answers questions, populates `reusability_searches:`, outputs in same format as subagent.
 - Still dispatch silent-failure hunter (if triggered) — fixed-cost subagent saves main context, runs in parallel.
-- Rationale: 50-line PR doesn't warrant ~5min subagent spin-up for work main does in ~30s.
 
 **`SIZE_MODE == "parallel-standard"`** (100–500 lines, default):
 - Dispatch Subagent 1 (Claude reviewer) + conditional Subagent 2 (silent-failure hunter) in parallel.
@@ -446,7 +326,10 @@ Launch in a **single message with multiple Agent tool calls** based on `SIZE_MOD
 - Split diff by file into ~500-line chunks (don't split a file across chunks).
 - Dispatch ONE Subagent 1 PER CHUNK with full intent model + prior review timeline + repo map + schema context, but only its chunk's files in scope. Prompt: "Your scope is the files listed above. Do not report findings in other files."
 - Dispatch ONE silent-failure hunter at full PR scope.
-- Phase 3 critic dedupes across chunks via the existing `(file, line, symbol)` key — chunks are file-disjoint so within-chunk dupes are impossible; cross-chunk dupes only occur when findings span files.
+- Dispatch ONE **cross-cutting reviewer** (Subagent 3) at full PR scope — see below. Chunk
+  reviewers report within their own chunk only, so Subagent 3 is the one reviewer that can
+  see a defect class spanning two chunks. Without it, that class is a straight path into
+  the cascade.
 
 **`SIZE_MODE == "parallel-chunked-confirm"`** (> 2000 lines):
 
@@ -462,23 +345,52 @@ options:
 
 If any subagent errors out or returns empty, continue with the remaining and note `<reviewer> unavailable` in Phase 4 output header. Abort only if ALL fail.
 
-**Note on CodeRabbit**: this skill no longer dispatches a CodeRabbit subagent. CodeRabbit's findings are pulled from the PR's existing comments via the prior-review timeline in Phase 1 (assuming `.coderabbit.yaml` is configured — see the one-time hint above). If the PR's latest commit has no CodeRabbit comment yet, that's fine — Subagent 1 carries the load and the next round picks up CR's input.
+**Note on CodeRabbit**: CodeRabbit's findings arrive through the prior-review timeline in Phase 1, pulled from the PR's existing comments (assuming `.coderabbit.yaml` is configured — see the one-time hint above), so no CodeRabbit subagent is dispatched. If the PR's latest commit has no CodeRabbit comment yet, Subagent 1 carries the load and the next round picks up CR's input.
 
 ### Subagent 1 — Claude reviewer (`general-purpose`)
+
+Substitute `<SKILL_DIR>` throughout the prompt before it is used — before dispatching in
+every mode, and equally before running it inline under `solo-main`, where main's own
+working directory is the user's repo and a bare relative path misses in exactly the same
+way.
+
+`<SKILL_DIR>` is the absolute directory of the SKILL.md you are currently executing —
+the `review-pr` directory this file sits in — resolved through any symlink. Derive it
+from that location; never hardcode a path. The same skill installs at user scope
+(`~/.claude/skills/review-pr`) and at project scope (`<repo>/.claude/skills/review-pr`),
+so a hardcoded guess is wrong half the time and wrong silently.
+
+Subagents inherit the user's repo as their working directory, so a bare `references/...`
+path resolves against that repo and finds nothing — the load fails silently and the
+subagent answers from memory instead. The same substitution applies to Subagent 3 and to
+the Phase 3 verifiers.
 
 Prompt:
 
 ```
-You are reviewing a GitHub PR for a human reviewer who wants accurate, critical findings — NOT style nitpicks, NOT generic praise, NOT hallucinated issues.
+You are reviewing a GitHub PR for a human reviewer who wants accurate, critical findings — every one traceable to a line of this diff and worth a second look.
+
+## Where the reference files live
+SKILL_DIR: <SKILL_DIR>
+Your working directory is the user's repo, not the skill directory, so every
+`<SKILL_DIR>/references/...` path below is absolute and must be used as written.
+A bare `references/...` resolves against the repo and silently finds nothing.
+
+## Output format — load this FIRST
+Load `<SKILL_DIR>/references/finding-output-format.md` before you write anything. It
+holds the per-finding field block, the `class_completeness:` audit shape, the
+post-image line-number convention, and the closing block you end with. Emit every
+finding in exactly that shape — a finding in any other shape is unparseable to the
+Phase 3 critic and is dropped.
 
 ## Ground truth
 Goal: <from Phase 1>
 Expected touches: <from Phase 1>
 Out of scope: <from Phase 1>
-Prior findings already reported (do NOT re-report unless you have a correction): <from Phase 1>
+Prior findings already reported (raise one again only as a correction): <from Phase 1>
 
-## Prior multi-round state — DO NOT re-report these
-The following findings were already resolved or dismissed in earlier review rounds. Do NOT re-report them unless the diff shows the resolving code was reverted.
+## Prior multi-round state — already closed
+These findings were resolved or dismissed in earlier review rounds. They stay closed unless the diff shows the resolving code was reverted.
 <filtered list from PRIOR_STATE.findings where status in {resolved, dismissed, wontfix}>
 For each: id, file, enclosing_symbol, rule_class, status, round_resolved, dismissal_reason.
 
@@ -499,7 +411,7 @@ May be truncated at 500 lines — for thorough checks, Grep/Glob packages/ direc
 ## Schema review context
 INCLUDE_SCHEMA_CHECKS: <true|false>
 SCHEMA_DIR: <path>
-If true, ALSO load and follow `references/schema-design-checks.md` for Q7-Q9.
+If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` for Q7-Q9.
 
 ## Your task
 
@@ -524,7 +436,7 @@ If true, ALSO load and follow `references/schema-design-checks.md` for Q7-Q9.
             - Denormalized aggregation columns
             - Polymorphic reference patterns
             - Self-referential FKs
-            If `INCLUDE_SCHEMA_CHECKS = true` AND the project already uses the same pattern in existing tables (search `$SCHEMA_DIR`), do NOT flag as premature.
+            If `INCLUDE_SCHEMA_CHECKS = true` AND the project already uses the same pattern in existing tables (search `$SCHEMA_DIR`), treat it as an established convention.
             Severity: Minor. Category: Architecture.
 
    Q3. DRY — Duplicated logic within the diff or with existing code visible in surrounding context?
@@ -547,13 +459,11 @@ If true, ALSO load and follow `references/schema-design-checks.md` for Q7-Q9.
 
    Q6. Reusability (Q6a only — codebase-wide) — MANDATORY tool-use check.
 
-       The full STEP A enumeration + STEP B search algorithm + Q6 control-flow gap notes live in `references/q6-reusability-search.md`. Load it before answering Q6 if the diff has 1+ new top-level definitions.
+       The full STEP A enumeration + STEP B search algorithm + Q6 control-flow gap notes live in `<SKILL_DIR>/references/q6-reusability-search.md`. Load it before answering Q6 if the diff has 1+ new top-level definitions.
 
        Q6a. Reimplements existing code (default Severity: SERIOUS; escalate to CRITICAL if existing thing lives in auth / validation / crypto package)
             <finding with concrete existing file:path to reuse>
             OR "No issues"
-
-       The other Q6 sub-buckets (extract candidate, raw HTML, inline-block) were retired — they produced too many dismissed findings in real usage. Q6a is the high-signal kernel: reimplementation of existing shared code.
 
        REQUIRED audit field — use this EXACT name `reusability_searches:`:
 
@@ -567,75 +477,201 @@ If true, ALSO load and follow `references/schema-design-checks.md` for Q7-Q9.
          For each search where N > 0, `verified:` is MANDATORY.
          If STEP A was empty: `reusability_searches: N/A (no new top-level definitions in diff)`
 
-5. Additionally flag:
+5. **CLASS SWEEP — MANDATORY for every finding that proposes a code change.**
+
+   Do this when the finding is FIRST RAISED, not when it is resolved — an unswept
+   finding is a cascade waiting to happen.
+
+   For each finding, derive a searchable signature from its `Rule-class` — the
+   literal or structural pattern, not the prose — and search its **blast radius**:
+   the touched files, then the enclosing module, then the package, plus every
+   caller when `Rule-class` names a shared or exported symbol.
+
+   REQUIRED audit field — use this EXACT name `class_completeness:`. Its exact shape,
+   the `affected | not-affected` vocabulary, and the `N/A (no code change proposed)`
+   sentinel are in `<SKILL_DIR>/references/finding-output-format.md` under
+   "`class_completeness:` audit" — write it as specified there, not from memory.
+
+   If the sweep finds sites the finding did not cover, fold them into the SAME
+   finding (preferred — one finding, N sites) or raise them as siblings, so every
+   site of the class is on the page.
+
+6. **INVERSE-RISK PASS — MANDATORY, run after drafting every `Suggested fix`.**
+
+   Treat your own remedy as code under review. Ask, for each suggested fix:
+   *if a competent engineer implements this literally and nothing else, what breaks?*
+
+   Answer concretely, naming the failure mode — not "could have issues". Worked
+   examples:
+     - "fail-closed decrypt" → placeholder value that can be re-encrypted over real ciphertext
+     - "key={dataUpdatedAt} to re-seed the form" → silently discards unsaved edits on refetch
+     - "treat missing reference as an empty run" → dead schedule now reports success forever
+     - "widen the backend gate" → frontend mirror still restricts; inverts the bug
+
+   Write it into the finding's `Inverse risk:` field. If the fix is a pure addition
+   with no behavior traded away, say `none — pure addition`.
+
+   A fix whose inverse risk is worse than the original finding is the cascade with
+   extra steps. Rewrite the suggestion or downgrade the finding to an observation.
+
+7. Additionally flag:
    - Silent failures (caught errors swallowed without logging)
    - Removed error handling
    - Breaking changes to public APIs not mentioned in PR description
    - Architectural issues (wrong layer / wrong package / wrong abstraction boundary)
+   - **New error values / sentinels / thrown exceptions**: trace each to EVERY
+     downstream consumer in this pass, including consumers the diff does not touch.
+     Error chains are static and fully traceable, so one pass can cover every layer
+     — a layer per round is a cascade.
 
-6. **Schema-specific checks (Q7–Q9)** — only when `INCLUDE_SCHEMA_CHECKS = true`. Load `references/schema-design-checks.md` and follow its Q7/Q8/Q9 instructions. Skip entirely if false.
+     REQUIRED audit field on every such finding — use this EXACT name `consumers:`:
+
+       consumers:
+         - <file:line>: handles | does-not-handle — <one clause>
+
+     Done when every new error value / sentinel / thrown exception in the diff has a
+     `consumers:` list. Zero consumers is acceptable ONLY when the search that returned
+     zero is named on the same line:
+     `consumers: none — <tool>("<query>", "<path>") → 0 matches`.
+
+8. **Schema-specific checks (Q7–Q9)** — only when `INCLUDE_SCHEMA_CHECKS = true`. Load `<SKILL_DIR>/references/schema-design-checks.md` and follow its Q7/Q8/Q9 instructions. Skip entirely if false.
 ```
 
 #### Anti-slop rules (MANDATORY)
 
-- Do NOT report style, formatting, or naming preferences.
-- Do NOT re-report Prior findings. **Exception**: if you believe a prior finding was wrong, report with `Category: Prior-finding-correction` + concrete explanation.
-- Do NOT re-report findings from `PRIOR_STATE.findings` with `status in {resolved, dismissed, wontfix}` unless the diff shows the resolving code was reverted (then mark the new finding's `status` as `regression`).
-- Do NOT report hypothetical issues ("this COULD become a problem if X") unless X is plausible given actual codebase signals in the diff.
-- Do NOT report issues you cannot point to with `File: <path>` (line optional for module-scope findings — these route to file-level review comments).
-- Do NOT report generic advice ("consider adding tests") unless tests were expected and omitted.
-- If a question (Q1–Q9, except Q6) has NO issues, write "No issues" — do not invent findings.
-- **Permission to abstain**: if answering needs code you haven't seen, either fetch via `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>` or write `Cannot assess — would need <file>`. DO NOT guess.
+- Report semantic and codebase-wide defects; CodeRabbit owns style, formatting, and naming.
+- Prior findings stay closed. **Exception**: if you believe a prior finding was wrong, report it with `Category: Prior-finding-correction` + concrete explanation.
+- Findings in `PRIOR_STATE.findings` with `status in {resolved, dismissed, wontfix}` stay closed too. Re-raise one only when the diff shows the resolving code was reverted, and mark the new finding's `status` as `regression`.
+- Raise a conditional issue ("this COULD become a problem if X") only when X is visible as a codebase signal in the diff.
+- Point every finding at a `File: <path>`. Give the line when you can name it on the post-image side; leave it off for module-scope findings, which route to file-level review comments.
+- Raise missing tests only where this PR was expected to add them — advice that would fit any PR belongs to no PR.
+- If a question (Q1–Q9, except Q6) has nothing to report, write "No issues" — that is a complete answer.
+- **Permission to abstain**: if answering needs code you haven't seen, fetch it via `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>` or write `Cannot assess — would need <file>`. Both are complete answers.
 - Low-confidence findings at Moderate or Minor WILL be dropped by the critic. Only flag if a human should still take a second look.
 - For Q6, populate `reusability_searches:` with actual tool calls or the N/A sentinel. Empty/missing audit = Q6 claims INVALID.
-
-#### Line number convention
-
-`File: <path:line>` must use the **post-image line number** — line as it appears in the new version (the `+` side of the unified diff hunk, or unchanged-context on the new side). NOT old-side. NOT diff hunk header offset.
+- Populate `class_completeness:` with actual tool calls or the N/A sentinel. Missing audit = the finding is treated as UNSWEPT and the critic runs the sweep itself.
+- Every `Suggested fix:` ships with an `Inverse risk:` — `none — pure addition` when the fix trades nothing away.
 
 #### Output format
 
-For each finding:
-
-```
-Severity:    Critical | Serious | Moderate | Minor
-Confidence:  high | medium | low
-File:        <path:line> (or <path> alone for module-scope)
-Category:    Intent | Unnecessary | DRY | Performance | Security |
-             Reusability | Silent-failure | Breaking-change |
-             Architecture | Prior-finding-correction
-Rule-class:  <2-3 word slug — e.g., silent-failure, n+1-query, error-code-wrong-branch>
-Enclosing-symbol: <function/class/component containing the cited line, or "<module>">
-Issue:       <one sentence>
-Why it matters: <one sentence>
-Suggested fix:  <one sentence, actionable>
-```
-
-`Rule-class` and `Enclosing-symbol` are NEW required fields — they let the critic compute a stable finding ID (`sha1(file::enclosing_symbol::rule_class)`) that survives line shifts and rewordings across review rounds. See `references/finding-state-schema.md`.
-
-End with:
-
-```
-Senior engineer approval: Yes | No | With changes
-Approval reason: <one sentence>
-Summary: <3 sentences — what the PR does, biggest concern, overall verdict>
-Verdict: approve | comment | request-changes
-```
+`references/finding-output-format.md` is the one copy — the per-finding field block
+(including `Rule-class`, `Enclosing-symbol`, `Inverse risk` and `Class-sites`), the
+`class_completeness:` audit shape, the post-image line-number convention, and the
+run-level closing block. The prompt above already tells Subagent 1 to load it from
+`<SKILL_DIR>/references/finding-output-format.md`; do not restate any of it here, and do
+not paste a second copy into any prompt.
 
 ### Subagent 2 (conditional) — Silent-failure hunter
 
 Only dispatch if `INCLUDE_SILENT_FAILURE_HUNTER = true`.
 
 - `subagent_type`: `pr-review-toolkit:silent-failure-hunter`
-- Prompt: `"Check for silent failures, swallowed errors, and inadequate error handling in the GitHub PR at <url>. Fetch the diff yourself via 'gh pr diff <url>'."`
+
+The context packet is PART OF THE PROMPT, not commentary around it — dispatch the whole
+block below. Handed only a URL, this subagent has no idea what the PR is for or what
+earlier rounds closed, so it re-finds settled issues and misses the rest.
+
+Prompt:
+
+```
+Check for silent failures, swallowed errors, and inadequate error handling in the GitHub
+PR at <url>. Fetch the diff yourself via `gh pr diff <url>`.
+
+## Ground truth
+Goal: <from Phase 1>
+Expected touches: <from Phase 1>
+Out of scope: <from Phase 1>
+Prior findings already reported (raise one again only as a correction): <from Phase 1>
+
+## Already closed in earlier rounds — do not re-raise
+<rule_class list from PRIOR_STATE.findings where status in {resolved, dismissed, wontfix}>
+Re-raise one only when the diff shows the resolving code was reverted.
+```
+
+### Subagent 3 (conditional) — Cross-cutting reviewer
+
+Dispatch when `SIZE_MODE` is `parallel-chunked` or `parallel-chunked-confirm`. Skip otherwise
+— in unchunked modes Subagent 1 already sees every file.
+
+- `subagent_type`: `general-purpose`
+- Scope: the WHOLE PR. It is the only reviewer permitted to report across file boundaries.
+
+```
+You are reviewing a GitHub PR at <url> for CROSS-FILE patterns ONLY. Other reviewers cover
+each file in isolation — do not duplicate them. Fetch the diff yourself.
+
+## Where the reference files live
+SKILL_DIR: <SKILL_DIR>
+Your working directory is the user's repo, not the skill directory, so the
+`<SKILL_DIR>/references/...` path below is absolute and must be used as written.
+A bare `references/...` resolves against the repo and silently finds nothing.
+
+## Output format — load this FIRST
+Load `<SKILL_DIR>/references/finding-output-format.md` before you write anything and emit
+every finding in exactly that shape, `Rule-class`, `Enclosing-symbol`, `Class-sites`,
+`Inverse risk` and the `class_completeness:` audit included. A finding in any other shape
+is unparseable to the Phase 3 critic and is dropped. You report findings only — no
+run-level verdict.
+
+Goal: <intent model>
+Prior findings already reported: <list>
+
+Report ONLY findings that require seeing two or more files at once:
+
+1. Same defect class in sibling files — one call site handled, an identical one not.
+   Example shape: three hooks in a component get an error branch and the fourth doesn't;
+   two components get role="alert" and the third doesn't.
+2. One concern handled inconsistently across files — differing validation, error handling,
+   auth checks, or null handling for the same logical thing.
+3. A value, sentinel, or thrown error introduced in one file whose consumers in OTHER files
+   don't handle it.
+4. A guard or contract asserted in one file and contradicted in another.
+
+For each finding, cite EVERY file:line involved — a finding naming only one file is by
+definition not cross-cutting; drop it.
+
+"No cross-file findings" is a complete answer.
+```
 
 ---
 
 ## Phase 3: Critic pass (main context)
 
-After ALL subagents return, main Claude does the critic pass directly. **No subagent.** Main already holds intent model + prior reviews + prior_state.
+The critic pass always runs. It is the second-biggest anti-slop lever after the reviewer
+prompt, and no branch of this skill prints, posts, or persists findings that have not been
+through it.
+
+After ALL subagents return, main Claude runs the critic pass, splitting the work on one line:
+
+- **Judgment stays in main.** Dedupe, the 3-prong test, false-positive rules, suppressions,
+  ranking, verdict. These need the intent model and the prior-review timeline, which main
+  already holds. Shipping them to a subagent would mean re-sending all of it.
+- **Evidence-gathering goes to subagents.** Anything that means grepping the repo,
+  enumerating callers, or re-reading files at HEAD. These burn context proportional to the
+  codebase and return a few lines of verdict. Main should hold the verdict, not the search.
+
+Steps 4.55, 4.9 and 6 dispatch subagents (see **Phase 3 verification subagents** below).
+Everything else runs inline. A verification subagent reports evidence in a compact
+structured verdict; main rules on severity, on drops, and on the state file.
 
 Execute in order:
+
+### Phase 3 verification subagents
+
+Cap: **at most 4 verification subagents in total.** V2 and V3 are one each by nature — V2
+reads a short prior-state list, V3 runs one gap check. Only V1 batches, so it gets at most
+2, at 10 findings per subagent. Findings past V1's first 20 — ordered Critical → Minor —
+are verified inline in main.
+If a verifier errors or returns empty, run its step inline in main and note
+`<verifier> unavailable — verified inline` in the Phase 4 header.
+
+The dispatch condition and the exact prompt for each of V1 (class-sweep), V2 (regression
+sweep) and V3 (deep gap check) live in `references/verification-subagents.md`. Load it when
+you reach the first of steps 4.55 / 4.9 / 6 whose condition holds, and keep it for the
+others — the three dispatch in one message. If none holds, the file is never needed.
+
+Substitute `<SKILL_DIR>` in every verifier prompt exactly as for Subagent 1 (see Phase 2)
+— verifiers inherit the user's repo as their working directory too.
 
 ### 1. Dedupe
 
@@ -646,9 +682,13 @@ Merge findings describing the same issue across reviewers AND within a reviewer'
 Normalize symbol names: lowercase + strip CamelCase boundaries (`renderUserCard` → `renderusercard`).
 
 Dedupe priority when merging:
-1. Severity wins: `Serious > Moderate > Minor`.
+1. Severity wins: `Critical > Serious > Moderate > Minor`.
 2. Category precedence for ties: `Security > Reusability > Silent-failure > Breaking-change > Performance > DRY > Unnecessary > Intent > Architecture`.
 3. Confidence: keep highest.
+4. **Site list always survives.** When a cross-file finding (Subagent 3) merges with a
+   single-file one, keep the UNION of their sites in `Class-sites`. Collapsing a
+   "3 of 4 hooks handled" finding down to the one hook a chunk reviewer happened to cite
+   re-creates the exact blind spot Subagent 3 exists to close.
 
 ### 1.5. Cheap line-count sanity
 
@@ -659,11 +699,11 @@ For each finding with a `File: <path:line>` reference, before expensive Step 2 v
    - MODIFIED file: `max_valid_line ≈ file.additions + file.deletions_original_side + ~200 buffer`. When suspicious, fetch HEAD file length via `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>`.
    - Cheap heuristic: if `line > (file.additions + 500)` for a NEW file, almost certainly hallucinated.
 
-2. If `cited_line > max_valid_line`: drop and log `hallucinated reference (line <N> exceeds <M> available)`. Do NOT auto-shift lines — drop, don't rescue.
+2. If `cited_line > max_valid_line`: drop and log `hallucinated reference (line <N> exceeds <M> available)`. Drop it as cited — a line that doesn't exist is not rescued by shifting it to one that does.
 
 ### 2. Verify `file:line`
 
-The full diff is in main context (stashed in Phase 1). Not token waste — only way main can verify references independently of the subagent's now-discarded context.
+The full diff is in main context (stashed in Phase 1) — main verifies references against it, independently of the subagent's now-discarded context.
 
 - PRs `< 500` lines: verify ALL findings.
 - PRs `>= 500` lines: verify all Critical + Serious; for Moderate/Minor on files not fully stashed, fetch per-file patch:
@@ -685,7 +725,7 @@ For each remaining finding, drop **only if ALL three** hold:
 - (b) no user-visible behavior changes if ignored
 - (c) no downstream refactor cost
 
-Keep if **ANY one** fails. Log drops as `noise / 3-prong test`. Replaces vibes-based "would a senior engineer care?" with falsifiable test.
+Keep if **ANY one** fails. Log drops as `noise / 3-prong test`.
 
 ### 4.5. Reusability audit verification
 
@@ -722,85 +762,109 @@ Three outcomes:
 
 #### 4.5c — Log all drops to Filtered Out for auditability.
 
+### 4.55. Class-completeness verification
+
+For each surviving finding that proposes a code change, check its `class_completeness:` audit.
+`Class-sites: <A>/<N>` counts the audit's `affected` sites over the total entries in its
+`sites:` list — see "`class_completeness:` audit" in `references/finding-output-format.md`
+for the vocabulary. `handled` is the state file's separate question and never appears here.
+
+Every finding that proposes a code change passes through this step, including findings the
+step 6 gap check adds later — see the routing note there.
+
+Batch every finding needing verification into **V1 — Class-sweep verifier** and dispatch it
+alongside V2/V3. Main applies the rules below to what V1 returns.
+
+1. **Field missing entirely** — the sweep was not run. Keep the finding and let V1 run the
+   sweep. Derive the signature from `Rule-class`, and append V1's result to the finding. Log
+   `class sweep run by verifier — reviewer omitted audit`.
+
+2. **`verdict: INCOMPLETE`** — the reviewer found sites it did not report. Fold every
+   unreported site into the finding's `Class-sites` count and list them in the finding
+   body. A finding covering 1 of 4 sites, reported as if it covered the defect, is a
+   cascade in waiting.
+
+3. **`verdict: COMPLETE` with `search:` naming zero tool calls** — treat as missing (case 1).
+
+4. **Shared-symbol escalation**: if the finding's file sits in a shared package (use the
+   Phase 1 repo map) OR `Enclosing-symbol` is exported, its blast radius includes every
+   caller. Where the sweep stopped at the defining file, run the caller search yourself
+   and note the behavioral delta at each call site — enumerate them before the fix ships,
+   not after.
+
+Every finding that enters this step leaves it, widened. Log every widening.
+
+Done when every finding proposing a code change exits this step with a non-empty
+`Class-sites`.
+
+### 4.56. Inverse-risk verification
+
+Every finding carrying a `Suggested fix:` passes through this step, including findings the
+step 6 gap check adds later — see the routing note there.
+
+For each surviving finding with a `Suggested fix:`:
+
+1. **`Inverse risk:` missing** — derive it yourself before printing. Ask what breaks if
+   the suggestion is implemented literally and nothing else changes.
+
+2. **Inverse risk is worse than the finding** — the suggestion is not a fix. Either
+   rewrite it into one that doesn't trade the defect for a bigger one, or keep the
+   finding and replace the suggestion with `no safe one-line fix — needs design`.
+
+3. **Record it.** The `inverse_risk` string is persisted to `.claude/review-state/<pr>.yml`
+   on the finding. Round N+1 checks it FIRST, before hunting anything new — see step 4.9.
+
+`/fix-pr-review` implements these suggestions verbatim — an unvetted one-sentence
+remedy becomes production code.
+
+Done when every surviving finding carrying a `Suggested fix:` exits this step with a
+non-empty `Inverse risk:`.
+
 ### 4.6. Apply false-positive rules table
 
-A unified iterator over a rules table (replaces the prior 4.6/4.7/4.8/4.9 individual filters). Each rule has: `id`, `trigger` (regex matched against `Issue` or `Why`), `evidence_check` (a callable that returns `evidence_present | evidence_absent | inapplicable`), `action` (`drop` / `downgrade-1` / `downgrade-1-and-note`).
+A unified iterator over a rules table. Each rule has: `id`, `trigger` (regex matched against `Issue` or `Why`), `evidence_check` (a callable that returns `evidence_present | evidence_absent | inapplicable`), `action` (`drop` / `downgrade-1` / `downgrade-1-and-note`).
 
 Apply each rule in order. A rule fires when (1) `trigger` regex matches AND (2) `evidence_check` returns the expected branch. Log each fire to Filtered Out with the rule `id` + reason.
 
-Rules:
+The rules themselves — the four-rule YAML table with every `trigger` regex and `evidence_check` body — live in `references/false-positive-rules.md`. Load it here whenever at least one finding survives step 4.5; skip it when the finding list is empty. That table is the single source of truth for false-positive filtering: adding a new false-positive class is a one-row YAML edit there, not a new prose section here.
 
-```yaml
-rules:
-  - id: wrapped-coercion
-    trigger: |
-      (?i)\.toFixed\(|\.toString\(|\.toLocaleString\(|String\(
-    evidence_check: |
-      Verify cited line in stashed diff. Drop if the call is structurally enclosed by
-      Number(...) / parseFloat(...) / parseInt(...) / unary +(...) on the SAME line.
-      Anchored patterns:
-        =\s*(Number|parseFloat|parseInt|\+)\s*\(\s*<call>
-        :\s*(Number|parseFloat|parseInt|\+)\s*\(\s*<call>
-        return\s+(Number|parseFloat|parseInt|\+)\s*\(\s*<call>
-      Do NOT match across lines, do NOT match sibling args (e.g., foo(bar.toFixed(1), Number(y))).
-    action: drop
-    log_reason: "wrapped-coercion FP — call wrapped in Number(...) on same line"
+### 4.9. Proactive regression sweep (runs before prior-state suppression, 4.95)
 
-  - id: intent-alignment
-    trigger: |
-      (?i)unscoped|semantic (drift|change)|not mentioned|not in (the )?description|scope creep|out of scope|outside (the )?stated goal|beyond PR scope|undeclared change|silently changes behavior
-    evidence_check: |
-      Tokenize PR intent (title + linked-issue title + first 200 chars body):
-        - Split on whitespace, [_\-\.\/], camelCase boundaries
-        - Lowercase, drop tokens <= 2 chars, drop stop words (add fix update refactor use new the a of in for to and or is be)
-      Tokenize finding's claim (cited File: + symbol from Issue) same way.
-      Precondition: |finding_tokens| >= 3 AND |intent_tokens| >= 3. If either < 3, INAPPLICABLE.
-      Compute overlap = |intent ∩ finding| / |finding|.
-      If overlap >= 0.5 → return evidence_present (downgrade).
-      If overlap = 1.0 AND severity = Minor → return evidence_present_drop (drop).
-    action: downgrade-1-and-note   # plus drop-if-Minor for overlap=1.0 case
-    note: "Note: this change aligns with PR intent (\"<keywords>\"). Re-verify before merging — may be intentional."
-    log_reason: "intent-alignment downgrade — <N>/<M> finding tokens match PR intent"
+Skip entirely when `CURRENT_ROUND == 1`.
 
-  - id: library-behavior-citation
-    trigger: |
-      (?i)<Library> (does|returns|is)|float precision|IEEE 754|floating-point|fragile|unsafe edge case
-    evidence_check: |
-      Check if Why or Fix contains a citation:
-        - node_modules/<lib>/ path matching the library named in Issue
-        - URL on official docs (github.com/<org>/<lib>, <lib>.dev, docs.<lib>.io) or spec/RFC
-        - Reproducible code snippet with concrete input/output values
-        - Linked repo issue or failing test case
-      If NO citation found:
-        Critical → downgrade to Serious + note (evidence_present_partial)
-        Serious  → downgrade to Moderate + note
-        Moderate → DROP
-        Minor    → DROP
-    action: severity-conditional   # see severity ladder above
-    note: "Note: unverified library-behavior claim — empirical check required before acting."
-    log_reason: "library-claim — <severity> with no citation"
+Step 4.95 below only re-examines a resolved finding when a reviewer happens to re-raise
+its exact ID — regressions caught by luck. This step catches them on purpose.
 
-  - id: default-fallback
-    trigger: |
-      (?i)\b(dropped|stripped|lost in|never propagated|not (propagated|passed|forwarded|carried))\b|falls? back to|fallback to
-    evidence_check: |
-      Extract claimed-dropped field name (backtick-quoted ID, or first camelCase/snake_case token near matched verb).
-      Search stashed diff first; fetch via gh api contents only if needed (cache per critic pass).
-      Look for ANY of:
-        - ALL_CAPS constant whose name contains a camelCase segment of the field
-          (e.g., field currencyCode → match DEFAULT_CURRENCY_CODE, FALLBACK_CURRENCY)
-        - camelCase default: \b(default|fallback|initial)[A-Z]\w*\b ending with field segment
-        - config-object default: config\.(default|fallback)\w*, defaults\.\w+, <obj>\.fallback\w*
-        - Coalesce on receiving side: ??\s*<const>, ||\s*<const>
-        - Comment within 10 lines: (?i)defaults? to|always|intentionally|by design|only\s+\w+\s+(makes sense|is supported|applies)
-      If a "by design" / "only X makes sense" / "always X" comment is found → evidence_present_drop (DROP).
-      Else if any named-default signal → evidence_present (downgrade).
-    action: downgrade-1-and-note   # plus DROP if "by design" comment found
-    note: "Note: a named default (<CONST>) handles the absent value — likely intentional design, not a propagation bug."
-    log_reason: "default-fallback — found <CONST>"
-```
+Dispatch **V2 — Regression sweep verifier** over EVERY finding in `PRIOR_STATE` with
+`status in {resolved, dismissed, wontfix}`, regardless of whether any reviewer mentioned it
+this round. V2 gathers the evidence; main applies the rules below to its verdicts:
 
-Apply each rule sequentially. Log every fire. The rules table is the single source of truth for false-positive filtering — adding a new false-positive class is a one-row YAML edit, not a new prose section.
+1. **Re-verify by `rule_class`, not by ID hash.** The ID is
+   `sha1(file::enclosing_symbol::rule_class)`, so the same defect resurfacing in a
+   sibling symbol produces a DIFFERENT id and escapes matching entirely. Search the
+   stored `class_sites` — plus any new sites the current diff added — for the class
+   signature. A resolved finding whose class has an unhandled site is not resolved:
+   reopen it with `status: regression` and cite the specific site.
+
+2. **Check the stored `inverse_risk`.** If the fix that resolved this finding recorded
+   an inverse risk, confirm that failure mode is absent at the current head. This is
+   the cascade caught one round early.
+
+3. **Re-validate dismissals against `depends_on`.** A `wontfix` records the code
+   condition its rationale rests on. If a later commit invalidated that condition, the
+   dismissal is void — reopen with `status: active` and note which commit voided it.
+
+4. **Attribute the lineage — bounded to one hop.** Blame the finding's cited line
+   (`git blame -L <line>,<line>` locally; `gh api repos/<owner>/<repo>/commits?path=<path>`
+   in cross-repo mode). Set `caused_by: <prior finding id>` ONLY when blame lands on a
+   commit recorded as some prior finding's `commit_sha_resolved`. Otherwise
+   `caused_by: null` — stop there rather than walking back through parent commits.
+   This covers the findings this step REOPENS. The findings this round raised fresh get
+   the same treatment at step 4.96; both feed the count at step 7.5.
+
+Done when every `PRIOR_STATE` entry with `status in {resolved, dismissed, wontfix}` has a
+recorded V2 verdict, and the verdict count equals the dispatched count. A missing verdict
+means V2 dropped that entry — re-check it inline rather than reading silence as still-closed.
 
 ### 4.95. Apply prior-state suppression (multi-round dedup)
 
@@ -817,7 +881,41 @@ For each remaining finding:
 
    - **`status in {dismissed, wontfix}`** → DROP, log `prior-state suppression — <status> in round <round_resolved>: "<dismissal_reason>"`.
 
-3. NEVER use the word "deferred" in any output, log, or comment. Use exactly one of: `resolved` (with commit), `dismissed` (with reason), `wontfix` (with reason), `still-active`, `regression`.
+3. Report every finding's state as exactly one of: `active`, `resolved` (with commit), `dismissed` (with reason), `wontfix` (with reason), `regression`. The enum is closed, and it is the only status vocabulary that appears in output, logs, or comments.
+
+### 4.96. Attribute lineage on this round's findings
+
+Skip entirely when `CURRENT_ROUND == 1` — there is no earlier fix to attribute to, and
+every finding gets `caused_by: null`.
+
+Step 4.9 attributes lineage on findings it REOPENS from prior state. This step does it for
+the findings this round raised fresh — which is the case the cascade check exists to
+catch: a new finding sitting on a line the previous round's fix wrote. Skip this and
+`cascade_share` is 0 by construction and the trend line always reads "Converging".
+
+Run it over the findings that SURVIVED step 4.95, one hop, same bound as step 4.9:
+
+1. Blame the finding's cited line — `git blame -L <line>,<line>` locally,
+   `gh api repos/<owner>/<repo>/commits?path=<path>&sha=<head_sha>` in cross-repo mode.
+
+2. Set the field:
+
+   ```
+   caused_by: <id of the prior finding whose commit_sha_resolved is that blame commit, or null>
+   ```
+
+   Set an id ONLY when the blame commit is recorded as some `PRIOR_STATE` finding's
+   `commit_sha_resolved`. Otherwise `null` — do not walk back through parent commits, and
+   do not guess from proximity or topic.
+
+3. A finding with no cited line (module-scope) gets `caused_by: null`; there is no line to
+   blame. Same for a finding whose blame commit predates round 1.
+
+4. When several prior findings share the blame commit, take the single nearest cause — the
+   cardinality rule in `references/finding-state-schema.md` decides which.
+
+Done when every surviving finding carries a `caused_by` value, `null` included. Step 7.5
+counts the non-null ones; Phase 4 write-back persists them.
 
 ### 5. Confidence-based drop
 
@@ -833,17 +931,57 @@ If `SUPPRESSIONS` was loaded in Phase 1, match each remaining finding:
 
 If ALL specified conditions match: DROP, log `suppressed by .claude/review-suppressions.yml: "<reason>" (pattern: "<pattern>")`.
 
-**Critical/Serious override**: suppressions can drop findings at any severity. If a team explicitly decided a pattern is acceptable, respect that even for Serious. The `reason` field makes it auditable.
+**Critical/Serious override**: suppressions drop findings at any severity — a team that explicitly decided a pattern is acceptable outranks the review, and `reason` keeps the drop auditable.
 
 ### 6. Gap check (Q1–Q6, Q7–Q9 if schema PR)
 
 For any question category where Subagent 1 said nothing, briefly think about whether the diff has anything in that category. Add findings if you spot misses. Include Q7–Q9 only if `INCLUDE_SCHEMA_CHECKS = true`.
 
-**Large-PR caveat**: if `additions + deletions >= 500` AND you don't have full diff loaded in main, **skip Step 6** and log `gap check not run — PR too large for main context`. Do NOT hallucinate gaps from file list alone.
+**Large-PR routing**: if `additions + deletions >= 500` AND main lacks the full diff,
+route this check to **V3 — Deep gap check** and fold its findings in here. V3 has the
+context budget to answer from the diff itself, where main would be guessing from a
+file list. Pass V3 `INCLUDE_SCHEMA_CHECKS` and `SCHEMA_DIR` — it is dispatched precisely
+on the large PRs where schema changes live, so dropping the flag drops Q7–Q9 exactly
+where they are most likely to fire.
+
+**Re-run the cascade gates on everything this step adds.** Findings created here — main's
+own and V3's alike — arrive after steps 4.55, 4.56 and 4.96 have already run, so they
+carry an empty `Class-sites`, an empty `Inverse risk`, and no `caused_by` unless routed
+back. Route every finding this step adds back through:
+
+1. **4.55** — class-completeness sweep, so `Class-sites: <A>/<N>` is non-empty. Where V1
+   has already returned, run the sweep inline in main rather than dispatching a second V1;
+   the 4-subagent cap still holds.
+2. **4.56** — inverse-risk derivation, so every `Suggested fix:` carries an `Inverse risk:`.
+3. **4.96** — lineage attribution, so `caused_by` is set or explicitly null.
+
+`Inverse risk` and `Class-sites` are mandatory on any finding proposing a code change no
+matter which step raised it; a gap-check finding that skips these writes nulls straight
+into the state file and blinds the next round's regression sweep.
 
 ### 7. Rank by severity
 
 Critical > Serious > Moderate > Minor.
+
+### 7.5. Compute `cascade_share`
+
+The ONE place this ratio is computed. Ranking is done, the finding set is final, and every
+finding carries a `caused_by` from step 4.9 or 4.96 — so this is the first point where the
+number is both computable and stable.
+
+At `CURRENT_ROUND == 1` there is no prior round to attribute to: set `cascade_share = 0`,
+skip the trend sentence, and move on.
+
+From round 2:
+
+```
+cascade_share: <count of active findings with a non-null caused_by> / <count of active findings>
+```
+
+Zero active findings → `cascade_share = 0`, not a division by zero.
+
+Step 8 below reads this value for the verdict prefix, and Phase 4's **Cascade check**
+prints it. Neither recomputes it — one number, one definition, one round.
 
 ### 8. Decide verdict (category-aware)
 
@@ -852,6 +990,32 @@ Critical > Serious > Moderate > Minor.
 - Any other Serious → `comment`
 - Only Moderate/Minor → `approve` (with comments)
 - No findings → `approve`
+
+At any round, if `cascade_share > 0.5` — the single value computed at step 7.5 just above,
+never recomputed here — prepend to the verdict reason:
+
+> Over half of this round's findings were introduced by the previous round's fixes.
+> Patching site-by-site is not converging — this module needs a design pass.
+
+#### Severity ratchet (`CURRENT_ROUND >= 3`)
+
+From round 3 onward, **only Critical and Serious may block.** Two concrete effects, both
+on top of the rules above:
+
+1. **Moderate and Minor stop holding the PR.** With no Critical and no `request-changes`
+   Serious, the verdict is `approve` even when Moderate and Minor findings remain — where
+   rounds 1–2 would have landed on `comment`.
+2. **They report separately.** Print them in the Phase 4 body under the
+   `Follow-ups (non-blocking)` heading instead of under their own severity headings, and
+   offer to file them as issues in the post-review prompt.
+
+Rationale: a PR that has absorbed two rounds of fixes is being held by a long tail,
+and each extra round of Moderate-chasing is another chance to feed the cascade. The
+tail is worth less than the churn it costs.
+
+Nothing else moves. No finding is dropped, no severity is rewritten, the verdict enum
+stays `approve | comment | request-changes`, and Critical and Serious block exactly as
+they do at rounds 1–2.
 
 ### 9. Decide Senior-engineer approval
 
@@ -878,6 +1042,8 @@ Write a one-sentence approval reason grounded in the most important finding (or 
 **Size**: <additions>/<deletions> across <N> files
 **Reviewers**: <list, with "(unavailable)" marker for any failed subagent>
 **Round**: <CURRENT_ROUND> (<active>/<resolved>/<dismissed> findings carried across rounds)
+**Convergence**: <N> new · <C> caused by earlier fixes · <R> regressions reopened · <F> carried
+<trend line — omit at round 1>
 
 ## Summary
 <2-3 sentence summary>
@@ -896,6 +1062,10 @@ Write a one-sentence approval reason grounded in the most important finding (or 
 ### Minor
 <entries>
 
+## Follow-ups (non-blocking)
+<round >= 3 only: Moderate/Minor findings the severity ratchet released from blocking.
+ Omit this heading entirely at rounds 1-2, where they appear under their own severity.>
+
 ## Filtered out (<count>)
 <dropped findings with reasons — for auditability>
 
@@ -909,7 +1079,29 @@ Write a one-sentence approval reason grounded in the most important finding (or 
 **Verdict**: approve → ✅ · comment → 💬 · request-changes → ❌
 **Severity headers**: Critical → 🔴 · Serious → 🟠 · Moderate → 🟡 · Minor → 🔵
 
-The Senior engineer approval line goes on top — single field a human wants to see first. Filtered out section is mandatory in terminal output — without it, you can't tell when the critic is over-filtering. Multi-round status is mandatory when `PRIOR_STATE.findings` is non-empty.
+Filtered out is mandatory in terminal output — it is the only way to see when the critic is over-filtering. Multi-round status is mandatory when `PRIOR_STATE.findings` is non-empty.
+
+### Cascade check
+
+Mandatory from round 2. PRINT the value Phase 3 step 7.5 computed — do not recompute it
+here. Step 8 already read that same number for the verdict prefix, and a second
+computation on a different finding set is how the two disagree.
+
+`cascade_share` = (active findings with `caused_by` set) / (total active findings)
+
+Emit exactly one trend sentence, picked from what the numbers say:
+- `cascade_share > 0.5` → `Not converging — the fixes are generating the findings.`
+- New findings falling round over round and `cascade_share == 0` → `Converging — tail is shrinking.`
+- New count flat across 3+ rounds → `Stalled — same volume each round; scope may be growing.`
+
+```
+Convergence: 4 new · 3 caused by earlier fixes · 1 regression reopened · 2 carried
+Trend: cascade_share 0.75 — Not converging — the fixes are generating the findings.
+```
+
+If a verdict REVERSES an earlier approval, say so explicitly in the Summary with the
+reason and the two SHAs, e.g. *"I approved this at `dd142e0`. I'm reversing that,
+because `e4f7432` made one thing worse than it was."*
 
 ### Wall-time instrumentation (end)
 
@@ -934,7 +1126,7 @@ AUTHOR=$(gh pr view <url> --json author -q .author.login)
 [ "$VIEWER" = "$AUTHOR" ] && SELF_REVIEW=true
 ```
 
-**GitHub silently coerces `--request-changes` to `--comment` when reviewer is the PR author.** GitHub quirk, not a skill bug.
+**GitHub silently coerces `--request-changes` to `--comment` when reviewer is the PR author.**
 
 If `SELF_REVIEW=true`:
 
@@ -962,29 +1154,20 @@ On "Fix now":
    Issue: Unhandled stdin error can crash process
    Why it matters: Production crash on communication failure
    Suggested fix: Add error event handler
+   Inverse risk: handler that only logs turns a crash into a silent hang
+   Class-sites: 2/3
    ```
+
+   `Inverse risk:` and `Class-sites:` are not optional here. `/fix-pr-review` keys its
+   "seed, don't re-derive" path on exactly these two labels; drop them and it re-derives
+   both from scratch, discarding the work steps 4.55 and 4.56 already did.
 2. Invoke `/fix-pr-review /tmp/review-pr-<num>-findings.md`.
 3. Skip post-review prompts — `/fix-pr-review` handles its own workflow.
 
-### Verdict-body sync check (re-runs)
-
-If `last_posted_review_id` exists in cache, compare last-posted body verdict against GitHub state:
-
-```bash
-LAST_POSTED_REVIEW_ID=$(jq -r '.last_posted_review_id // empty' "$CACHE_FILE")
-if [ -n "$LAST_POSTED_REVIEW_ID" ]; then
-  LAST_POSTED_STATE=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews/$LAST_POSTED_REVIEW_ID" --jq .state)
-  LAST_POSTED_BODY_VERDICT=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews/$LAST_POSTED_REVIEW_ID" --jq .body | grep -oE '\*\*Verdict\*\*:\s*`?(approve|comment|request-changes)`?' | sed 's/.*\(approve\|comment\|request-changes\).*/\1/')
-fi
-```
-
-If they drifted:
-
-> **Previous review's body verdict (`<body>`) does NOT match GitHub state (`<state>`).** Likely cause: self-review coerced to `comment`, or manual edit in GitHub UI. The current run's output will not re-post over the previous review — add a NEW review via "Post now" if you want to update. (Rolling-review path will edit the body in place — see references/github-posting.md Step 0.)
-
 ### Select findings to post (multiSelect)
 
-Never post findings unilaterally — the user picks what goes to GitHub. Skip this step only if:
+The user picks what goes to GitHub — posting waits for an explicit "Post now" or "Edit first"
+(self-review "Fix now" is the one path that proceeds without posting at all). Skip this step only if:
 - There are zero findings (verdict `approve` with no comments), or
 - The user already chose "Fix now" / "Keep local only" from the self-review prompt.
 
@@ -998,7 +1181,7 @@ multiSelect: true
 ```
 
 - If findings exceed the option limit, split into multiple multiSelect questions grouped by severity (Critical/Serious first).
-- Deselected findings: move to Filtered out with reason `user-deselected before posting`. They do NOT post, are excluded from the summary body's finding count, and are recorded in the state file as `dismissed` with `dismissal_reason: user-deselected` so later rounds don't re-raise them.
+- Deselected findings: move to Filtered out with reason `user-deselected before posting`. They stay local, are excluded from the summary body's finding count, and are recorded in the state file as `dismissed` with `dismissal_reason: user-deselected` so later rounds leave them closed.
 - If deselection removes every finding that drove the verdict, recompute the verdict (Phase 3 step 8) over the selected set before composing the summary body.
 - If the user deselects everything, skip posting entirely — same outcome as "Keep local".
 
@@ -1015,35 +1198,17 @@ options:
   - "Edit first" — Open body in $EDITOR before posting
 ```
 
-### Re-review thread resolution (before posting)
-
-If this is a re-review AND `posted_comments` cache exists:
-
-1. **Identify resolved findings**: compare current findings against `posted_comments` via dedupe key. A cached finding NOT in current findings AND whose `id` is now `status: resolved` in `PRIOR_STATE` is "resolved this round."
-
-2. **Resolve their threads** on GitHub:
-
-   ```bash
-   gh api graphql -f query='
-     mutation($threadId: ID!) {
-       resolveReviewThread(input: {threadId: $threadId}) {
-         thread { isResolved }
-       }
-     }
-   ' -f threadId="<thread_id>"
-   ```
-
-3. **Track resolved findings** for the "Resolved since last review" line in the summary body. Use exact wording: `Resolved since last review: S1 (<file:line> <one-line issue>, round 4 commit <sha>), ...`. NEVER use "deferred", "fixed", or other ambiguous wording — use `resolved` with the commit SHA.
-
-4. **Filter review comments**: only post comments for findings NEW or STILL ACTIVE — do NOT re-post findings already present from a previous round (they already have threads). A finding is "still present" if its `id` matches a cached `posted_comments` entry — skip the comment.
-
-5. **Error handling**: failed `resolveReviewThread` (already resolved, permission issue) is best-effort — log and continue. Never blocks posting.
+Every option here ends with the state-file write-back — "Keep local" included. Follow
+"Phase 4 — write back" in `references/finding-state-schema.md`; it is what lets round N+1
+know what round N settled.
 
 ### If yes — Post via references/github-posting.md
 
 The full posting flow lives in `references/github-posting.md` — load it now. It handles:
 
 - **Step 0**: detect prior `<!-- review-pr:run -->` tagged review on the PR. If found within 30 days, use the rolling-review path (edit body in place, attach only NEW threads); otherwise create a fresh review.
+- **Step 0b**: verdict-body sync check — on re-runs with a `last_posted_review_id` in cache, warn when the previously-posted body verdict drifted from its GitHub state.
+- **Step 0c**: re-review thread resolution — resolve threads for findings now `resolved`, record the "Resolved since last review" line, and skip re-posting findings that already have threads.
 - **Steps 1-2**: compose summary body (with marker comment) + per-finding review comments.
 - **Step 3**: pre-posting hunk validation (line vs file-level routing).
 - **Step 4 / 4-rolling**: REST POST PENDING (or GraphQL `updatePullRequestReviewBody` for rolling).
@@ -1052,11 +1217,11 @@ The full posting flow lives in `references/github-posting.md` — load it now. I
 - **Step 7**: failure recovery with disclosed partial state.
 - **Step 8**: cache write-back + state file update + thread resolution for fixed findings.
 
-Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, summary body content, list of findings (line-level + file-level), `$CACHE_FILE` path, `$STATE_FILE` path.
+Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, summary body content, list of findings (line-level + file-level), `PRIOR_STATE` (Step 0c compares against it), `$CACHE_FILE` path, `$STATE_FILE` path.
 
 ### If edit first
 
-Write summary body to `/tmp/review-pr-<num>.md`, open in `${EDITOR:-vi}`, then post after editor closes. Review comments (line-level + file-level) are NOT editable via this flow — only summary body. To remove a specific comment, edit the findings list before "Post now".
+Write summary body to `/tmp/review-pr-<num>.md`, open in `${EDITOR:-vi}`, then post after editor closes. This flow edits the summary body only; to change or remove a review comment (line-level or file-level), edit the findings list before "Post now".
 
 ### Post-completion next actions (context-aware)
 
@@ -1075,7 +1240,7 @@ options:
   - "Done" — Nothing more — end the session
 ```
 
-On "Re-review later": print `Run /review-pr <url> again after fixes` and exit — do NOT immediately re-invoke (author hasn't pushed yet).
+On "Re-review later": print `Run /review-pr <url> again after fixes` and exit — the author hasn't pushed yet, so the re-run belongs to a later session.
 
 **The AskUserQuestion above is the final turn of this skill.** No freeform follow-up text question.
 
@@ -1103,21 +1268,3 @@ On "Fix findings": invoke `/fix-pr-review <url>`. **Final turn of the skill.** N
 - **Phase 2 subagent failure** → continue with remaining; abort only if ALL fail.
 - **Network errors on `gh`** → surface, don't silently fall back.
 - **Failed state-file write** → log warning, do not block posting. State file is best-effort persistence.
-
-## Rules
-
-- **NEVER** run the review twice in a single invocation.
-- **NEVER** post to the PR without explicit user confirmation via "Post now" / "Edit first" (except self-review "Fix now" which skips posting).
-- **NEVER** post a finding the user deselected in the "Select findings to post" checkpoint — log it as `user-deselected before posting`.
-- **NEVER** stop mid-list in batch mode, and never let a batch subagent post or ask questions — all checkpoints defer to the single end-of-run prompt, asked only after the consolidated report is written.
-- **NEVER** post the "Filtered out" section to GitHub — local audit only.
-- **NEVER** fabricate file:line references; omit line if unsure (file-only routes to file-level).
-- **NEVER** skip Phase 1's stop-and-ask — weak intent is the biggest slop source.
-- **NEVER** skip the grounding pass in Subagent 1 — findings not tracing to mechanical grounding bullets are hallucinations.
-- **NEVER** skip the critic pass — second-biggest anti-slop lever after the reviewer prompt.
-- **NEVER** re-post review comments for findings already on the PR with active threads — duplicate noise.
-- **NEVER** create a new top-level review when a prior `<!-- review-pr:run -->` tagged review exists within 30 days — use the rolling-review path (edit body in place, attach NEW threads only).
-- **NEVER** use the word "deferred" — use `resolved` (with commit), `dismissed` (with reason), `wontfix` (with reason), `still-active`, or `regression`.
-- **ALWAYS** use `gh api` for posting (hybrid: summary body + review comments). Fall back to `gh pr review --body` only if API call fails after Step 7 user-chosen path.
-- **ALWAYS** resolve threads for findings now in `status: resolved` before posting new findings. Best-effort — failures don't block posting.
-- **ALWAYS** write `.claude/review-state/<pr>.yml` after a successful run (or after "Keep local"). State file persistence is what makes round N+1 understand round N's outcomes.

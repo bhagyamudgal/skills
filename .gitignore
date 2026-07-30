@@ -6,3 +6,7 @@ node_modules
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
 .claude/.credentials.json
+
+# review-pr writes per-PR review caches into its own skill dir.
+# These contain real PR content — never commit them.
+skills/*/cache/
