@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 # CodeRabbit configuration template — copy to <repo-root>/.coderabbit.yaml and customize.
 # Docs: https://docs.coderabbit.ai/guides/configure-coderabbit
 #
@@ -80,18 +81,16 @@ reviews:
     - path: "{apps,packages}/**/*.{ts,tsx}"
       instructions: |
         Error-handling convention:
-        - Project uses `tryCatch` from `lib/try-catch.ts` instead of raw try/catch.
+        - Project uses `tryCatch` from the workspace try-catch package instead of raw try/catch.
           Flag new `try { ... } catch (e) { ... }` blocks except at framework boundaries (route handlers, top-level error boundaries).
         - Suggest `tryCatchSync` for synchronous, `tryCatchRetry` for retryable, `tryCatchWithTimeout` for bounded calls.
 
-    - path: "{apps,packages}/**/*.{ts,tsx}"
-      instructions: |
-        Performance hints:
+        Performance:
         - Sequential `await` for independent calls: suggest `Promise.all`.
         - Database queries inside loops (N+1): suggest `IN` clause or join.
-        - Pagination using a separate `COUNT(*)` query: suggest `dbQueryWithPagination` (count + data in one pass).
+        - Pagination using a separate `COUNT(*)` query: suggest returning count and rows from one query (a `count(*) OVER ()` window or a single CTE).
         - `WHERE` clause column lacking an index: flag for review.
-        - `.select()` without column projection in list endpoints: suggest `.select({ field1, field2 })`.
+        - `.select()` without column projection in list endpoints: flag it.
 
     - path: "**/turbo.json"
       instructions: |

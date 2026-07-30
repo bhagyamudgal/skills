@@ -1,56 +1,44 @@
 ---
 name: parallel-review
-description: Run code review and coderabbit review in parallel on changed code. Use when user says "review", "code review", "run review", "check my code", "review changes", or after completing a task/feature. Also trigger proactively after significant code changes.
+description: Run every code reviewer in parallel over a local diff and merge their findings into one ranked list. Use when the user asks for a review of uncommitted changes, says "quick review", or after significant code changes; and when another skill needs the local-diff review (`done` runs it as its review step).
 ---
 
 # Parallel Code Review
-
-Runs multiple code review tools simultaneously for comprehensive feedback.
 
 ## Workflow
 
 ### Step 1: Determine Scope
 
-Figure out what to review:
 - If user specifies files → review those files
-- Otherwise → review all unstaged/staged changes via `git diff`
+- Otherwise → review all unstaged and staged changes via `git diff HEAD`
 
-### Step 2: Launch Parallel Reviews
+### Step 2: Build the roster, then dispatch
 
-Run ALL of the following in parallel using the Agent tool:
+Name the roster first, then launch every member in parallel with the Agent tool.
+
+Members 1-3 are `subagent_type` values, passed to the Agent tool as-is. Member 4 is a **skill-running agent**: `/web-interface-guidelines`, `/ui-skills`, and `/rams` are skills, not agent types, so they cannot be passed as `subagent_type` — dispatch a `general-purpose` agent that invokes them instead.
+
+Always on the roster:
 
 1. **Code Review Agent** (`subagent_type: "pr-review-toolkit:code-reviewer"`)
-   - Prompt: "Review the following changed files for bugs, logic errors, code quality, and adherence to project CLAUDE.md conventions: [list files or describe changes]"
-
 2. **CodeRabbit Review Agent** (`subagent_type: "coderabbit:code-reviewer"`)
-   - Prompt: "Review the code changes for bugs, security issues, and quality problems: [list files or describe changes]"
 
-3. **Silent Failure Hunter** (`subagent_type: "pr-review-toolkit:silent-failure-hunter"`)
-   - Only include this if the changes involve error handling, try-catch, or fallback logic
-   - Prompt: "Check for silent failures and inadequate error handling in: [list files]"
+Add to the roster when the condition holds:
 
-### Step 3: Synthesize Results
+3. **Silent Failure Hunter** (`subagent_type: "pr-review-toolkit:silent-failure-hunter"`) — the diff touches error handling, try-catch, or fallback logic
+4. **UI Review Agent** (`subagent_type: "general-purpose"`) — the diff touches frontend/UI code. Prompt it to invoke `/web-interface-guidelines`, `/ui-skills`, and `/rams` against the diff and return their merged findings.
 
-After all agents complete:
-1. Combine findings, deduplicating overlapping issues
-2. Prioritize: Critical > Serious > Moderate > Minor
-3. Present a unified summary with actionable fixes
-4. If issues are found, offer to fix them
+Quick review: the roster is `pr-review-toolkit:code-reviewer` alone.
 
-### Step 4: Fix (Optional)
+Shared prompt, plus the per-agent lens: "Review these changed files for bugs, logic errors, and adherence to project CLAUDE.md conventions: [files]."
 
-If user agrees to fixes:
-1. Apply fixes for critical and serious issues
-2. Re-run `/fix-ts-errors` on changed files
-3. Briefly confirm what was fixed
+**State the roster before dispatching.** It is the checklist Step 3 merges against.
 
-## For UI Changes
+### Step 3: Merge
 
-If the changes include frontend/UI code, also run in parallel:
-- `/web-interface-guidelines` review
-- `/ui-skills` review
-- `/rams` accessibility review
+The merge is not done while any reviewer on the roster is outstanding. Account for **every** member by name — reported, or failed and re-dispatched.
 
-## Quick Mode
-
-If user says "quick review" — run only the code-reviewer agent (skip coderabbit and silent-failure-hunter).
+1. Merge all findings, collapsing duplicates across reviewers
+2. Rank: Critical > Serious > Moderate > Minor
+3. Present one list, every finding traceable to the reviewer that raised it
+4. Hand the ranked list back to the caller

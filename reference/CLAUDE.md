@@ -72,7 +72,7 @@ Bandaid budget: zero per PR. If you genuinely can't find the root cause, say so 
 
 STOP and re-plan (don't keep trying variations) when:
 
-- The same approach has failed 2 times with similar errors
+- The same approach has failed 3 times with similar errors
 - You're modifying the same file 3+ times in a row trying to get it right
 - You catch yourself adding `console.log` to understand control flow — read the code first
 - The fix is getting bigger than the original change requested
@@ -102,10 +102,12 @@ Heuristic: would a senior engineer be embarrassed if the user found a gap you di
 
 The `/done` skill runs the full verification pipeline in sequence:
 
-1. `/fix-ts-errors` — type-check loop until clean
-2. `/parallel-review` — code-review + coderabbit in parallel
-3. `/simplify` — code quality and reuse check
-4. Verify correctness — logic review, run tests if applicable
+1. `/fix-ts-errors` — workspace type-check loop until it exits 0
+2. `/parallel-review` — every reviewer in parallel; fix critical + serious, re-run until zero remain
+3. `/simplify` — code quality and reuse, plus a blocking scan of every added comment
+4. Verify correctness — account for every item in the request against the diff; tests must pass
+5. Report what was checked and fixed
+6. Commit via `/git-commit` when the task is a discrete unit of work
 
 **If you are tempted to skip `/done` because the change is small — that is exactly when bugs slip through. Run it.**
 
@@ -161,7 +163,6 @@ Keep files under ~400 LOC as a guideline. Split when a file has multiple concern
 
 ## Code Quality
 
-- Follow DRY principle — extract repeated logic into reusable functions
 - Keep functions small — one function = one job. Compose small functions into larger operations.
 - No emoji in logs or code
 - Prefer early returns over nested conditionals
@@ -183,11 +184,11 @@ Keep files under ~400 LOC as a guideline. Split when a file has multiple concern
 
 ## DRY & Reuse Discipline
 
-Full discipline lives in the `reuse-first` skill — invoke it BEFORE creating any new utility, type, schema, component, hook, or constant. Core rule: search the codebase first (name layer → behavior layer → reference layer); then reuse > compose > extend > generalize > write new only as a last resort.
+Before creating any new utility, type, schema, component, hook, or constant — invoke the `reuse-first` skill. Do not write the artifact until it has run.
 
 ## Performance Checklist
 
-Full checklist lives in the `backend-perf` skill — invoke it when writing or reviewing backend services or DB queries. Core rules: parallelize independent awaits with `Promise.all`, no queries inside sequential loops, index every production `WHERE` clause, and perf rewrites need `EXPLAIN (ANALYZE, BUFFERS)` evidence.
+Before writing or reviewing any backend endpoint or DB query, invoke the `backend-perf` skill.
 
 ## Logging Discipline
 
@@ -252,7 +253,6 @@ Derive types from schemas: `type User = z.infer<typeof userSchema>`. Reuse with 
 
 Use conventional commits: `feat:` / `fix:` / `refactor:` / `chore:` / `docs:` prefix.
 Use simple `-m` flag for commit messages. Do NOT use heredoc/EOF format (`cat <<'EOF'`).
-When asked for a commit message: suggest only — output two variants (a detailed multi-line and a one-liner) as text for me to choose from, and NEVER run `git commit` yourself.
 
 ### PR & Commit Hygiene
 
@@ -262,7 +262,6 @@ When asked for a commit message: suggest only — output two variants (a detaile
 - **Small PRs > large PRs** — under ~400 lines diff is ideal; if it grows beyond that, split it
 - **Review your own diff before pushing** — read every changed line and justify why it exists. If you can't justify it, delete it.
 - **No commits with debug noise** — no leftover `console.log`, commented-out code, or `TODO: remove this before merge` markers
-- **Never commit without explicit user permission** — even when a skill says to commit, ask first
 - **Discover the PR base branch before the first PR in a repo** — check `gh repo view --json defaultBranchRef` and look for an active `dev`/`develop` integration branch; never assume `main` is the base
 
 ## Git Worktree Naming Convention
