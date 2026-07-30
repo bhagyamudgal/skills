@@ -221,7 +221,7 @@ For self-review auto-fix (where `/review-pr` detects the user is the PR author a
 
 ### Fetch from GitHub (PR URL / review URL / discussion URL)
 
-Phase 1 detected exactly one of these three input types — load `references/fetch-review-data.md` now and run only that type's section. It holds the paginated GraphQL `reviewThreads` query and its `isResolved` filter, the `/pulls/<num>/reviews/<review_id>` and `/pulls/comments/<comment_id>` REST endpoints, the CodeRabbit review-body anatomy, and the parse for the `🤖 Prompt for all review comments with AI agents` block — the only place nitpicks appear, since they never get inline threads.
+Phase 1 detected exactly one of these three input types — load `${CLAUDE_SKILL_DIR}/references/fetch-review-data.md` now and run only that type's section. It holds the paginated GraphQL `reviewThreads` query and its `isResolved` filter, the `/pulls/<num>/reviews/<review_id>` and `/pulls/comments/<comment_id>` REST endpoints, the CodeRabbit review-body anatomy, and the parse for the `🤖 Prompt for all review comments with AI agents` block — the only place nitpicks appear, since they never get inline threads.
 
 A fetch that errors — GraphQL rate limit, 404, private repo, or a per-page failure inside the pagination loop — surfaces the error and exits, so triage never runs on a partial comment set. For 404, print `Couldn't access PR — check repo access and run 'gh auth refresh -s repo'.`
 
@@ -575,7 +575,7 @@ Replying and resolving threads is this phase's entire GitHub footprint. The revi
 
 ### Posting mechanics
 
-Load `references/github-reply-resolve.md` now — it holds Step 7a (regenerate every FIX reply from the actual post-fix diff, never the Phase 3 `reply_placeholder`, and which `fix_status` values are barred from replying at all), Step 7b (the mechanical reply validator: forbidden prefixes, 40-char floor, must-contain patterns, and the `reusability_context`-gated rule), Step 7c (the `addPullRequestReviewThreadReply` + `resolveReviewThread` GraphQL calls), and Step 7d (promoted nitpicks have no thread to close).
+Load `${CLAUDE_SKILL_DIR}/references/github-reply-resolve.md` now — it holds Step 7a (regenerate every FIX reply from the actual post-fix diff, never the Phase 3 `reply_placeholder`, and which `fix_status` values are barred from replying at all), Step 7b (the mechanical reply validator: forbidden prefixes, 40-char floor, must-contain patterns, and the `reusability_context`-gated rule), Step 7c (the `addPullRequestReviewThreadReply` + `resolveReviewThread` GraphQL calls), and Step 7d (promoted nitpicks have no thread to close).
 
 ### Per-item status tracking
 
@@ -613,7 +613,7 @@ Record `stash_restored: conflict` in the final report and print explicit guidanc
 
 ### 2. Print the final report
 
-Load `references/final-report.md` now and render the report from it. It holds the failure-first ordering, the full body template, and the rendering rules that decide which of the three fix subsections each `[F<n>]` lands in and how the `Test:` line is emitted.
+Load `${CLAUDE_SKILL_DIR}/references/final-report.md` now and render the report from it. It holds the failure-first ordering, the full body template, and the rendering rules that decide which of the three fix subsections each `[F<n>]` lands in and how the `Test:` line is emitted.
 
 ### 3. Interactive NEEDS-INPUT triage
 
