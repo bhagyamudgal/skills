@@ -176,7 +176,7 @@ When every requirement is done or obsolete, reorder: "Sunset (close)" goes first
 
 ## Phase 5: Execute (gh)
 
-Phase 5 runs on the Phase 4 fate choice, and only on it — the report is always safe to print, but every `gh` write waits for that explicit choice. Read `references/execute.md` for the chosen fate's recipe.
+Phase 5 runs on the Phase 4 fate choice, and only on it — the report is always safe to print, but every `gh` write waits for that explicit choice. Read `${CLAUDE_SKILL_DIR}/references/execute.md` for the chosen fate's recipe.
 
 ---
 

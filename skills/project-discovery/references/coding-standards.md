@@ -86,7 +86,7 @@ type CreateUserInput = z.infer<typeof createUserSchema>;
 inferred from the DB schema (`type User = typeof users.$inferSelect`).
 
 **Run the project's type-check command and fix every error before reporting the
-task complete.** Run `/code-review` after completing a task.
+task complete.** Run `/done` after completing a task.
 
 ## 2. Functions & Files
 
@@ -169,7 +169,7 @@ return res.json(result.data);
 
 **Use the `tryCatch` utility instead of raw try-catch blocks.** It returns
 `{ data, error }` — the error is a value you must destructure, so you cannot skip
-it. Source: `lib-files.md`.
+it. It lives in `lib/try-catch.ts`.
 
 ```typescript
 import { tryCatch, tryCatchSync, tryCatchRetry, tryCatchWithTimeout } from '@/lib/try-catch';
@@ -187,7 +187,7 @@ if (fetchError) {
 
 **Errors carry a machine-readable `code` and a human-readable `message`.** The
 `AppError` shape and the per-domain code constants (`USER_ERRORS.NOT_FOUND`) live
-in `lib/errors.ts` — source in `lib-files.md`.
+in `lib/errors.ts`.
 
 ## 4. Naming
 
@@ -425,9 +425,9 @@ use.
 
 ## 11. Logging
 
-Use the class-based `Logger` from `lib/logger.ts` (source in `lib-files.md`).
-Create it per request, `addContext()` as the request progresses — the final line
-carries everything the earlier ones did — and `log.time()` around slow calls.
+Use the class-based `Logger` from `lib/logger.ts`. Create it per request,
+`addContext()` as the request progresses — the final line carries everything the
+earlier ones did — and `log.time()` around slow calls.
 
 Structured pairs, context first, message second: `logger.info({ userId }, 'User
 created')`. No `console.log` in shipped code; local debugging and CLI tools only.

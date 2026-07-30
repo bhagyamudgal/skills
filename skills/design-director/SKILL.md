@@ -33,7 +33,7 @@ description: Senior creative-director direction for design and branding — logo
 
 5. Acknowledge the chosen mode in one short sentence ("Running Logo Concepts.").
 
-**Phase 1 ends by setting `MODE`. Read `modes/<MODE>.md` before Phase 2** — it declares the slots, the output spec, the file-save flag, and the next step. Mode slugs: `brief`, `logo`, `layout`, `type`, `color`, `critique`, `identity`.
+**Phase 1 ends by setting `MODE`. Read `${CLAUDE_SKILL_DIR}/modes/<MODE>.md` before Phase 2** — it declares the slots, the output spec, the file-save flag, and the next step. Mode slugs: `brief`, `logo`, `layout`, `type`, `color`, `critique`, `identity`.
 
 ## Phase 2: Gather slots
 
@@ -72,5 +72,5 @@ Print the mode's `Next step` verbatim, prefixed `Next:`, on exactly one line. Th
 
 - Marketing copy → `copywriting`
 - Implementing in Figma → `figma-generate-library`, `figma-generate-design`
-- Implementing in code → `figma-design-to-code`, `frontend-design:frontend-design`
+- Implementing in code → `figma:figma-implement-design`, `frontend-design:frontend-design`
 - Naming, taglines, mood boards and iconography systems are outside this skill

@@ -28,7 +28,7 @@ The main conversation is an **orchestrator only**. Every edit, review, and QA pa
 
 ## Ledger contract
 
-Written for a reader with **zero context** — assume the next writer remembers nothing. Update after EVERY wave. Must contain: per-task status with commit SHAs; the current NEXT ACTION stated imperatively; accumulated minor findings awaiting triage; standing process rules (permissions granted, environment quirks + fallbacks, QA credentials/data notes); locations of briefs/artifacts.
+Written for a reader with **zero context** — assume the next writer remembers nothing. Update after EVERY wave. Must contain: per-task status with commit SHAs; the current NEXT ACTION stated imperatively; accumulated deferred Moderate and Minor findings awaiting triage; standing process rules (permissions granted, environment quirks + fallbacks, QA credentials/data notes); locations of briefs/artifacts.
 
 ## Phase 2 — The wave (one per task)
 
@@ -36,8 +36,8 @@ Written for a reader with **zero context** — assume the next writer remembers 
 2. **Fresh implementer agent** — the orchestrator dispatches, the agent edits. Bug fixes are TDD (failing test first, watch it fail). Formatter before commit; type-check loop until green; single conventional commit; push. Dispatch prompts are self-contained: paths, env, locked decisions, verification commands, commit format, report format, environment-quirk fallbacks — the agent has no other context.
 3. **Two-stage review, separate subagents** — one combined reviewer anchors on whichever lens it starts with; two fresh ones don't. A review is two reports, one per stage:
    - **Stage 1 — spec compliance**: reviewer gets the task brief + diff, and the named risks to verify. Its inputs are exactly those two. Verdicts against the ticket requirements: **Missing / Extra / Misunderstood**, with file:line evidence.
-   - **Stage 2 — code quality**: independent reviewer for correctness, error handling, tests that assert real behavior, and structure; findings ranked Critical / Important / Minor. `parallel-review` runs alongside and covers style and convention; Stage 1 is what catches spec violations.
-4. **Triage every finding**: FIX-NOW (fix agent, then **re-review both stages until spec passes and quality approves** — a task closes at zero open Critical and Important findings) / DISMISS only with a verified rationale (check the locked design/brief first — reviewers re-litigate settled decisions) / DEFER (log in ledger minors).
+   - **Stage 2 — code quality**: independent reviewer for correctness, error handling, tests that assert real behavior, and structure; findings ranked Critical / Serious / Moderate / Minor. `parallel-review` runs alongside and covers style and convention; Stage 1 is what catches spec violations.
+4. **Triage every finding**: FIX-NOW (fix agent, then **re-review both stages until spec passes and quality approves** — a task closes at zero open Critical and Serious findings) / DISMISS only with a verified rationale (check the locked design/brief first — reviewers re-litigate settled decisions) / DEFER (Moderate and Minor only; log in ledger minors).
 
    Reports arrive **unverified** — SHAs, counts, file:lines, and ran-vs-inspected are the evidence that clears them.
 5. **`browser-qa`** for UI tasks: records original data, restores it, proves restoration; artifacts to scratchpad only. Run it between waves, with no implementer active — hot reload contaminates the session mid-test.

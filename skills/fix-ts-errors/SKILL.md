@@ -43,19 +43,19 @@ Re-run the same workspace check. **Green means it exits 0.**
 
 A file whose squiggles cleared is not green — a type change breaks its importers, so chase the cascade to the workspace edge before reporting. If new errors appeared, go back to Step 3.
 
-### Step 5: As-Cast Audit
+### Step 5: Escape-Hatch Audit
 
-Once green, grep the changed lines for `as ` assertions (excluding `as const`):
+Once green, grep the changed lines for all four escape hatches — `as` assertions (excluding `as const`), `@ts-ignore`, `@ts-expect-error`, and non-null assertions:
 
 ```bash
-git diff -U0 -- '*.ts' '*.tsx' | grep '^+' | grep -w 'as' | grep -v 'as const'
+git diff -U0 -- '*.ts' '*.tsx' | grep '^+' | grep -E '\bas\b|@ts-ignore|@ts-expect-error|!\.' | grep -v 'as const'
 ```
 
-Skip import aliases (`import { x as y }`). For every remaining `as`:
+Skip import aliases (`import { x as y }`). For every remaining hit:
 
 1. Attempt to remove it with proper typing — inference, narrowing, type guards, generics, or schema-derived types (`z.infer`)
 2. Re-run the check after each removal; if errors appear, go back to Step 3
-3. An `as` may survive only if genuinely unavoidable (e.g., a third-party library type gap) — and it must carry a comment explaining why
+3. A hatch may survive only if genuinely unavoidable (e.g., a third-party library type gap) — and it must carry a comment explaining why
 
 ### Step 6: Report
 
@@ -63,7 +63,7 @@ Once green, briefly report:
 
 - How many errors were found
 - What was fixed
-- Surviving `as` casts: the count, with a one-line justification each (target: 0)
+- Surviving escape hatches — `as` casts, `@ts-ignore`, `@ts-expect-error`, non-null assertions: the count of each, with a one-line justification per survivor (target: 0)
 
 ## Loop Breaker
 

@@ -15,7 +15,15 @@ Exact name often misses it, so search in three passes:
 2.  **Behavior layer**: grep for what it _does_ — `format.*date`, `validate.*email`, `parse.*currency`
 3.  **Reference layer**: find a feature that _uses_ the thing you're looking for — open it, follow its imports
 
-**Done when you can name what each layer returned:** the name variants you grepped, at least three behavior keywords and their hits, and the one existing feature you opened and followed imports from. If you cannot name three behavior keywords for the thing you are about to write, you do not understand it well enough to search for it — that is the finding, not the search.
+**Done when you have printed what each layer returned** — three lines, before you write anything:
+
+```
+Name layer:      <variants grepped> -> <hits, or none>
+Behavior layer:  <3+ keywords> -> <hits, or none>
+Reference layer: <feature file opened> -> <imports followed>
+```
+
+If you cannot name three behavior keywords for the thing you are about to write, you do not understand it well enough to search for it — that is the finding, not the search.
 
 ## Where to search, by artifact
 

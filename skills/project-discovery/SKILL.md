@@ -32,9 +32,9 @@ When a choice fights their constraints, say so and name the cheaper path.
 
 When the interview reaches a layer the user has not already decided — framework,
 database, ORM, auth, API style, styling, hosting, integrations, testing — read
-`references/stack-menu.md` and use that layer's option list and separating
-questions. Do not name options from memory; the file exists so the trade-off you
-quote is the one you'd quote next time.
+`${CLAUDE_SKILL_DIR}/references/stack-menu.md` and use that layer's option list
+and separating questions. Do not name options from memory; the file exists so
+the trade-off you quote is the one you'd quote next time.
 
 ## Conducting Discovery
 
@@ -71,20 +71,21 @@ Does this capture it? Anything we should revisit before we start building?"
 
 ## Output: What to Produce
 
-1. Read `references/output-templates.md` and write `CLAUDE.md`, the folder
-   skeleton, and the config files it lists.
+1. Read `${CLAUDE_SKILL_DIR}/references/output-templates.md` and write
+   `CLAUDE.md`, the folder skeleton, and the config files it lists.
 
-2. The rule corpus is `references/coding-standards.md`. You need it once, when
-   writing `PATTERNS.md` — read it then, copy across only the rules the chosen
-   stack actually uses, and delete the rest. A rule for a library the project
-   does not have is a rule the agent will misapply.
+2. The rule corpus is `${CLAUDE_SKILL_DIR}/references/coding-standards.md`. You
+   need it once, when writing `PATTERNS.md` — read it then, copy across only the
+   rules the chosen stack actually uses, and delete the rest. A rule for a
+   library the project does not have is a rule the agent will misapply.
 
-3. Copy all four files in `references/lib-files.md` into `lib/` verbatim.
-   Verbatim — every downstream rule in `coding-standards.md` assumes these exact
-   signatures.
+3. Copy all four files in `${CLAUDE_SKILL_DIR}/references/lib-files.md` into
+   `lib/` verbatim. Verbatim — every downstream rule in the rule corpus assumes
+   these exact signatures.
 
 **Done when:** `CLAUDE.md` names a decision for every category in
-`references/stack-menu.md` — including categories decided as "not needed", with
-the reason. `PATTERNS.md` exists and contains only rules the chosen stack uses.
-All four files from `references/lib-files.md` are in `lib/`. An unnamed category
+`${CLAUDE_SKILL_DIR}/references/stack-menu.md` — including categories decided as
+"not needed", with the reason. `PATTERNS.md` exists and contains only rules the
+chosen stack uses. All four files from
+`${CLAUDE_SKILL_DIR}/references/lib-files.md` are in `lib/`. An unnamed category
 is an undiscovered one — go back and ask.

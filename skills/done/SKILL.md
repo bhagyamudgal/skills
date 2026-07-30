@@ -52,11 +52,16 @@ Delete on sight:
 
 ### Step 5: Report
 
-Briefly report:
+Roll-call all six steps — one line each, in order, naming the step and either its result or `skipped, because <reason>`. A step missing from the list is a step you did not run.
 
-- What was checked
-- Any issues found and fixed during review
-- Final status: clean or remaining concerns
+- **Type check**: errors found, errors fixed, exit 0
+- **Parallel review**: critical/serious counts (must be 0), moderate/minor fixed or deferred
+- **Simplify**: what changed, plus comments deleted in the scan
+- **Verify correctness**: checklist items accounted for, tests run and their result
+- **Report**: this roll-call
+- **Commit**: committed, or variants printed
+
+Close with the final status: clean, or the remaining concerns.
 
 ### Step 6: Commit
 

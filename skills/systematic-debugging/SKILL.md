@@ -28,7 +28,7 @@ Before attempting ANY fix:
 1. **Read the error message — this is step zero.** The stack trace tells you which line; the message tells you what invariant broke. Read every error and warning in the output — they often contain the exact answer.
 2. **Reproduce consistently.** `/diagnosing-bugs` Phase 2 is the playbook for building the repro loop.
 3. **Check recent changes.** Git diff, recent commits, new dependencies, config changes, environment differences.
-4. **Instrument the boundaries.** In a multi-component system (CI → build → signing; API → service → database), log what enters and exits each boundary and verify env/config propagation. Run once, read the evidence, and it shows WHERE the chain breaks (secrets → workflow ✓, workflow → build ✗). Then investigate that component. Full technique: [TECHNIQUES.md](TECHNIQUES.md#root-cause-tracing).
+4. **Instrument the boundaries.** In a multi-component system (CI → build → signing; API → service → database), log what enters and exits each boundary and verify env/config propagation. Run once, read the evidence, and it shows WHERE the chain breaks (secrets → workflow ✓, workflow → build ✗). Then investigate that component. Full technique: [TECHNIQUES.md](${CLAUDE_SKILL_DIR}/TECHNIQUES.md#root-cause-tracing).
 5. **Trace the data flow backward.** When the error is deep in the call stack, the crash site is a symptom. Where does the bad value originate? Keep tracing up until you find the source. Fix at the source — where the bad value originates.
 
 **Phase 1 is done when you can name the line that produces the bad value and the input that made it bad.** If you can only name where it crashed, you are not done.
@@ -38,7 +38,7 @@ Before attempting ANY fix:
 - **Adding a null check** — ask: why is this ever null? Should it be?
 - **Wrapping a mystery error in try-catch** — catch only what you understand and can handle
 - **`as any` / `as unknown` / `@ts-ignore`** — fix the type, don't hide it
-- **Bumping a timeout / adding a retry** — what is actually slow or racy? If it's a flaky timing test, see [TECHNIQUES.md](TECHNIQUES.md#condition-based-waiting).
+- **Bumping a timeout / adding a retry** — what is actually slow or racy? If it's a flaky timing test, see [TECHNIQUES.md](${CLAUDE_SKILL_DIR}/TECHNIQUES.md#condition-based-waiting).
 - **Editing a failing test to pass** — the test is often right; understand WHY it fails before changing it. If it was right yesterday and your change broke it, your change is suspect.
 
 ### Phase 2 — Pattern analysis
@@ -48,6 +48,8 @@ Find the pattern before fixing:
 1. **Find working examples.** Locate similar working code in the same codebase.
 2. **Compare against references.** If implementing a pattern, read the reference implementation COMPLETELY — every line, not a skim. Partial understanding guarantees bugs.
 3. **List every difference** between working and broken, however small. Treat every difference as a candidate until you rule it out.
+
+**Phase 2 is done when you can name the working example you compared against and account for every difference on the list — each one either ruled out by evidence or carried into Phase 3 as a hypothesis.** If you found no working example, or a difference is still sitting there unexplained, you are not done.
 
 ### Phase 3 — Hypothesis and testing
 
@@ -68,7 +70,7 @@ Fix the root cause, not the symptom:
 4. **Log each attempt as you make it** — "attempt N — hypothesis — result". After the third failure, stop fixing and open the architecture question with the user.
 5. **3 failed fixes = architectural problem, not a failed hypothesis.** The tells: each fix reveals new shared state or coupling somewhere else; fixes require "massive refactoring"; each fix creates new symptoms elsewhere. Ask: is this pattern fundamentally sound, or are we sticking with it through inertia?
 
-After fixing at the source, layer validation: [TECHNIQUES.md](TECHNIQUES.md#defense-in-depth).
+After fixing at the source, layer validation: [TECHNIQUES.md](${CLAUDE_SKILL_DIR}/TECHNIQUES.md#defense-in-depth).
 
 ## Red Flags — Stop and Return to Phase 1
 
