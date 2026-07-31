@@ -17,26 +17,46 @@ Usage:
     python3 tools/eval/run_triggers.py --case 7       # one case by index
     python3 tools/eval/run_triggers.py --budget 0.15  # per-case USD cap
 """
-import argparse, json, pathlib, subprocess, sys, time
+import argparse, json, pathlib, shutil, subprocess, sys, tempfile, time
 
 HERE = pathlib.Path(__file__).resolve().parent
 CASES = HERE / "triggers.json"
 FIXTURE = HERE / "fixture"
 
-# Read-only plus Skill. The agent must be able to look around — a fixture it cannot
-# inspect produces exploration instead of action, which reads as a false negative — but
-# it must not be able to change anything, since every case runs against the same tree.
-TOOLS = "Skill Read Glob Grep"
+
+def make_sandbox():
+    """Copy the fixture to a throwaway git repo.
+
+    The committed fixture lives inside this repo, so an agent with write access and a
+    `commit this` utterance would commit to the skills repo itself. Every run gets its
+    own tree, git-initialised so git-shaped utterances have something real to act on,
+    and discarded afterwards.
+    """
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="trigger-eval-"))
+    shutil.copytree(FIXTURE, tmp / "repo")
+    repo = tmp / "repo"
+    q = {"cwd": str(repo), "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    subprocess.run(["git", "init", "-q"], **q)
+    subprocess.run(["git", "add", "-A"], **q)
+    subprocess.run(["git", "-c", "user.email=eval@local", "-c", "user.name=eval",
+                    "commit", "-qm", "fixture"], **q)
+    # Leave one uncommitted edit so "review this" / "commit this" have a real diff.
+    (repo / "src" / "user.ts").write_text(
+        (repo / "src" / "user.ts").read_text() + "\nexport const VERSION = 2;\n")
+    return tmp, repo
 
 
-def run_case(utterance, budget, timeout):
+def run_case(utterance, budget, timeout, tools=None):
     """Return (skill_or_None, cost, seconds, error_or_None)."""
+    tmp, repo = make_sandbox()
+    cmd = ["claude", "-p", utterance,
+           "--output-format", "stream-json", "--verbose",
+           "--max-budget-usd", str(budget)]
+    if tools:
+        cmd += ["--tools", tools]
     proc = subprocess.Popen(
-        ["claude", "-p", utterance,
-         "--output-format", "stream-json", "--verbose",
-         "--max-budget-usd", str(budget),
-         "--tools", TOOLS],
-        cwd=str(FIXTURE), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        cmd, cwd=str(repo), stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, text=True)
 
     fired, cost, started = None, 0.0, time.time()
     try:
@@ -66,6 +86,7 @@ def run_case(utterance, budget, timeout):
         if proc.poll() is None:
             proc.kill()
         proc.wait()
+        shutil.rmtree(tmp, ignore_errors=True)
 
     return fired, cost, time.time() - started, None
 
@@ -74,7 +95,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, help="run only the first N cases")
     ap.add_argument("--case", type=int, help="run a single case by index")
-    ap.add_argument("--budget", type=float, default=0.12, help="per-case USD cap")
+    ap.add_argument("--budget", type=float, default=0.60,
+                    help="per-case USD cap. Too low and the session is cut off before the "
+                         "agent finishes orienting, which reads as 'never fired' when it "
+                         "simply never got there. 0.10 caps most sessions at one turn.")
+    ap.add_argument("--tools", default=None,
+                    help="restrict the tool set (e.g. 'Skill Read Glob Grep'). Off by "
+                         "default: removing Bash denies the agent its usual orienting "
+                         "move and suppresses invocation as a side effect.")
     ap.add_argument("--timeout", type=int, default=180, help="per-case seconds")
     ap.add_argument("--repeat", type=int, default=1,
                     help="runs per case. Invocation is non-deterministic — a single run "
@@ -97,7 +125,7 @@ def main():
         print(f"[{i+1}/{len(cases)}] {c['utterance'][:56]:<56} ", end="", flush=True)
         fires = []
         for _ in range(args.repeat):
-            got, cost, secs, err = run_case(c["utterance"], args.budget, args.timeout)
+            got, cost, secs, err = run_case(c["utterance"], args.budget, args.timeout, args.tools)
             total_cost += cost
             fires.append(got)
         hits = sum(f == want for f in fires)
