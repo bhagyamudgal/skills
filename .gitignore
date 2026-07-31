@@ -10,3 +10,5 @@ node_modules
 # review-pr writes per-PR review caches into its own skill dir.
 # These contain real PR content — never commit them.
 skills/*/cache/
+
+__pycache__/
