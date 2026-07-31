@@ -1,0 +1,11 @@
+{
+  "name": "trigger-eval-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

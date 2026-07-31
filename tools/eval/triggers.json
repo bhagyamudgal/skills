@@ -1,0 +1,84 @@
+{
+  "_comment": [
+    "Trigger eval cases. Each runs in a fresh non-interactive session against",
+    "tools/eval/fixture/, and records which skill (if any) the agent invokes first.",
+    "",
+    "'expect' is the skill slug, or null for utterances that should fire nothing.",
+    "'why' states what the case is actually testing, so a failure is interpretable.",
+    "",
+    "A case only measures what the fixture can support. An utterance about",
+    "TypeScript errors in a repo with no TypeScript is a nonsense request and the",
+    "agent will explore instead of acting — that reads as a false negative. Keep",
+    "the fixture able to satisfy every named case."
+  ],
+
+  "cases": [
+    { "utterance": "ts errors",
+      "expect": "fix-ts-errors",
+      "why": "shortest form of the primary trigger, post-pruning" },
+
+    { "utterance": "fix types",
+      "expect": "fix-ts-errors",
+      "why": "second surviving phrasing after five synonyms were collapsed to one branch" },
+
+    { "utterance": "this still isn't working after my change",
+      "expect": "fix-ts-errors",
+      "why": "symptom trigger with no named keyword — the branch pruning kept deliberately" },
+
+    { "utterance": "review this",
+      "expect": "parallel-review",
+      "why": "competes with review-pr; parallel-review should win for a local diff" },
+
+    { "utterance": "review PR 41",
+      "expect": "review-pr",
+      "why": "the other side of that collision — a PR reference should route away from local review" },
+
+    { "utterance": "commit this",
+      "expect": "git-commit",
+      "why": "description cut from ~65 words to ~20; does the surviving trigger still fire" },
+
+    { "utterance": "grill me on this plan",
+      "expect": "grill-me",
+      "why": "KNOWN COLLISION: the installed `grilling` skill claims the same word" },
+
+    { "utterance": "audit this ticket",
+      "expect": "audit-ticket",
+      "why": "five triggers collapsed to two; explicit form" },
+
+    { "utterance": "is issue 12 still needed?",
+      "expect": "audit-ticket",
+      "why": "the implicit form — a user who does not know the skill exists" },
+
+    { "utterance": "I need a helper to format a date for display",
+      "expect": "reuse-first",
+      "why": "THE HARD ONE: must fire autonomously. Nobody types 'reuse-first'. Also tests whether the CLAUDE.md pointer or the skill's own description does the work" },
+
+    { "utterance": "loadUsers is slow, can you look at it",
+      "expect": "backend-perf",
+      "why": "autonomous firing on a symptom; the fixture has a sequential-await loop" },
+
+    { "utterance": "there's a bug here and my last two fixes didn't work",
+      "expect": "systematic-debugging",
+      "why": "the 'previous fix didn't work' branch, which the rework kept as genuinely distinct" },
+
+    { "utterance": "we're mid-rebase and there are conflict markers everywhere",
+      "expect": "resolving-merge-conflicts",
+      "why": "description rewritten to fire on observable surface forms rather than the concept" },
+
+    { "utterance": "give me some logo concepts for a fintech brand",
+      "expect": "design-director",
+      "why": "one mode's trigger after four-way per-mode duplication was cut" },
+
+    { "utterance": "what does src/user.ts do?",
+      "expect": null,
+      "why": "NEGATIVE: a plain question. Any skill firing here is over-triggering" },
+
+    { "utterance": "explain how TypeScript generics work",
+      "expect": null,
+      "why": "NEGATIVE: near-miss on fix-ts-errors vocabulary without being a request to fix anything" },
+
+    { "utterance": "add a comment to the top of user.ts",
+      "expect": null,
+      "why": "NEGATIVE: a trivial edit. `done` claims to fire after every task — this checks it does not pre-empt the work" }
+  ]
+}
