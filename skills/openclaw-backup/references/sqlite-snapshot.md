@@ -1,43 +1,57 @@
 # Consistent SQLite snapshots of a live OpenClaw install
 
-## Why `cp` is wrong here
+## Why a live WAL database needs `VACUUM INTO`
 
 Every OpenClaw database runs in WAL mode. Committed rows live partly in `<db>.sqlite` and
-partly in `<db>.sqlite-wal`, and the gateway is writing to both. `cp` reads them at
-different instants, so the copied pair can describe two different points in time. The copy
-succeeds, the file opens, and it fails much later — usually when you are restoring it.
+partly in `<db>.sqlite-wal`, and the gateway writes to both. `cp` reads them at different
+instants, so the copied pair can describe two different points in time. The copy succeeds,
+the file opens, and it fails later — usually during the restore you were relying on.
 
-`VACUUM INTO '<path>'` avoids this. It runs inside a single read transaction against the
-live database and writes a fresh, fully consistent file. Three properties matter:
+`VACUUM INTO '<path>'` runs inside a single read transaction against the live database and
+writes a fresh, consistent file. Three properties earn it:
 
-- No service stop. Readers do not block the gateway's writes.
-- No `sqlite3` CLI. Node 22+ ships `node:sqlite`, and the binary is often not installed.
-- The output is compacted — free pages left by past deletes are not carried over, so
-  snapshots are routinely smaller than their sources. A large size drop is expected, not
-  a sign of data loss.
+- **No service stop.** Readers do not block the gateway's writes.
+- **No `sqlite3` CLI.** Node 22+ ships `node:sqlite`, and the binary is often absent.
+- **Compacted output.** Free pages left by past deletes are dropped, so a snapshot is
+  routinely smaller than its source. Expect the size drop; it is reclamation, not loss.
 
-## Why the snapshot is re-opened afterwards
+## Why the snapshot is re-opened
 
-Running `integrity_check` on the source proves the input was healthy. It says nothing about
-whether the output was written correctly. The script below re-opens each snapshot as an
-independent database and re-runs the check there. A snapshot that cannot be verified is
-not counted as a success.
+`integrity_check` on the source establishes the input was healthy and nothing more. The
+script re-opens each snapshot as an independent database and re-runs the check there, so
+the output is established on its own evidence. A snapshot that fails that second check is
+counted as a failure.
+
+## Why the destination is guarded
+
+Call a one-argument version of this script with two arguments and the destination silently
+becomes the source: every `VACUUM INTO` then targets the live database. SQLite refuses to
+overwrite an existing file, so the damage stops there — but the guard below fails the run
+before it starts, which is where it belongs.
 
 ## The script
 
-Write this to a temp path on the target machine and run it with two arguments: the state
-directory and the destination directory.
+Write to a temp path on the target machine and run with two arguments: the state directory
+and the destination directory.
 
 ```javascript
 import { DatabaseSync } from "node:sqlite";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, statSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
-const [stateDir, destinationDir] = process.argv.slice(2);
+const [stateArg, destinationArg] = process.argv.slice(2);
 
-if (!stateDir || !destinationDir) {
+if (!stateArg || !destinationArg) {
     console.error("usage: node snapshot-sqlite.mjs <state-dir> <destination-dir>");
+    process.exit(2);
+}
+
+const stateDir = resolve(stateArg);
+const destinationDir = resolve(destinationArg);
+
+if (destinationDir === stateDir || destinationDir.startsWith(stateDir + "/")) {
+    console.error(`FAIL: destination ${destinationDir} is inside the state dir ${stateDir}`);
     process.exit(2);
 }
 
@@ -71,12 +85,10 @@ function snapshot(source) {
     try {
         entry.integrity = scalar(database.prepare("PRAGMA integrity_check").get());
         entry.journalMode = scalar(database.prepare("PRAGMA journal_mode").get());
-
         if (entry.integrity !== "ok") {
             entry.status = "SOURCE_CORRUPT";
             return entry;
         }
-
         database.exec(`VACUUM INTO '${destination.replace(/'/g, "''")}'`);
     } finally {
         database.close();
@@ -84,11 +96,9 @@ function snapshot(source) {
 
     const verification = new DatabaseSync(destination, { readOnly: true });
     try {
-        entry.snapshotIntegrity = scalar(
-            verification.prepare("PRAGMA integrity_check").get(),
-        );
-        entry.tables = verification
-            .prepare("SELECT count(*) AS total FROM sqlite_master WHERE type='table'")
+        entry.snapshotIntegrity = scalar(verification.prepare("PRAGMA integrity_check").get());
+        entry.objects = verification
+            .prepare("SELECT count(*) AS total FROM sqlite_master")
             .get().total;
     } finally {
         verification.close();
@@ -111,15 +121,13 @@ const results = findDatabases().map((source) => {
 for (const entry of results) {
     const detail =
         entry.status === "OK"
-            ? `${megabytes(entry.sourceBytes)} -> ${megabytes(entry.snapshotBytes)}  ${entry.tables} tables  ${entry.journalMode}`
-            : (entry.error ?? entry.integrity ?? entry.snapshotIntegrity ?? "");
+            ? `${megabytes(entry.sourceBytes)} -> ${megabytes(entry.snapshotBytes)}  ${entry.objects} objects  ${entry.journalMode}`
+            : (entry.error ?? entry.integrity ?? "");
     console.log(`[${entry.status.padEnd(15)}] ${entry.relativePath}  ${detail}`);
 }
 
 const failures = results.filter((entry) => entry.status !== "OK");
-console.log(
-    `\n${results.length - failures.length}/${results.length} databases snapshotted successfully`,
-);
+console.log(`\n${results.length - failures.length}/${results.length} databases snapshotted successfully`);
 
 if (results.length === 0) {
     console.error("FAIL: no databases found — check the state directory path");
@@ -137,21 +145,31 @@ if (failures.length > 0) {
 node /tmp/snapshot-sqlite.mjs "$STATE_DIR" "$BACKUP_DIR/sqlite"
 ```
 
-`node:sqlite` is behind an experimental flag on some Node 22 builds. If the import fails,
-retry with `node --experimental-sqlite`. Filter the `ExperimentalWarning` from stderr so it
-does not read as an error in the report.
+Some Node 22 builds keep `node:sqlite` behind a flag; on an import failure retry with
+`node --experimental-sqlite`. Filter `ExperimentalWarning` out of stderr so it reads as the
+warning it is.
 
 ## Reading the output
 
-Every line must start `[OK`. The final count must read `N/N`. Anything else stops the
-backup:
+Every line starts `[OK`, and the final count reads `N/N`. Other statuses stop the backup:
 
-- `SOURCE_CORRUPT` — the live database is already damaged. This is a finding about the
-  install, not about the backup. Report it; do not silently skip the database.
-- `SNAPSHOT_CORRUPT` — the source was fine and the copy is not. Usually disk space. Check
-  free space and re-run.
-- `ERROR` — most often a locked or unreadable file. The message names which.
+- `SOURCE_CORRUPT` — the live database is already damaged. That is a finding about the
+  install; report it and name the database.
+- `SNAPSHOT_CORRUPT` — the source was healthy and the copy is not. Usually free space.
+- `ERROR` — most often a locked or unreadable file; the message names which.
 
-An exit code of 0 with `0/0 databases` is impossible by construction; the script exits 1
-when it finds nothing, because "no databases" almost always means a wrong path rather than
-an install with no data.
+A run finding zero databases exits 1, because an empty result almost always means a wrong
+path rather than an install with no data.
+
+## Verifying a snapshot preserves extensions
+
+OpenClaw's memory database uses the `vec0` vector-search extension. Row-counting its virtual
+tables needs the extension loaded, which a plain Node process lacks — so use `sqlite_master`
+to compare object inventories instead, which needs no extension:
+
+```javascript
+db.prepare("SELECT type, name FROM sqlite_master ORDER BY type, name").all()
+```
+
+Equal inventories between source and snapshot establish that the virtual-table definitions
+and their shadow tables survived.

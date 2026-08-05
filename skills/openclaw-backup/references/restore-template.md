@@ -139,7 +139,8 @@ Verify it first with `openclaw backup verify <archive>`; its payload sits under
 ## Caveats
 
 - **These archives are credential material** — API tokens, OAuth refresh tokens, and
-  channel pairing data. Never commit them to git or place them in shared storage.
+  channel pairing data. Keep them mode `0700` on the machine that made them, plus one
+  encrypted off-box copy; treat any other location as a disclosure.
 - **`node_modules` was excluded.** Reinstall through the normal path if needed.
 - **This restore procedure has not been rehearsed** unless it was actually run against a
   throwaway target. It is derived from the install's real layout, not tested end to end.

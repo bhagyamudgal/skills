@@ -1,33 +1,21 @@
 ---
 name: openclaw-backup
-description: Take a verified, restorable backup of an OpenClaw install — official archive, consistent SQLite snapshots, a raw archive covering the session transcripts the official tool drops, a checksum manifest, and a per-install RESTORE.md. Run before upgrades, config surgery, or any risky change to a live box.
+description: Verified, restorable backup of an OpenClaw install, with a restore runbook written for that install.
 disable-model-invocation: true
 ---
 
+Every step ends on a **gate** — a check that produces evidence. A gate you did not run is a
+gate that failed. The failure this skill is built against is **silent**: an archive that
+writes cleanly, verifies cleanly, and turns out to be missing the thing you needed.
+
 ## Input
 
-- **Nothing** — assume the OpenClaw install on the current machine.
-- **A host** — `user@host`, or "the box we're SSH'd into". Prefix every command with your
-  SSH invocation; the steps are otherwise identical.
+- **Nothing** — the OpenClaw install on the current machine.
+- **A host** — `user@host`. Prefix every command with your SSH invocation; the steps are
+  otherwise identical.
 
-Ask only what you cannot detect: where to write the backup (default `~/backups/<date>-preflight`)
-and whether a copy should be pulled off-box.
-
-## The three traps this skill exists for
-
-Encode these as checks, not memory. Each one produces a backup that looks fine and is not.
-
-1. **The docs site runs ahead of shipped builds.** `docs.openclaw.ai` documents
-   `openclaw backup sqlite create`. Builds in the wild may have only `create` and `verify`.
-   Probe the binary in Step 1 — never assume a subcommand exists because it is documented.
-2. **`openclaw backup create` silently drops live-mutation files** — `.jsonl`, `.log`,
-   `.json`, `.tmp`, `.sock`, `.pid` under sessions, logs and delivery queues. Session
-   transcripts are `.jsonl`, so the official archive alone **does not restore chat history**.
-   Step 5 exists solely to cover this.
-3. **Every OpenClaw SQLite DB runs in WAL mode.** Committed data lives partly in
-   `<db>.sqlite` and partly in `<db>.sqlite-wal`. `cp` reads the two at different instants,
-   so the pair can be mutually inconsistent — it copies clean and fails later. Step 3 is
-   the fix.
+Detect what you can. Ask only for the backup destination (default
+`~/backups/<date>-preflight`) and whether to pull a copy off-box.
 
 ## Step 0: Preflight
 
@@ -36,60 +24,62 @@ STATE_DIR="${OPENCLAW_STATE_DIR:-$HOME/.openclaw}"
 [ -d "$STATE_DIR" ] || { echo "FAIL: no OpenClaw state dir at $STATE_DIR"; exit 1; }
 
 openclaw --version
-node --version                      # need v22+ for node:sqlite in Step 3
+node --version                      # v22+ carries node:sqlite, needed in Step 3
 du -sh "$STATE_DIR"
 df -h "$STATE_DIR"
 find "$STATE_DIR" -name '*.sqlite' -not -path '*/node_modules/*' | sort
-find "$STATE_DIR" -name '*-wal' -not -path '*/node_modules/*' | sort
 ```
 
-Also locate the workspace, which may sit outside the state dir — check
-`OPENCLAW_WORKSPACE_DIR` and `agents.defaults.workspace` in the config. If it is outside,
-it is a separate backup source and must be archived too.
+Discover the databases with `find` on every run. OpenClaw relocates them between versions —
+2026.7 moved the memory database from `memory/main.sqlite` to
+`agents/<id>/agent/openclaw-agent.sqlite`, so a hardcoded path silently finds nothing.
 
-**Gate:** free space must be at least 2x the state dir. Below that, stop and report the
-numbers rather than filling the disk of a live box.
+Locate the workspace, which may sit outside the state dir: check `OPENCLAW_WORKSPACE_DIR`
+and `agents.defaults.workspace` in the config. A workspace outside the state dir is a
+separate archive source.
 
-Identify how the gateway runs — a systemd user unit (`openclaw-gateway.service`), a system
-unit, pm2, Docker, or launchd. Do not assume. For a **user** unit every command needs
-`systemctl --user`; without the flag systemd reports "unit not found" and you will believe
-the service is stopped while it is still writing.
+Identify how the gateway runs — systemd user unit (`openclaw-gateway.service`), system unit,
+pm2, Docker, or launchd — by inspecting the host. A **user** unit needs `systemctl --user`
+on every command; plain `systemctl` reports "unit not found", which reads as stopped while
+the service is still writing.
 
-## Step 1: Probe the binary, not the docs
+**Gate:** free space is at least 2x the state dir, and the database list is non-empty.
+
+## Step 1: Read capabilities from `--help`
 
 ```bash
 openclaw backup --help
 openclaw backup create --help
 ```
 
-Record which subcommands and flags actually exist. If a `sqlite` subcommand is present,
-prefer it over Step 3's script and say so in the report. If it is absent, Step 3 is the
-only thing standing between you and torn databases.
+`--help` is the source of truth for this install. `docs.openclaw.ai` documents a
+`backup sqlite` subcommand that shipped builds may lack, so the docs site describes a
+capability the binary may not have.
+
+**Gate:** the subcommand list is recorded. If `sqlite` is present, prefer it over Step 3 and
+say so in the report.
 
 ## Step 2: Choose the downtime mode
 
-Ask the user. Default to zero-downtime — it is sufficient because Step 3 snapshots the
-databases transactionally, and the databases are the only part that cannot tolerate a
-live copy.
+Ask the user. Default to zero-downtime: Step 3 snapshots the databases transactionally, and
+the databases are the only part that cannot tolerate a live copy.
 
-| Mode | What happens | Cost |
-|---|---|---|
-| Zero-downtime (default) | Gateway keeps running. Steps 3-5 all run hot. | Files rewritten mid-tar may be torn in the raw archive; the DBs are covered separately, and the official archive is written by the tool itself. |
-| Brief stop | Stop the service, run Steps 3-6, start it. | Minutes of downtime; messages arriving in the window may be missed. Nothing is writing, so every artifact is quiescent. |
+| Mode | Cost |
+|---|---|
+| Zero-downtime (default) | Files rewritten mid-tar may be torn in the raw archive. Databases are covered separately. |
+| Brief stop | Minutes of downtime, messages in that window missed. Every artifact quiescent. |
 
-If stopping: confirm the process is actually gone (`pgrep -af openclaw`) before archiving,
-and confirm it came back healthy afterwards.
+If stopping: confirm the process is gone with `pgrep -af openclaw` before archiving, and
+confirm it returned healthy afterwards.
 
 ## Step 3: Snapshot every SQLite database
 
-Load `${CLAUDE_SKILL_DIR}/references/sqlite-snapshot.md` and follow it. It writes a short
-Node script that uses `VACUUM INTO` — consistent against a live WAL database, no service
-stop, and no `sqlite3` CLI needed (it is frequently not installed).
+Load `${CLAUDE_SKILL_DIR}/references/sqlite-snapshot.md` and follow it — the `VACUUM INTO`
+script, and why a live WAL database needs it.
 
-**Gate:** every database must report `integrity_check` = `ok` on **both** the source and
-the resulting snapshot. Checking only the source proves the input was fine and says nothing
-about whether the output was written correctly. Any database that fails either check stops
-the run — report which one and why, do not continue and hope.
+**Gate:** every database reports `integrity_check` = `ok` on **both** source and snapshot,
+and the count reads `N/N`. A database failing either check stops the run; report which one
+and what it said.
 
 ## Step 4: Official archive
 
@@ -97,13 +87,17 @@ the run — report which one and why, do not continue and hope.
 cd "$HOME" && openclaw backup create --verify --output "$BACKUP_DIR/official"
 ```
 
-Large installs take minutes; run it in the background and poll rather than blocking.
+Large installs take minutes — run it in the background and poll.
 
-Capture the line reading `Skipped N volatile files`. That number is the justification for
-Step 5 — quote it in the report. Confirm the run ends with `Archive verification: passed`;
-absent that line, the archive is unverified and must be reported as such.
+This archive omits live-mutation files: `.jsonl`, `.log`, `.json`, `.tmp`, `.sock`, `.pid`
+under sessions, logs and delivery queues. Session transcripts are `.jsonl`, which is why
+Step 5 follows.
 
-## Step 5: Raw archive — the one that holds the transcripts
+**Gate:** the run ends with `Archive verification: passed`, and the `Skipped N volatile
+files` count is recorded for the report. Without that verification line the archive counts
+as unverified.
+
+## Step 5: Raw archive — the one holding the transcripts
 
 ```bash
 tar --use-compress-program="zstd -3 -T0" \
@@ -114,11 +108,10 @@ tar --use-compress-program="zstd -3 -T0" \
 echo "EXIT=$?"
 ```
 
-`node_modules` is excluded because it is reinstallable and can be a third of the total.
-Nothing else is excluded — the volatile files the official archive dropped are the entire
-point of this step.
+`node_modules` is excluded as reinstallable and often a third of the total. Everything else
+stays: the volatile files Step 4 dropped are the point of this step.
 
-Then prove it, rather than assuming:
+Then produce the evidence:
 
 ```bash
 zstd -t "$BACKUP_DIR/raw/openclaw-state-raw.tar.zst"
@@ -128,21 +121,23 @@ grep -c 'sessions/.*\.jsonl' /tmp/rawlist.txt
 grep -c 'node_modules' /tmp/rawlist.txt
 ```
 
-**Gate:** the session `.jsonl` count must be greater than zero. If it is zero on an install
-that has conversation history, the exclude pattern is wrong — fix it and re-run. `tar` exits
-non-zero when a file changes mid-read; on a hot backup treat that as a warning to record,
-not a silent pass.
+**Gate:** `zstd -t` passes and the session `.jsonl` count is greater than zero on an install
+with conversation history. A zero count means the exclude pattern is wrong — fix it and
+re-run. `tar` exits non-zero when a file changes mid-read; on a hot backup record that as a
+warning in the report.
 
 ## Step 6: Metadata
 
-Enough to rebuild the environment, not just the data:
+Capture each of these into `meta/`:
 
-- Service unit file **and its drop-in directory** — overrides live in the drop-ins and are
-  invisible if you only copy the main unit
-- Environment files referenced by the unit
+- Service unit file **and its drop-in directory** — overrides live in the drop-ins
+- Environment files the unit references
 - `openclaw --version`, `node --version`, global npm packages
 - Listening ports, running OpenClaw processes, crontab
-- `du -sh` of each state subdirectory, so a later restore can be size-checked
+- `du -sh` of each state subdirectory, for size-checking a later restore
+
+**Gate:** every item above is present in `meta/` or named in the report as unavailable, with
+the reason.
 
 ## Step 7: Manifest and RESTORE.md
 
@@ -152,12 +147,14 @@ cd "$BACKUP_DIR" && find . -type f ! -name MANIFEST.sha256 -print0 \
 chmod -R go-rwx "$BACKUP_DIR"
 ```
 
-The permission change is not optional. These archives contain API tokens, messaging
-pairing data and OAuth refresh tokens.
+Apply the permission change: these archives carry API tokens, messaging pairing data and
+OAuth refresh tokens.
 
-Then render `${CLAUDE_SKILL_DIR}/references/restore-template.md` into `$BACKUP_DIR/RESTORE.md`,
-substituting the real paths, service name and database list discovered in Step 0. A generic
-template helps nobody at 3am — the emitted file must name this install's actual paths.
+Render `${CLAUDE_SKILL_DIR}/references/restore-template.md` into `$BACKUP_DIR/RESTORE.md`,
+substituting the real paths, service name and database list from Step 0.
+
+**Gate:** `MANIFEST.sha256` lists every artifact, the backup directory is mode `0700`, and
+the rendered `RESTORE.md` contains no remaining `<PLACEHOLDER>` tokens.
 
 ## Step 8: Off-box copy
 
@@ -168,18 +165,21 @@ If the user wants a copy elsewhere:
 rsync -avh --partial -e ssh <source> <destination>
 ```
 
-Then verify on the receiving side against the manifest:
+Verify on the receiving side against the manifest:
 
 ```bash
 grep -v ' \./official/' MANIFEST.sha256 > /tmp/check.sha256   # if official/ was not pulled
 sha256sum -c /tmp/check.sha256    # macOS: shasum -a 256 -c
 ```
 
-**Gate:** a checksum mismatch is a FAIL, not a warning. Re-transfer the affected file.
-`--partial` makes a re-run resume rather than restart.
+Confirm the checksum output covers a non-empty file list before reading it as a pass — a
+verifier fed an empty list reports success having checked nothing.
 
-Skipping the redundant official archive on the pull is reasonable — its contents are a
-subset of the raw archive. Say so explicitly rather than leaving the omission unexplained.
+**Gate:** every checked file reports `OK`. A mismatch fails the step; re-transfer that file.
+`--partial` makes a re-run resume.
+
+Omitting the official archive from the pull is reasonable — its contents are a subset of the
+raw archive. State that omission in the report.
 
 ## Step 9: Report
 
@@ -199,23 +199,18 @@ Artifacts (<total size>, mode 0700):
 
 Official archive skipped <N> volatile files — covered by the raw archive.
 
-VERIFIED:  <what was actually run and checked>
+VERIFIED:  <what was run, and the evidence each produced>
 ASSUMED:   <what was inspected but not executed>
 NOT DONE:  restore has not been rehearsed against this backup
 
 VERDICT: <BACKUP COMPLETE | INCOMPLETE — reason>
 ```
 
-Rules for the report:
+**Gate:** every gate from Steps 0-8 appears under `VERIFIED` with its evidence, or under
+`ASSUMED` with the reason it was not run. `BACKUP COMPLETE` requires all of them verified.
 
-- A backup whose checksums were never verified is not a backup. Say `INCOMPLETE`.
-- If Step 5 was skipped for any reason, state plainly that chat history is not covered.
-- Never claim the restore works. It has not been tested unless it was actually performed
-  against a throwaway target — say so under `NOT DONE`.
+Two claims to keep accurate:
 
-## Reference files
-
-| File | Holds |
-|---|---|
-| `references/sqlite-snapshot.md` | The `VACUUM INTO` snapshot script and why a live WAL database cannot be copied with `cp` |
-| `references/restore-template.md` | The RESTORE.md template rendered in Step 7, including the WAL-sidecar ordering trap |
+- A backup with unverified checksums reads `INCOMPLETE`.
+- The restore stays under `NOT DONE` until it has actually been performed against a
+  throwaway target. Running the backup proves the archives exist, not that they restore.
