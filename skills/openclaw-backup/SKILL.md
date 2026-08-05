@@ -1,6 +1,7 @@
 ---
 name: openclaw-backup
-description: Take a verified, restorable backup of an OpenClaw install — official archive, consistent SQLite snapshots, raw state archive, checksum manifest, and a per-install RESTORE.md. Use before upgrades, config surgery, plugin changes, or any risky change to a live OpenClaw box, and whenever the user asks for a restore point or safety snapshot.
+description: Take a verified, restorable backup of an OpenClaw install — official archive, consistent SQLite snapshots, a raw archive covering the session transcripts the official tool drops, a checksum manifest, and a per-install RESTORE.md. Run before upgrades, config surgery, or any risky change to a live box.
+disable-model-invocation: true
 ---
 
 ## Input
