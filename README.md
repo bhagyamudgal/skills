@@ -63,6 +63,7 @@ npx skills add bhagyamudgal/skills
 | `executing-tickets-with-subagents` | Execute a multi-sub-task GitHub ticket via subagents — one wave per task, ledger-tracked so a compaction can resume, follow-up triage, manual-QA handoff doc |
 | `resolving-merge-conflicts` | Resolve an in-progress git conflict without a **silent drop** — every hunk from both sides placed as kept, superseded, or dropped before you commit |
 | `git-commit` | Conventional commits from diff analysis — every file classified into exactly one commit; append-only, with a message-only mode |
+| `openclaw-backup` | Verified restore point for an OpenClaw install — official archive, `VACUUM INTO` SQLite snapshots, a raw archive covering the session transcripts the official tool drops, checksum manifest, and a per-install `RESTORE.md` |
 
 Several skills use progressive disclosure — `SKILL.md` holds the spine, and branch-specific material sits in `references/` (or `modes/` for `design-director`), loaded only when that branch fires. Load instructions use `${CLAUDE_SKILL_DIR}/` so they resolve against the skill directory rather than the user's repo.
 
@@ -71,7 +72,7 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 | Folder | Purpose |
 |---|---|
 | `skills/coderabbit-config/` | `.coderabbit.yaml` template + persistent-learnings sidecar. Copy into a repo so CodeRabbit absorbs style + convention findings before `/review-pr` runs. See [`skills/coderabbit-config/README.md`](skills/coderabbit-config/README.md) for bootstrap instructions. |
-| `tools/verify_skills.py` | Structural verifier across all 17 skills — frontmatter, code fences, pointer form, severity-ladder consistency, dangling and orphan references, cross-skill duplication. Plus produce → validate → consume dataflow checks scoped to `review-pr` and `fix-pr-review`. Run `python3 tools/verify_skills.py ./skills`; exits non-zero on failure. |
+| `tools/verify_skills.py` | Structural verifier across all 18 skills — frontmatter, code fences, pointer form, severity-ladder consistency, dangling and orphan references, cross-skill duplication. Plus produce → validate → consume dataflow checks scoped to `review-pr` and `fix-pr-review`. Run `python3 tools/verify_skills.py ./skills`; exits non-zero on failure. |
 
 ## Usage
 
@@ -93,6 +94,7 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 /executing-tickets-with-subagents  # Run a bundled ticket end-to-end via subagents
 /resolving-merge-conflicts         # Resolve merge/rebase conflicts safely
 /git-commit          # Conventional commit (or message-only)
+/openclaw-backup     # Verified restore point for an OpenClaw install
 ```
 
 ## Reference
