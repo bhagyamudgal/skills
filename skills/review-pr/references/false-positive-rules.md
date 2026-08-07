@@ -1,13 +1,60 @@
 # False-positive rules table (Phase 3 step 4.6)
 
-Loaded by main at Phase 3 step 4.6, whenever at least one finding survives step 4.5. SKILL.md keeps the iterator contract — `id` / `trigger` / `evidence_check` / `action`, applied in order, every fire logged to Filtered Out with the rule `id`. This file holds the rules that iterator runs, and is the single source of truth for false-positive filtering: adding a new false-positive class is a one-row edit here.
+Loaded by main at Phase 3 step 4.6, whenever at least one finding survives step 4.5. SKILL.md keeps the iterator contract — `id` / `trigger` or `applies_to` / `evidence_check` / `action`, applied in order, every fire logged to Filtered Out with the rule `id`. This file holds the rules that iterator runs, and is the single source of truth for false-positive filtering: adding a new false-positive class is a one-row edit here.
 
-The table is consulted per finding, not read linearly. Match a finding's `Issue` / `Why` text against each `trigger` in order; run the `evidence_check` only when the trigger hits.
+The table is consulted per finding, not read linearly. Rules carry one of two selectors:
+
+- `trigger` — a regex matched against the finding's `Issue` / `Why` text. Run the `evidence_check` only when the regex hits.
+- `applies_to` — no text match. The rule runs on every finding in the class it names, and states what the reviewer must have done before the finding may be emitted at all.
+
+`applies_to` rules are listed first, and run first: they correct the anchor and the suggested fix that the later rules' `evidence_check` bodies read, so running them last would mean the text rules verified against a line the emitted finding no longer points at.
+
+At most one severity change per finding per pass. When several rules fire, apply the strongest action once — `drop` beats `strip-fix` beats a downgrade — and log every rule `id` that fired. Two independent soft grounds must not compound into a two-step downgrade.
 
 ---
 
 ```yaml
 rules:
+  - id: re-derive-the-anchor
+    applies_to: |
+      Every finding carrying a File: <path>:<line>, before any other rule reads that line.
+    evidence_check: |
+      Require an anchor_text — the exact source line the finding is about, as the reviewer read it.
+      If the finding carries none, adopt the line the citation currently points at in the post-image,
+      and only when that line contains the symbol named in Issue; otherwise treat as no match.
+      Re-derive the line by searching the POST-image for anchor_text:
+        - stashed diff, new side, first
+        - gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha> when the file is not fully stashed
+      One match     → rewrite File: to that match's post-image line number.
+      Many matches  → take the occurrence inside the finding's Enclosing-symbol; still ambiguous → demote to file-level.
+      No match      → DROP.
+      Never carry a line number over from the pre-image / old side, an earlier round's state file,
+      a prior review comment, another reviewer's output, or the position where it was first noticed.
+      A rebase moves lines and leaves the file right; the anchor must be recomputed, not inherited.
+    action: re-anchor-or-drop
+    log_reason: "re-derive-the-anchor — <path>:<old> -> <new>, or dropped when anchor_text is absent from the post-image at <head-sha>"
+
+  - id: open-the-callee
+    applies_to: |
+      Every finding carrying a Suggested fix:, after step 4.56 has derived its Inverse risk.
+    evidence_check: |
+      List every symbol the suggested fix calls, awaits, constructs, spreads, or reads a field from.
+      Exclude language built-ins and symbols whose definition sits in a diff hunk already in context.
+      For each remaining symbol, the reviewer must have OPENED its definition — all four hold:
+        1. read at <head-sha> via Read or gh api contents — not from memory, not from a grep hit, not from a call site
+        2. the read spanned the signature AND the body, not the first line alone
+        3. the source is an implementation file, not a declaration (see declaration-is-not-implementation)
+        4. the reviewer can state from that read: parameter list and order, return type, whether it is
+           async, whether it can return null/undefined, whether it throws
+      Any symbol failing any of the four is NOT opened. Then:
+        finding stands without the fix → keep severity, replace the fix with
+          "no verified fix — <symbol> not read", attach note
+        finding IS the fix (Issue asserts only that the code should call <symbol>) → DROP
+      /fix-pr-review applies these verbatim; a fix written against a guessed signature ships as a defect.
+    action: strip-fix
+    note: "Note: fix withdrawn — <symbol> was never opened, so its signature, nullability and throwing behaviour are unverified."
+    log_reason: "open-the-callee — <symbol> not read at <head-sha>; Suggested fix stripped"
+
   - id: wrapped-coercion
     trigger: |
       (?i)\.toFixed\(|\.toString\(|\.toLocaleString\(|String\(
@@ -74,4 +121,53 @@ rules:
     action: downgrade-1-and-note   # plus DROP if "by design" comment found
     note: "Note: a named default (<CONST>) handles the absent value — likely intentional design, not a propagation bug."
     log_reason: "default-fallback — found <CONST>"
+
+  - id: declaration-is-not-implementation
+    trigger: |
+      (?i)\.d\.ts|\bdeclare\s+(module|function|const|class|namespace)\b|\binterface\b|\babstract\b|z\.infer|\btype\s+\w+\s*=|the (type|signature|schema|interface) (says|declares|shows|guarantees)|@(param|returns)\b
+    evidence_check: |
+      Applies when the finding asserts RUNTIME behaviour — returns, throws, never null, always defined,
+      validates, sanitizes, retries, mutates, awaits — and EVERY source it cites is a declaration:
+      a .d.ts, a declare block, an interface, a type alias, an abstract method signature, an
+      ORM/Zod-inferred model type, or a @param/@returns doc comment.
+      Claims about the type itself — assignability, a widened union, a missing discriminant, an
+      unsound cast — are INAPPLICABLE: the declaration IS the subject there.
+      Declaration-only evidence for a behaviour claim leaves it unproven; a declaration states a
+      contract, and the defect being reviewed is precisely a divergence between contract and code.
+        Critical → downgrade to Serious + note
+        Serious  → downgrade to Moderate + note
+        Moderate → DROP
+        Minor    → DROP
+      Evidence that clears the rule: the implementing body at <head-sha>, a test exercising the
+      behaviour, or a runtime log/trace line showing it.
+    action: severity-conditional   # see severity ladder above
+    note: "Note: claim rests on a type declaration, not an implementation — read <symbol>'s body before acting."
+    log_reason: "declaration-is-not-implementation — <severity> proven only from <decl-source>"
+
+  - id: publish-the-command-or-do-not-claim
+    trigger: |
+      (?i)\b(always|never|rarely|usually|mostly|typically|almost never)\s+(null|undefined|empty|set|populated|happens|occurs|fires|used)|\ball (rows|records|accounts|tenants|users)\b|\bmost (rows|records|accounts|tenants|users|requests)\b|\bonly a (few|handful)\b|\bno (rows|records|users|accounts) (have|has|are)\b|\b\d+(\.\d+)?\s*%|\b(row|record|request) counts?\b|\bin (production|prod|the wild)\b|\bthis (never|always) happens\b|\baffects? (only|just)\b
+    evidence_check: |
+      Precondition: the claim quantifies over stored data or observed traffic OUTSIDE this diff —
+      rows, records, documents, accounts, tenants, requests, jobs, events, log lines.
+      A claim quantifying over CODE is INAPPLICABLE — "this branch is never reached", "the guard
+      always returns early", "every caller passes a string", "the loop always runs once" are settled
+      by reading the code, and the File: anchor already tells a reader where to read.
+      Require a command in Why / Evidence / Fix that a reader can paste and run UNMODIFIED:
+        - psql / docker exec ... psql carrying a full SELECT with real table and column names
+        - a script or CLI invocation with every argument bound
+        - gh api ... --jq, or a log/analytics query including its time window
+        - grep -rE '<pattern>' <path> when the claim is about occurrences in the repo
+      Not runnable: placeholders (<table>, YOUR_DB, ...), an English description of a query, a bare
+      table name, a result with no command, a command with no result. The command must be paired
+      with the number it returned.
+      No such command:
+        Strike every distribution sentence from Issue and Why. Do NOT soften it to "may be",
+        "likely", "in many cases" — an unrunnable claim is not a weaker claim, it is no claim.
+        Then:
+          finding still names a concrete defect at its cited line → keep, severity - 1, attach note
+          finding's existence or severity rested on the volume    → DROP at any severity
+    action: severity-conditional   # strike the claim first, then keep-minus-one or drop
+    note: "Note: an unquantified data claim was removed from this finding — re-state it only with the query and the number it returned."
+    log_reason: "publish-the-command — distribution claim with no re-runnable command"
 ```

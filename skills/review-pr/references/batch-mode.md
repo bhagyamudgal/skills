@@ -39,8 +39,8 @@ Do not post to GitHub and do not ask questions. Return your Phase 4 terminal blo
 
 The run continues unattended through the WHOLE list — batch mode implies the user may be away. Do NOT stop between PRs. Every would-be checkpoint is collected as a **pending decision** instead of asked:
 
-- Stop-and-ask intent gap → review with just the diff; tag that PR's report `intent not grounded — findings may be generic`.
-- PR > 2000 lines → proceed with chunked review; note the size in that PR's report header.
+- Stop-and-ask intent gap → review with just the diff, and set that PR's `Mode` header field to `intent not grounded — findings may be generic` (the value is defined in `references/finding-output-format.md`).
+- PR > 2000 lines → proceed with chunked review; the `Size` header field carries it, as in a single-PR run.
 - Findings selection + post decision → deferred to end-of-run.
 - A failed subagent doesn't stop the batch — record `<pr>: review failed (<reason>)` in the consolidated report and continue with the rest.
 
@@ -53,8 +53,8 @@ After all subagents return, write ONE report document to `/tmp/review-pr-batch-<
 ```
 # Batch PR Review — <N> PRs (<date>)
 
-| PR | Title | Approval | Verdict | C | S | M | m |
-|----|-------|----------|---------|---|---|---|---|
+| PR | Title | Approval | Verdict | Cov | C | S | M | m |
+|----|-------|----------|---------|-----|---|---|---|---|
 <one row per PR; "review failed" rows included>
 
 ## Pending decisions (<count>)
@@ -65,6 +65,16 @@ After all subagents return, write ONE report document to `/tmp/review-pr-batch-<
 ## Per-PR reviews
 <each PR's full Phase 4 terminal block, in list order>
 ```
+
+### The table is a projection of the canonical header
+
+Each row projects one PR's run-level header from `references/finding-output-format.md`. It carries `Number` (as `PR`), `Title`, `Senior engineer approval`, `Verdict`, `Coverage` (as `Cov`, rendered `<cells_examined>/<cells_total>`) and `Severity counts` split into the four tier columns. No column exists that is not one of those fields.
+
+`Cov` is in the table rather than only in the per-PR block below it because the same rule that governs a single review governs a batch: `approve` is forbidden while `cells_not_examined > 0`. A verdict column with no coverage beside it invites the reader to trust an approval the review never earned, and in a 20-PR list nobody scrolls to each block to check.
+
+The remaining seven canonical header fields — `Goal`, `Summary`, `Size`, `Reviewers`, `Round`, `Convergence`, `Mode` — are omitted from the row and appear only in that PR's full block below. The row's job is to rank a list by whether it needs attention; none of the seven changes that ranking, and a `Mode` or `Summary` string long enough to be honest would break the column layout at 20 rows. Nothing is lost: every row's full header is reproduced verbatim under "Per-PR reviews", which is what lets the row be this thin.
+
+A `review failed` row fills `Approval`, `Verdict` and the tier columns with `—` and puts the reason in `Title`. It never renders as a zero-finding pass.
 
 ---
 

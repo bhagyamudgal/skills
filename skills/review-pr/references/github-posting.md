@@ -1,13 +1,14 @@
-# GitHub posting flow (Phase 4) — REST + GraphQL hybrid + rolling-review
+# GitHub posting flow (Phase 4) — REST + GraphQL hybrid
 
 Loaded by SKILL.md when posting findings to a real PR. SKILL.md keeps a ~30-line dispatch step that delegates to this reference.
 
 This file owns:
-- Composing summary body + per-finding review comments
+- Composing summary body (findings table + collapsed coverage ledger) + per-finding review comments
 - Pre-posting hunk validation (line vs file-level routing)
 - Three-phase REST/GraphQL posting (PENDING review → file-level threads → submit)
-- **Rolling-review fix**: detect prior `/review-pr` review on the PR via marker comment, edit its body in place instead of posting a duplicate.
-- Pre-posting preflight on re-runs: verdict-body sync check, thread resolution for findings now `resolved`
+- **Prior-review detection**: read the marker comment on earlier `/review-pr` reviews to number the round and dedupe threads — read-only, never to edit them
+- Pre-posting preflight on re-runs: verdict-body sync check, thread resolution for findings closed since the last round
+- Post-submit assertion: the review is really `SUBMITTED` and carries every thread we intended
 - Failure recovery (Phase A/B/C disclosed partial state)
 - State + cache write-back
 
@@ -25,11 +26,19 @@ The hybrid flow:
 2. **Phase B (GraphQL)** — attach file-level threads.
 3. **Phase C (GraphQL)** — submit with the verdict event.
 
-When a prior `/review-pr` review exists on the PR, **the Rolling-review path replaces Phase A** (see Step 0 below).
+Every round runs all three phases. There is no path that reuses a previous round's review.
 
 ---
 
-## Step 0 — Detect prior `/review-pr` review (rolling-review path)
+## A posted review body is immutable (READ BEFORE EDITING)
+
+**Once a review is submitted, its body is never edited — a later round supersedes it with a NEW review.** No step in this file may call `updatePullRequestReviewBody`, and no step may re-submit or re-target a review from an earlier round.
+
+The body is that round's evidence: it carries the round's verdict, its findings table, and its coverage ledger — what that round actually examined. An in-place edit overwrites that record with a different round's, and has twice been observed destroying a round report and corrupting the `<!-- review-pr:run -->` marker. Accumulation is cheap in exchange: rounds are capped at 3, so a PR collects at most three review entries.
+
+---
+
+## Step 0 — Detect prior `/review-pr` reviews (round number + dedupe)
 
 Every review posted by `/review-pr` includes a hidden marker comment in the body:
 
@@ -40,7 +49,7 @@ Every review posted by `/review-pr` includes a hidden marker comment in the body
 Before posting a new review, query for prior tagged reviews:
 
 ```bash
-PRIOR_REVIEW_NODE_ID=$(gh api graphql -f query='
+PRIOR_REVIEWS=$(gh api graphql -f query='
   query($owner:String!, $repo:String!, $num:Int!) {
     repository(owner:$owner, name:$repo) {
       pullRequest(number:$num) {
@@ -49,22 +58,23 @@ PRIOR_REVIEW_NODE_ID=$(gh api graphql -f query='
     }
   }
 ' -f owner=<owner> -f repo=<repo> -F num=<num> \
-  | jq -r '
+  | jq -c '
       [.data.repository.pullRequest.reviews.nodes[]
        | select(.body | test("<!-- review-pr:run"))]
-      | sort_by(.submittedAt) | last | .id // empty
+      | sort_by(.submittedAt)
     ')
 
-PRIOR_REVIEW_DB_ID=$(... same query, take .databaseId ...)
+PRIOR_ROUND=$(echo "$PRIOR_REVIEWS" | jq -r '
+  (last // {}) | (.body // "") | (capture("round=(?<r>[0-9]+)").r // "0")')
 ```
 
-**Branches**:
+**This query is read-only.** Nothing downstream may pass a prior review's `id` to a mutation. What the result is for:
 
-- **No prior tagged review** → fall through to Step 4 (Phase A: create new pending review).
-- **Prior tagged review found AND submittedAt is within 30 days** → ROLLING-REVIEW path. Skip Step 4. Use Step 4-rolling instead: edit the body via `updatePullRequestReviewBody` GraphQL mutation, then proceed to Step 5 (attach NEW file-level threads only — see Step 5-rolling for the dedup against `posted_comments`), then skip Step 6 (no submit needed — the prior review is already submitted; we just rolled new threads onto the same review).
-- **Prior tagged review found BUT submittedAt > 30 days ago** → treat as legacy, fall through to Step 4 (new review). Don't try to edit reviews older than a month — they likely belong to a different commit history.
+- **Round continuity** — `PRIOR_ROUND + 1` must equal the `CURRENT_ROUND` SKILL.md passed in. A mismatch means a round was posted by a run whose state file was lost; take the higher of the two so the marker never repeats a round number.
+- **Dedupe** — findings already carrying a thread from an earlier round are filtered out before the lists are built (Step 0c step 4, Step 3b). Prior reviews are how you tell a genuinely new finding from a re-emitted one when the cache is missing: fetch those reviews' comments and recompute each id from the `<!-- review-pr:finding -->` marker Step 2 puts on every one. The marker is the whole reason that fallback is possible — a comment posted without it is undedupable and will be re-raised next round.
+- **Round count against the cap** — `length` of `PRIOR_REVIEWS` is how many review entries `/review-pr` has already left on this PR. **The cap does not read it**: `SKILL.md` keys the cap on `CURRENT_ROUND`, derived from the state file alone. So this count is a cross-check for the one case the state file cannot cover — it was lost, `CURRENT_ROUND` restarts at 1, and the PR already carries three reviews. Report the discrepancy rather than acting on it; capping is `SKILL.md`'s call, not posting's.
 
-**Rationale**: instead of N separate review entries piling up on a multi-round PR, you get ONE rolling review whose body is the latest summary and whose threads accumulate as new findings appear (resolved findings get their threads resolved via `resolveReviewThread`, see Step 7-rolling).
+**Branch**: there is exactly one. Always continue to Step 4 and create a fresh review. Age of the prior review is irrelevant — nothing is being edited, so there is no stale-commit-history hazard to guard against.
 
 ---
 
@@ -82,7 +92,7 @@ fi
 
 If they drifted:
 
-> **Previous review's body verdict (`<body>`) does NOT match GitHub state (`<state>`).** Likely cause: self-review coerced to `comment`, or manual edit in GitHub UI. The current run's output will not re-post over the previous review — add a NEW review via "Post now" if you want to update. (Rolling-review path will edit the body in place — see Step 0 above.)
+> **Previous review's body verdict (`<body>`) does NOT match GitHub state (`<state>`).** Likely cause: self-review coerced to `comment`, or manual edit in GitHub UI. The current run does not touch that review — its body stays as posted. This round's "Post now" adds a NEW review carrying the corrected verdict.
 
 ---
 
@@ -90,9 +100,18 @@ If they drifted:
 
 If this is a re-review AND `posted_comments` cache exists:
 
-1. **Identify resolved findings**: compare current findings against `posted_comments` via dedupe key. A cached finding NOT in current findings AND whose `id` is now `status: resolved` in `PRIOR_STATE` is "resolved this round."
+1. **Identify findings closed this round**: compare current findings against `posted_comments` via dedupe key. A cached finding NOT in this round's finding set is closed this round when **either**:
 
-2. **Resolve their threads** on GitHub:
+   - its `github_thread_id` resolves to a thread GitHub reports as `isResolved: true` (query thread state; Step 0's review query does not carry it), **or**
+   - its `id` carries `status in {resolved, dismissed, wontfix}` in `PRIOR_STATE`.
+
+   **Do not key on `status: resolved` alone.** `dismissed` is written automatically when the user deselects a finding, but `resolved` has no automated writer — it is set by hand, so on any machine where nobody edits the state YAML nothing is ever `resolved`, and this step plus Step 8d never fire at all. Every thread then stays open however many rounds fixed the code. Thread state is the signal that actually moves, because merging requires resolving threads. `SKILL.md` step 4.9 builds its closed set from the same two arms; they must stay aligned or the two steps disagree about which findings are open.
+
+   **`isResolved` is evidence a thread was closed, never that a finding was correct.** Where a repository ruleset requires thread resolution to merge, authors resolve findings they dispute in order to ship. So it may corroborate a finding the reviewer no longer sees at head; it may never remove one the reviewer still does. A finding present in this round's set keeps its row in the findings table and its thread whatever GitHub says about resolution.
+
+   **Absence counts only where the file was examined.** If the finding's file carries a `not-examined` cell for the lens that raised it, no reviewer looked this round, and its absence from the set is silence rather than a fix — leave it open and do not resolve its thread. A finding with empty `lens_ids` names no cell, so fall back to its file's ledger row: if the file has no row, or every cell on it is `not-examined`, treat the absence as silence too. That fallback is what keeps the guard from passing vacuously on exactly the gap-check findings least likely to have been looked at twice.
+
+2. **Resolve their threads** on GitHub, skipping any already `isResolved`:
 
    ```bash
    gh api graphql -f query='
@@ -104,7 +123,7 @@ If this is a re-review AND `posted_comments` cache exists:
    ' -f threadId="<thread_id>"
    ```
 
-3. **Track resolved findings** for the "Resolved since last review" line in the summary body. Use exact wording: `Resolved since last review: S1 (<file:line> <one-line issue>, round 4 commit <sha>), ...`. NEVER use "deferred", "fixed", or other ambiguous wording — use `resolved` with the commit SHA.
+3. **Track them** for the "Resolved since last review" line in the summary body. Use exact wording: `Resolved since last review: S1 (<file:line> <one-line issue>, round 4 commit <sha>), ...`. NEVER use "deferred", "fixed", or other ambiguous wording — use `resolved` with the commit SHA. A finding closed on the thread arm has no `commit_sha_resolved`: name the head SHA this round read and write `thread resolved` in place of the commit, rather than attributing the close to a commit nobody identified.
 
 4. **Filter review comments**: only post comments for findings NEW or STILL ACTIVE — do NOT re-post findings already present from a previous round (they already have threads). A finding is "still present" if its `id` matches a cached `posted_comments` entry — skip the comment.
 
@@ -124,6 +143,9 @@ Build a lean summary body (NO "Filtered out" section — internal only). **Alway
 
 **Goal**: <intent goal>
 **Summary**: <2-3 sentences>
+**Round**: <round> (<active>/<resolved>/<dismissed> carried)  <!-- omit at round 1 -->
+**Convergence**: <N> new · <C> caused by earlier fixes · <R> regressions reopened · <F> carried — <trend sentence>  <!-- omit at round 1 -->
+**Mode**: <mode line>  <!-- omit when no mode applies -->
 
 ### Findings
 | # | Sev | File | Issue |
@@ -133,25 +155,71 @@ Build a lean summary body (NO "Filtered out" section — internal only). **Alway
 | m1 | 🔵 | *(general)* | <one-line issue (body-fallback)> |
 
 *Details in review comments below.*  <!-- omit if ALL findings are body-fallback -->
+
+<resolved-since-last-review line — wording below; omit on round 1>
+
+### Additional findings  <!-- body-fallback findings only; omit the heading when there are none -->
+<each finding with no file reference, rendered with the Step 2 comment projection>
+
+**Coverage**: <cells_examined>/<cells_total> cells examined across <files_changed> files changed. <cells_cannot_assess> cells cannot be assessed without <artifact>.  <!-- second sentence omitted entirely when cells_cannot_assess == 0 --> **<cells_not_examined> cells NOT examined — this review does not cover them.**  <!-- third sentence omitted entirely when cells_not_examined == 0 -->
+
+<details>
+<summary>Coverage ledger — round <round>, head <head_sha></summary>
+
+| File | Type | Examined | Cannot assess | Not examined |
+|---|---|---|---|---|
+| `<path>` | `<file_type>` | L4 clean · L7 finding (S1) · L9 not-applicable (<note>) | — | — |
+| `<path>` | `<file_type>` | L4 not-applicable (<note>) | L13 — <artifact> | **L9** — <note> |
+| `<path>` | skipped — <skip_reason> | — | — | — |
+
+</details>
 ```
 
-**Severity count badges**: `🔴 <N> Critical · 🟠 <M> Serious · 🟡 <K> Moderate · 🔵 <J> Minor` — only include levels that have findings.
+**This template is the only place a review body is assembled.** Main passes the content — verdict, findings, intent, counters, the in-memory ledger — and Step 1 lays it out; main never hands over a pre-composed body. Every block the body can carry has a slot here; the sections below fill slots, they never append. A body specified in two places is how the ledger and the findings table drift out of sync.
 
-**Finding numbering**: assign sequential IDs by severity: `C1, C2…` Critical, `S1, S2…` Serious, `M1, M2…` Moderate, `m1, m2…` Minor. Use these IDs consistently in the summary table and review comments. **Note**: per-round visible labels (M3, S1, etc.) do NOT have to match across rounds — internal stability comes from the `findings[].id` hash in `.claude/review-state/<pr>.yml` (see `references/finding-state-schema.md`).
+### What the body projects from the canonical header
+
+The template above renders the run-level header field list defined in `references/finding-output-format.md`. It carries `Number`, `Verdict`, `Severity counts`, `Senior engineer approval`, `Goal`, `Summary`, `Round`, `Convergence`, `Mode` and `Coverage`. Three canonical fields are deliberately absent:
+
+- **`Title`** — GitHub renders the PR title directly above every review on the page. Repeating it costs a line and can contradict the page after a retitle.
+- **`Size`** — the Files-changed tab states additions, deletions and file count more accurately than a review body can, and restates them after every push.
+- **`Reviewers`** — subagent topology is an implementation detail of this skill and means nothing to a PR author. Where a degraded reviewer actually cost coverage, the loss surfaces in the always-visible `Coverage` line and in the ledger's `not-examined` cells, which is the form the reader can act on. A `<verifier> unavailable — verified inline` note is not reported here at all: that check ran, so there is nothing for a reader to do about it.
+
+`Round`, `Convergence` and `Mode` are on the body deliberately, and were absent from it for some time. A reader on the PR page could not tell a first look from a third, nor see that the fixes were generating the findings, nor learn that a partial re-review had read only the newest commits. All three change how much weight the verdict deserves, and all three were available while only the terminal saw them. `Mode` here carries the partial-re-review and intent-not-grounded values; the cross-repo value is suppressed on this surface alone. Its real cost is a thinner reusability index, and that cost already lands where a reader can use it — as `not-examined` or `cannot-assess` cells in the ledger. What remains is a fact about the reviewer's working directory, which no PR author can act on.
+
+The heading is `##`, not the terminal block's `#`. A review body is a comment inside a page that already has an H1; an H1 here renders at page-title size against the PR's own title.
+
+**Coverage line rules**:
+
+- Counters are `files_changed`, `cells_total`, `cells_examined`, `cells_cannot_assess`, `cells_not_examined`, read verbatim from the in-memory `ledger` object Phase 3 step 6.9 assembled and main passes in — **not** from the state file, which Step 8c has not written yet when this body is composed. Reading the file here renders the previous round's coverage under this round's verdict, and at round 1 renders the seed's zeros, which look like full coverage on the run that has the least of it.
+- Cell verdicts are the five values `clean | finding | not-applicable | cannot-assess | not-examined`, the vocabulary fixed in `references/finding-state-schema.md` — never substitute "skipped", "partial", "TODO", or "n/a".
+- `cells_examined` covers `{clean, finding, not-applicable}` only. With `cells_cannot_assess` and `cells_not_examined` it partitions `cells_total`, which is why all three print: render the counters, never re-derive one by subtracting the others. A body that shows `cells_examined` alone reads as full coverage on a run where a third of the cells resolved to an artifact nobody could obtain.
+- The gap sentence is **outside** the `<details>`, in the always-visible line. A reader deciding whether to merge must see an unexamined cell without opening anything; `approve` is forbidden while `cells_not_examined > 0` and the visible line is what makes that check auditable from the PR page alone.
+- The `cannot-assess` sentence sits on that same visible line and does **not** gate the verdict — the missing artifact is the review's limit, not something the author can supply. It prints anyway: a review that could not assess much of its cell set is a weak review, and a reader weighing an `approve` needs to tell that from a thorough one.
+- Inside the ledger, a `not-examined` cell renders as **bold lens id** plus its `note`. A `cannot-assess` cell renders as lens id plus the artifact its note names — the artifact is the whole content of the cell, since without it a reader cannot judge whether obtaining it was reasonable. `not-applicable` carries its note too; without it a legitimate skip reads identically to a gap.
+- One row per changed file, including files no lens applied to (all three cell columns `—`) and files the map skipped, whose `Type` column carries `skipped — <skip_reason>`. `len(rows)` must equal `files_changed`; if it doesn't, the ledger lost a file and the body must say so rather than silently render a short table. That equality is the ledger's own lost-a-file detector, so a skipped row is never dropped to keep the table short — dropping it trips the check on every PR that touches an image or a lockfile, and an alarm that fires constantly is one nobody reads when it is real.
+- The rendered table is a digest. The machine-readable ledger — every cell, every note, carried forward across rounds — lives in `.claude/review-state/<pr>.yml`; never trim the state file to match what the body shows.
+- Keep the blank line after `<summary>` and before `</details>`. GitHub renders the enclosed markdown table only when the HTML block is separated that way; without it the table posts as literal pipes.
+
+**Severity count badges**: the `Severity counts` field, rendered `🔴 <N> Critical · 🟠 <M> Serious · 🟡 <K> Moderate · 🔵 <J> Minor` — only tiers that have findings. Tier emoji are fixed in `references/finding-output-format.md`; do not pick your own.
+
+**Finding numbering**: the ids in the `#` column are the run's canonical finding ids, assigned by main in Phase 3 — `references/finding-output-format.md` defines them and their per-round scope. Posting neither invents nor renumbers them: the same id must appear in this table, in that finding's review comment, and in the ledger cell that reports it, or a reader cannot walk from the table to the thread.
 
 **Comment routing — three tiers**:
 
 - **Line-level thread** (REST, Phase A): finding has a valid `file:line` where the line exists on the post-image side of the diff → attach with `{path, line, side: "RIGHT", body}`.
 - **File-level thread** (GraphQL, Phase B): finding has a file reference but no valid diff line (file/module-scope, schema overlap, line not in diff) → attach via `addPullRequestReviewThread` with `subjectType: FILE`.
-- **Body fallback** (rare): finding has NO file reference at all → use `*(general)*` in the summary table and append the full detail to the body under `### Additional findings`.
+- **Body fallback** (rare): finding has NO file reference at all → use `*(general)*` in the summary table and put the full detail in the template's `### Additional findings` slot.
 
 All three tiers create resolvable, replyable GitHub threads. Body fallback is the only acceptable reason for a finding to lack its own thread — never use it to work around an API error (Step 7 covers that).
 
-**Re-review "Resolved since last review" line**: replace the prior "Fixed" wording with explicit `resolved`. After the table:
+**Re-review "Resolved since last review" line**: replace the prior "Fixed" wording with explicit `resolved`. Fills the template slot under the findings table:
 
 ```markdown
 **Resolved since last review**: S1 (`auth.ts:47` missing null check, round 4 commit `abc1234`), S4 (`db.ts:123` N+1 query, round 5 commit `def5678`) *(threads resolved)*
 ```
+
+**The ids on this line are the labels those findings carried when they were raised, taken from each entry's `label_history` in the state file — not this round's ids.** A finding on this line is by definition absent from this round's set, so main assigned it no id this round; ids are per-round labels and `S1` in round 4 is not `S1` in round 5. The label is what makes the line usable: it is what the reader saw in the round-4 body and on the round-4 thread. Where an entry has no `label_history` — closed before labels were persisted — write the `file:line` and the issue text alone and omit the id rather than minting one, which would collide with a live finding in this round's table.
 
 Every finding status is exactly one of `active`, `resolved` (with commit SHA), `dismissed` (with reason), `wontfix` (with reason), or `regression` — the enum in `references/finding-state-schema.md`. "Deferred" is not one of them: it leaves the reader unable to tell a shipped fix from an open one.
 
@@ -162,7 +230,8 @@ Every finding status is exactly one of `active`, `resolved` (with commit SHA), `
 Each finding with a valid file reference becomes a review comment. Format as self-contained markdown:
 
 ```markdown
-<severity-emoji> **<Severity>** · <Category>
+<!-- review-pr:finding id=<hash> rule-class=<slug> symbol=<enclosing-symbol> -->
+<severity-emoji> **<Severity>** `<C1|S1|M1|m1>` · <Category><confidence-suffix>
 
 **<Issue one-sentence>**
 
@@ -174,10 +243,18 @@ Each finding with a valid file reference becomes a review comment. Format as sel
 
 **Inverse risk**: <the failure mode this fix trades INTO if implemented literally, or "none — pure addition">
 
-**Class-sites**: <A>/<N> — affected sites over sites searched
+**Class-sites**: <A>/<N> — affected sites over the entries in the sweep's site list
 ```
 
-Severity emojis: 🔴 Critical, 🟠 Serious, 🟡 Moderate, 🔵 Minor.
+### What the comment projects from the per-finding block
+
+The comment renders the canonical per-finding block from `references/finding-output-format.md`: `Severity` (as emoji + word, per that file's tier mapping), the finding's id, `Category`, `Issue`, `Why it matters`, `Suggested fix`, `Inverse risk` and `Class-sites`. `File` is not printed — the thread is anchored to it, and for a file-level thread the body names the symbol instead (see the payload shape below).
+
+Four canonical fields are handled specially:
+
+- **`Confidence`** renders as ` · <medium|low> confidence` appended to the category line, and is omitted only when the finding is `high`. A hedged claim posted with no hedge reads as certain, and the author cannot weigh a `low` against their own knowledge of the code if the comment never tells them it was one. High is the unmarked default, so marking it adds noise on the majority of comments and signal on none.
+- **`Lens`** is not printed on the comment at all. The link between a finding and the lens that raised it is already on this page in a form a reader can use: the ledger's `Examined` column renders the cell as `<lens> finding (<id>)`, so the same id walks from the findings table to the thread and back to the lens. Repeating it per comment restates the ledger one row at a time and answers a question no author asks about their own code.
+- **`Rule-class`** and **`Enclosing-symbol`** are carried in the leading HTML marker rather than as visible lines. They exist for the ID derivation in `references/finding-state-schema.md`, and a reader has no use for either — but Step 0 treats prior review bodies as the fallback dedupe source when the cache is missing, and without these two the id cannot be recomputed from what is on the PR. Visible prose would pay a per-comment readability cost for a field only a parser reads; the marker pays nothing and matches the `<!-- review-pr:run -->` convention already in the body.
 
 **Inverse risk and Class-sites are not decoration.** They are the two cascade fields Phase 3
 steps 4.56 and 4.55 derived, and `/fix-pr-review` seeds its own inverse-risk check and class
@@ -188,13 +265,13 @@ line is not.
 **Comment payload shape**:
 
 - **Line-level (REST, Phase A)**: `{"path": "<file>", "line": <post-image>, "side": "RIGHT", "body": "<markdown>"}` — goes into the `comments` array of the REST review creation call.
-- **File-level (GraphQL, Phase B)**: `path: "<file>"`, `subjectType: FILE`, `body: "<markdown>"`, `pullRequestReviewId: <node_id from Phase A or rolling>`. GitHub doesn't anchor code for file-level threads — include a brief code reference in the body (e.g., "near the `<symbol>` definition").
+- **File-level (GraphQL, Phase B)**: `path: "<file>"`, `subjectType: FILE`, `body: "<markdown>"`, `pullRequestReviewId: <node_id from Phase A>`. GitHub doesn't anchor code for file-level threads — include a brief code reference in the body (e.g., "near the `<symbol>` definition").
 
 ---
 
 ## Step 3 — Pre-posting hunk validation
 
-Before Phase A (or rolling-review path), fetch hunks once and verify each line-level comment's `(path, line)` is on the post-image side. Demote mismatches to file-level (Phase B).
+Before Phase A, fetch hunks once and verify each line-level comment's `(path, line)` is on the post-image side. Demote mismatches to file-level (Phase B).
 
 ```bash
 gh api "repos/<owner>/<repo>/pulls/<number>/files" --paginate \
@@ -209,9 +286,30 @@ For each line-level finding: is `line` present on `path`'s post-image counter? I
 
 ---
 
+## Step 3b — Dedupe against threads posted in earlier rounds
+
+Findings that already carry a thread from an earlier round keep it; a new review does not re-raise them (this is the mechanics behind Step 0c's "only post comments for findings NEW or STILL ACTIVE"). **Apply the filter here, while the lists are still being built — never inside the Phase B loop.** A skip inside the loop would leave `ATTACHED_THREADS` legitimately short of the list length, and Step 6b would then have to tell a deliberate skip apart from a lost thread.
+
+For each finding, look up its `id` (per `references/finding-state-schema.md`) in `$CACHE_FILE`'s `posted_comments[]` array (canonical path: `$HOME/.claude/skills/review-pr/cache/<owner>_<repo>_<pr-number>.json`, set in SKILL.md Phase 1). A hit means the thread is already on GitHub — drop the finding from both lists:
+
+```bash
+# Pseudocode, once per finding, before COMMENTS_JSON is frozen:
+existing_thread_id=$(jq -r --arg id "$finding_id" \
+  '.posted_comments[] | select(.finding_id == $id) | .github_thread_id // empty' \
+  "$CACHE_FILE")
+if [ -n "$existing_thread_id" ]; then
+  echo "Finding $finding_id already has thread $existing_thread_id — not re-posting" >&2
+  # exclude from COMMENTS_JSON and from the file-level list
+fi
+```
+
+The finding still appears in the summary table and in the state file — only its thread is not duplicated. After this filter, `COMMENTS_JSON` and the file-level list hold exactly what this round intends to post, which is what Step 6b asserts against.
+
+---
+
 ## Step 4 — Phase A: create PENDING review with line-level comments (REST)
 
-**Skip this step if rolling-review path is active (Step 0 found a recent prior review).** Use Step 4-rolling instead.
+Run this every round, prior reviews or not.
 
 Pass ALL fields in a single `--input` JSON. **Omit the `event` field** so the review stays PENDING while Phase B attaches file-level threads:
 
@@ -247,38 +345,6 @@ Capture BOTH IDs: `node_id` (GraphQL) for Phases B/C, `id` (integer) for caching
 
 ---
 
-## Step 4-rolling — Update existing review's body (GraphQL)
-
-When Step 0 found a recent prior `/review-pr` review:
-
-```bash
-UPDATE_RESP=$(gh api graphql -f query='
-  mutation($id: ID!, $body: String!) {
-    updatePullRequestReviewBody(input: { pullRequestReviewId: $id, body: $body }) {
-      pullRequestReview { id databaseId state submittedAt }
-    }
-  }
-' -f id="$PRIOR_REVIEW_NODE_ID" -f body="$NEW_SUMMARY_BODY")
-
-if echo "$UPDATE_RESP" | jq -e '.errors' >/dev/null \
-   || [ "$(echo "$UPDATE_RESP" | jq -r '.data.updatePullRequestReviewBody.pullRequestReview.id // empty')" = "" ]; then
-  echo "updatePullRequestReviewBody failed: $UPDATE_RESP" >&2
-  # Fallback: create a new review (Step 4 above) instead of failing the whole post
-  ROLLING_FALLBACK=true
-else
-  REVIEW_NODE_ID="$PRIOR_REVIEW_NODE_ID"
-  REVIEW_DB_ID="$PRIOR_REVIEW_DB_ID"
-  ATTACHED_THREADS=0   # we'll only count NEWLY attached threads in Phase B
-  ROLLING_PATH=true
-fi
-```
-
-If the rolling path succeeds, the prior review's body is replaced with the new summary. Existing threads on that review are preserved (they belong to the same review entry). New threads will be added in Phase B.
-
-If `ROLLING_FALLBACK=true`, fall through to Step 4 (Phase A: create a fresh review).
-
----
-
 ## Step 5 — Phase B: attach file-level threads (GraphQL)
 
 For each file-level finding (originals + Step 3 demotions):
@@ -306,29 +372,9 @@ ATTACHED_THREADS=$((ATTACHED_THREADS + 1))
 
 Loop **sequentially, not in parallel** — thread order in the submitted review follows call order. Capture each returned `thread.id` and `comments.nodes[0].databaseId` for caching.
 
-### Step 5-rolling — Skip already-posted threads
-
-When `ROLLING_PATH=true`, before issuing each `addPullRequestReviewThread`, look up the finding's `id` (per `references/finding-state-schema.md`) in `$CACHE_FILE`'s `posted_comments[]` array (canonical path: `$HOME/.claude/skills/review-pr/cache/<owner>_<repo>_<pr-number>.json`, set in SKILL.md Phase 1). If a prior comment exists with the same dedupe key AND matches the current `id`, skip the mutation — the thread is already on the review.
-
-```bash
-# Pseudocode per finding:
-existing_thread_id=$(jq -r --arg id "$finding_id" \
-  '.posted_comments[] | select(.finding_id == $id) | .github_thread_id // empty' \
-  "$CACHE_FILE")
-if [ -n "$existing_thread_id" ]; then
-  echo "Skipping already-posted thread for finding $finding_id (thread $existing_thread_id)" >&2
-  continue
-fi
-# Otherwise, proceed with addPullRequestReviewThread
-```
-
-This is the core dedup that prevents duplicate posting on rolling re-review.
-
 ---
 
 ## Step 6 — Phase C: submit the review (GraphQL)
-
-**Skip if `ROLLING_PATH=true`** — the prior review is already submitted; rolling onto it doesn't re-submit.
 
 ```bash
 SUBMIT_RESP=$(gh api graphql -f query='
@@ -354,7 +400,7 @@ A Phase C failure is the worst case: pending review has all threads but is never
 
 ## Step 7 — Posting failed recovery (NEVER silent)
 
-If Phase A, B, or C fails: **DO NOT silently collapse to a monolithic body.** The prior silent fallback was the root cause of past zero-resolvable-comment runs.
+If Phase A, B, or C fails, or Step 6b's assertion fails: **DO NOT silently collapse to a monolithic body.** The prior silent fallback was the root cause of past zero-resolvable-comment runs.
 
 Use AskUserQuestion (cursor-selectable, NOT a numbered prose list).
 
@@ -400,21 +446,68 @@ cleanup_pending_review() {
 
 ---
 
+## Step 6b — Assert SUBMITTED state and thread count
+
+Phase C returning a `databaseId` is not proof the review left `PENDING`. A run that stayed pending lost ten findings, a full authorization analysis among them, with no error raised anywhere — the local record said "posted" and GitHub showed nothing. Re-query and assert before anything is written back.
+
+```bash
+LINE_COMMENTS=$(echo "$COMMENTS_JSON" | jq 'length')
+EXPECTED_THREADS=$((LINE_COMMENTS + ATTACHED_THREADS))
+
+ASSERT_JSON=$(gh api graphql -f query='
+  query($owner:String!, $repo:String!, $num:Int!) {
+    repository(owner:$owner, name:$repo) {
+      pullRequest(number:$num) {
+        reviews(last: 20) { nodes { id state } }
+        reviewThreads(last: 100) {
+          nodes { id comments(first: 1) { nodes { pullRequestReview { id } } } }
+        }
+      }
+    }
+  }
+' -f owner=<owner> -f repo=<repo> -F num=<number>)
+
+OBSERVED_STATE=$(echo "$ASSERT_JSON" | jq -r --arg id "$REVIEW_NODE_ID" \
+  '.data.repository.pullRequest.reviews.nodes[] | select(.id == $id) | .state // empty')
+
+OBSERVED_THREADS=$(echo "$ASSERT_JSON" | jq --arg id "$REVIEW_NODE_ID" \
+  '[.data.repository.pullRequest.reviewThreads.nodes[]
+    | select(.comments.nodes[0].pullRequestReview.id == $id)] | length')
+
+if [ -z "$OBSERVED_STATE" ] || [ "$OBSERVED_STATE" != "SUBMITTED" ] \
+   || [ "$OBSERVED_THREADS" -ne "$EXPECTED_THREADS" ]; then
+  echo "POST ASSERTION FAILED: review $REVIEW_NODE_ID state=${OBSERVED_STATE:-MISSING} threads=$OBSERVED_THREADS expected=SUBMITTED/$EXPECTED_THREADS" >&2
+  # → Step 7, with this line as <error>. Do NOT continue to Step 8.
+fi
+```
+
+Three assertions, all of which must hold:
+
+1. **The review exists** — empty `OBSERVED_STATE` means the node id we hold matches nothing on the PR.
+2. **State is `SUBMITTED`** — `PENDING` means the review is a private draft nobody but the author can see. This is the failure that ate the ten findings.
+3. **`OBSERVED_THREADS == EXPECTED_THREADS`** — every line-level comment in `COMMENTS_JSON` and every file-level thread counted by `ATTACHED_THREADS` landed. Nothing is subtracted: Step 3b filters already-posted findings out of both lists before Phase A, so both counts describe only what this round set out to post.
+
+**On failure**: go to Step 7 and surface the assertion line as the error. Never swallow it, never downgrade it to a warning, and never fall through to Step 8 — a write-back past a failed assertion records `github_thread_id`s and a `last_posted_verdict` for findings that are not on the PR, and round N+1 then treats them as already-raised and stays silent about them. If the user picks a Step 7 recovery, write back only what that recovery actually landed.
+
+Paginate `reviewThreads` past 100 on long-lived PRs; an under-count here raises a false alarm that looks identical to a real one.
+
+---
+
 ## Step 8 — Cache + state write-back
 
-After successful Phase C (or rolling Step 5):
+Only reachable after Step 6b passed. After successful Phase C:
 
 ### 8a. Update `posted_comments` in `$CACHE_FILE`
 
 Merge into existing cache (do NOT overwrite). Add/update:
 
-- `last_posted_review_id` — integer `databaseId` from Phase C **OR** `PRIOR_REVIEW_DB_ID` only when `ROLLING_PATH=true` AND `ROLLING_FALLBACK` is unset/false. If `ROLLING_FALLBACK=true` (Step 4-rolling failed and Step 4 created a fresh review), the new `REVIEW_DB_ID` from that fresh Phase A response MUST be used — do NOT cache the stale prior ID.
+- `last_posted_review_id` — integer `databaseId` of the review this round created (Phase C's response, equal to `REVIEW_DB_ID` from Phase A). Never a prior round's ID: this field is what Step 0b re-queries, and pointing it at an older review makes the next run's drift check read a body this run never wrote.
 - `last_posted_review_node_id` — GraphQL node ID
 - `last_posted_verdict` — verdict string
 - `last_posted_at` — ISO timestamp
 - `posted_comments` — array of comment entries (preserve existing entries; merge new ones)
 
-For each newly-posted comment, construct `finding_key` using the dedupe key format (line-level: `(file, line, symbol)`, file-level: `(file, file-level:<category>, symbol)`).
+Each entry is keyed on `finding_id` — the `sha1(file::enclosing_symbol::rule_class)` hash from `references/finding-state-schema.md`. That is the field Step 3b and Step 0c look entries up by, and the only key either reads. Do **not** also store a positional `(file, line, symbol)` key: it is the shape the hash replaced, it breaks the moment lines shift, and a second key nothing reads is a second thing to keep in sync.
 
 ### 8b. Populate `github_thread_id` (line-level requires correlation query)
 
@@ -445,9 +538,13 @@ Match each line-level comment's `databaseId` (from REST `.comments[].id`) to a t
 
 The only part specific to posting: `github_thread_id` (from 8b) and `github_comment_id` (REST `databaseId`) are written onto the entry of each finding posted this round.
 
-### 8d. Resolve threads for findings now in `status: resolved`
+### 8d. Resolve threads for findings closed this round
 
-For each finding transitioning to `resolved` this round (a fix shipped between rounds and the state file records it — see the writer caveat in `references/finding-state-schema.md`; that transition is currently made by hand), call:
+Operate on the closed set Step 0c built, **not** on `status: resolved`. That key has no automated writer — see the writer caveat in `references/finding-state-schema.md` — so a step written against it alone never fires, and every thread this skill ever opened stays open regardless of what shipped.
+
+Skip any whose thread already reports `isResolved: true`. `resolveReviewThread` on a resolved thread succeeds and returns the same payload as a real close, so a run that calls it on everything cannot tell afterwards which threads it actually closed — and the author who resolved that thread to satisfy a merge rule gets no signal either way.
+
+For each of the rest, call:
 
 ```bash
 gh api graphql -f query='
@@ -461,40 +558,40 @@ Failures here are best-effort — log and continue. Don't block posting on threa
 
 ---
 
-## Quick-reference: rolling-review decision tree
+## Quick-reference: posting flow
 
 ```
                      /review-pr posts findings
                               │
                               ▼
-                   Step 0: query reviews for marker
-                              │
-            ┌─────────────────┼─────────────────┐
-            │                 │                 │
-            ▼                 ▼                 ▼
-       no prior         prior < 30d         prior > 30d
-            │                 │                 │
-            ▼                 ▼                 ▼
-        Step 4         Step 4-rolling        Step 4
-   (create review)   (update body only)  (create new review)
-            │                 │                 │
-            └─────────────────┴─────────────────┘
+             Step 0: query reviews for marker (READ-ONLY)
+              round number · dedupe · rounds-so-far count
                               │
                               ▼
-                    Step 5 + 5-rolling
-              (attach NEW threads, skip dups)
-                              │
-            ┌─────────────────┴─────────────────┐
-            │                                   │
-            ▼                                   ▼
-       Step 6 (submit)               (skip if rolling — already submitted)
-            │                                   │
-            └─────────────────┬─────────────────┘
+        Steps 1-3: compose body (findings + coverage ledger),
+        compose comments, hunk-validate, then Step 3b drop
+        findings that already have threads from earlier rounds
                               │
                               ▼
-                          Step 8
-                  (cache + state write-back +
-                   resolve threads for fixed)
+                 Step 4 — Phase A (REST, PENDING)
+              body + line-level comments (COMMENTS_JSON)
+                              │
+                              ▼
+                 Step 5 — Phase B (GraphQL)
+           attach file-level threads → ATTACHED_THREADS
+                              │
+                              ▼
+                 Step 6 — Phase C (GraphQL submit)
+                              │
+                              ▼
+                 Step 6b — ASSERT (re-query)
+          exists? SUBMITTED? threads == LINE + ATTACHED?
+                    │                       │
+                 pass│                      │fail
+                    ▼                       ▼
+                 Step 8                  Step 7
+        (cache + state write-back +   (disclosed partial state,
+         resolve threads for fixed)    NO write-back)
 ```
 
-Net effect: PR shows ONE review entry per `/review-pr` user, body always reflects the latest run, threads accumulate non-destructively, resolved findings have collapsed threads.
+Net effect: each round leaves its own review entry — at most three per PR under the round cap — and no round's body, verdict or coverage ledger is ever overwritten by a later one. Threads accumulate across rounds because earlier ones are never re-posted, and findings that got fixed have their threads resolved in Step 8d.

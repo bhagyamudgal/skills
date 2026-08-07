@@ -21,12 +21,14 @@ Each one is loaded only on the branch that reaches it — some by main, some by 
 
 - `references/batch-mode.md` — orchestration rules, "don't stop" semantics, consolidated-report template, end-of-run decision prompt. Loaded by **main** at Phase 1 when the user gives 2+ PR URLs or asks for all open PRs.
 - `references/q6-reusability-search.md` — Phase 1 repo-map shell + STEP A enumeration + STEP B search algorithm + Q6 control-flow gap. Loaded by **main** in Phase 1 when `packages/` or `apps/` exists, and by **Subagent 1** when the diff has 1+ new top-level definitions.
-- `references/finding-output-format.md` — the per-finding field block, the `class_completeness:` audit shape, and the run-level closing block. The one copy of the finding shape. Loaded by **Subagent 1**, **Subagent 3** and **V3** before they write any finding.
+- `references/finding-output-format.md` — the per-finding field block, the `class_completeness:` audit shape, and the run-level closing block. The one copy of the finding shape, and the definitions of the severity tiers. Loaded by **Subagent 1**, **Subagent 3**, **V1** and **V3** before they write any finding — and by **main**, which authors findings of its own in Phase 3 (the reusability audit at step 4.5, the gap check at step 6) and would otherwise assign severities without ever reading the tier definitions.
 - `references/schema-design-checks.md` — Q7 (overlap), Q8 (1:1 consolidation), Q9 (cross-table FK) checks. Loaded by **Subagent 1** when `INCLUDE_SCHEMA_CHECKS = true`, and by **V3** when the gap check covers Q7–Q9.
+- `references/lens-map.md` — the file-type and signal detection rules that decide which lenses apply to which changed file, as data rather than prose. Loaded by **main** in Phase 1 to build the coverage ledger's cell set.
+- `references/lenses.md` — the lens catalogue: per lens, its trigger, the question it asks, what does and does not qualify as a finding, and for Tier 2 the artifact to open. Loaded by **Subagent 1** for the lenses its files selected, and by **V3**, whose gap check iterates the `new-ground` lens set as its second axis. **Not** by Subagent 3: it is scoped to cross-file patterns, receives no `LENS_ASSIGNMENTS` and returns no lens verdicts — the per-file cells are Subagent 1's alone. Do not add a loader to this list without checking that the named prompt actually loads it; a manifest entry is prose, the prompt is what executes.
 - `references/verification-subagents.md` — V1/V2/V3 dispatch conditions + the exact prompt each is given. Loaded by **main** in Phase 3 at the first of steps 4.55 / 4.9 / 6 that fires.
-- `references/false-positive-rules.md` — the four-rule YAML table (`wrapped-coercion`, `intent-alignment`, `library-behavior-citation`, `default-fallback`) each surviving finding is run through. Loaded by **main** at Phase 3 step 4.6 when any finding survives step 4.5.
+- `references/false-positive-rules.md` — the YAML rules table each surviving finding is run through: four `applies_to` / precondition rules (`re-derive-the-anchor`, `open-the-callee`, `declaration-is-not-implementation`, `publish-the-command-or-do-not-claim`) and four `trigger` rules (`wrapped-coercion`, `intent-alignment`, `library-behavior-citation`, `default-fallback`). Loaded by **main** at Phase 3 step 4.6 when any finding survives step 4.5. The file is the single source for the rule set — do not restate the roster here, it goes stale.
 - `references/finding-state-schema.md` — both persistence files: `.claude/review-state/<pr>.yml` (schema, finding-ID strategy, state machine, Phase 4 write-back) and the run-over-run cache (schema + the three replay branches). Loaded by **main** in Phase 1 before the review-state read and the cache check, and again in Phase 4 before the state write-back.
-- `references/github-posting.md` — three-phase REST/GraphQL posting flow + rolling-review fix + re-run preflight (verdict-body sync, thread resolution) + failure recovery. Loaded by **main** in Phase 4 when the user chooses to post.
+- `references/github-posting.md` — three-phase REST/GraphQL posting flow + post-submit assertion + re-run preflight (verdict-body sync, thread dedupe, thread resolution) + failure recovery. Loaded by **main** in Phase 4 when the user chooses to post.
 
 ## Planning-doc grounding (optional pre-review context)
 
@@ -207,7 +209,7 @@ Cross-repo mode changes:
 1. Repo map computation falls back to remote `gh api` tree fetch.
 2. Phase 3 already-fixed check uses `gh api` instead of local `git log`.
 
-Note in Phase 4 output header.
+Set the `Mode` header field to `cross-repo (reviewed from outside the PR's repo)`. The field and its permitted values are defined in `references/finding-output-format.md`.
 
 ### CodeRabbit config check (one-time hint)
 
@@ -278,6 +280,35 @@ pgTable\( | createTable\( | CREATE TABLE | knex\.schema\.createTable | Schema\.c
 If any pattern appears, set `INCLUDE_SCHEMA_CHECKS = true`. Also extract `SCHEMA_DIR` (typical: `db/schema/`, `drizzle/schema/`, `src/schema/`, `migrations/`). If unidentifiable, set `SCHEMA_DIR = "."` and limit Q7-Q9 grepping to files matching the table-definition pattern (e.g., `Grep("pgTable", ".", glob: "**/*.ts")`).
 
 Cross-repo: use `gh api git/trees/<head-sha>?recursive=1` for file listing; Q7-Q9 reads via `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>`.
+
+### Select lenses and build the ledger cell set
+
+Load `<SKILL_DIR>/references/lens-map.md`. For every file in the diff:
+
+1. **Match `skip_paths` first.** A generated, vendored or binary path short-circuits: emit a
+   row carrying its `skip_reason` and `lenses: []`, and move on. Honour `route_to` — a
+   lockfile is not unreviewable, it routes to the lens that reviews it as a unit rather
+   than line by line. Skipping this check first is what stops every image and build
+   artifact from collecting a full lens set.
+2. Otherwise classify against the map's `file_types` (path globs plus content signatures)
+   and evaluate the `signals` regexes over its changed lines. The union of `always_on`,
+   the file-type lenses and the signal lenses is that file's lens set.
+
+`file_type` is a **list**, not one value — a path may match several rows, and the rule is
+union, never first hit. A migration that is also a schema definition is both.
+
+Write the result as `LENS_ASSIGNMENTS` — one entry per (file, lens). This is the ledger's
+cell set, fixed before any reviewing happens, and it is what makes coverage countable:
+`cells_total` is decided here, so a file that no reviewer ever opens still has rows, and
+they read `not-examined` rather than vanishing.
+
+Seven of the map's signals set `side: both`. Evaluate those against removed lines as well —
+a predicate deleted from a `WHERE`, a guard dropped from a handler and a validation
+stripped from a schema never appear on the `+` side, and a diff-only reviewer scanning
+additions is structurally blind to them.
+
+A file matching no `file_type` gets `other` and the `always_on` lenses. Never skip a file
+for being unclassifiable; record it and let the ledger show what it got.
 
 ### Load project-level review suppressions
 
@@ -413,6 +444,16 @@ INCLUDE_SCHEMA_CHECKS: <true|false>
 SCHEMA_DIR: <path>
 If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` for Q7-Q9.
 
+## Lens assignments — one line per (file, lens) you owe a verdict on
+<LENS_ASSIGNMENTS, filtered to the files in this chunk — the exact block main built in
+ Phase 1. Format: `<path>  [<file_type ids>]  <lens ids>`, and for a skipped path
+ `<path>  SKIPPED — <skip_reason>`. Mark each lens with where it came from — `*` for
+ always_on, bare for a file-type or signal assignment. The L8 carve-out below turns on
+ exactly that distinction, and without it the reviewer cannot tell a legitimate `clean`
+ from a coverage gap. If this block is empty, say so in your output and
+ do not invent assignments; an empty block means main failed to build them, and the
+ ledger must record that rather than record clean cells.>
+
 ## Your task
 
 1. Run `gh pr diff <url>` for the diff.
@@ -424,6 +465,32 @@ If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` f
    - Which functions / classes / schemas change
    - What the observable behavior change is
    Every subsequent finding MUST trace back to one of these bullets. If a finding doesn't trace, you are hallucinating it — drop before output.
+
+3.5. Apply the lenses assigned to each file you were given. Your `LENS_ASSIGNMENTS` block
+   lists them per file; load `<SKILL_DIR>/references/lenses.md` and apply each one named.
+
+   Return an explicit verdict for **every** (file, lens) pair — `clean`, `finding`,
+   `not-applicable` with a one-line reason, or `cannot-assess` naming the artifact that
+   would answer it. A pair you say nothing about is recorded as `not-examined`, which
+   blocks approval, so silence costs more than an honest `not-applicable`. Never resolve a
+   pair you did not actually examine to `clean`.
+
+   Tier 2 lenses require opening a file that is **not in the diff** — the sibling, the
+   caller, the consumer. That hop is the point: roughly 30% of defects that escape review
+   are one hop out, and the file to open is always finite and named by the lens. A Tier 2
+   lens answered without opening anything is `not-examined`, not `clean`.
+
+   The one exception is `L8` where the map assigned it as `always_on`: there the obligation
+   is hop 1 only — re-read the full post-image of the file you just edited. See
+   `<SKILL_DIR>/references/lens-map.md`, "Always-on L8 is hop 1". Without that carve-out
+   every file in every PR would owe the full hop sequence and approval would be
+   unreachable, which teaches readers to ignore the coverage line entirely.
+
+   Two of these invert a question you are also asked below, and the inverted form is where
+   the defects are. Q3 asks whether this diff introduced duplication; L8 asks whether a
+   duplicate already exists that this diff **failed to fix** — the largest single class in
+   the study behind this skill, and in about one case in nine the unfixed twin was inside a
+   file the diff was already editing. Answering Q3 honestly does not discharge L8.
 
 4. Answer Q1–Q6 EXPLICITLY (plus Q7–Q9 if `INCLUDE_SCHEMA_CHECKS = true`). Each must be addressed, even if just "No issues".
 
@@ -577,6 +644,27 @@ Prompt:
 Check for silent failures, swallowed errors, and inadequate error handling in the GitHub
 PR at <url>. Fetch the diff yourself via `gh pr diff <url>`.
 
+## Where the reference files live
+SKILL_DIR: <SKILL_DIR>
+Your working directory is the user's repo, not the skill directory, so the
+`<SKILL_DIR>/references/...` paths below are absolute and must be used as written.
+A bare `references/...` resolves against the repo and silently finds nothing.
+
+## Output format — load this FIRST
+Load `<SKILL_DIR>/references/finding-output-format.md` before you write anything and emit
+every finding in exactly that shape, `Severity`, `Category`, `Rule-class`,
+`Enclosing-symbol`, `Class-sites`, `Inverse risk` and the `class_completeness:` audit
+included. A finding missing `Severity` is never ranked and never escalates to a verdict;
+it does not appear in the Filtered Out list either, so it fails invisibly rather than
+loudly. You report findings only — no run-level verdict.
+
+That file defines the severity tiers, including the rule that a defect which fails
+**silently** is tiered one step higher than the same defect failing loudly. That rule is
+load-bearing for you specifically: silence is the whole class you are dispatched to find,
+so without it you would systematically under-tier your own specialty. Apply it when you
+write `Severity:` — and do not relabel `Category` to harvest an escalation the finding
+has not earned.
+
 ## Ground truth
 Goal: <from Phase 1>
 Expected touches: <from Phase 1>
@@ -663,7 +751,10 @@ reads a short prior-state list, V3 runs one gap check. Only V1 batches, so it ge
 2, at 10 findings per subagent. Findings past V1's first 20 — ordered Critical → Minor —
 are verified inline in main.
 If a verifier errors or returns empty, run its step inline in main and note
-`<verifier> unavailable — verified inline` in the Phase 4 header.
+`<verifier> unavailable — verified inline` in the `Reviewers` header field. That field's
+spec in `references/finding-output-format.md` keeps this distinct from a reviewer that
+actually cost coverage — this one is complete coverage under context pressure, and the
+ledger must not record it as a gap.
 
 The dispatch condition and the exact prompt for each of V1 (class-sweep), V2 (regression
 sweep) and V3 (deep gap check) live in `references/verification-subagents.md`. Load it when
@@ -683,7 +774,7 @@ Normalize symbol names: lowercase + strip CamelCase boundaries (`renderUserCard`
 
 Dedupe priority when merging:
 1. Severity wins: `Critical > Serious > Moderate > Minor`.
-2. Category precedence for ties: `Security > Reusability > Silent-failure > Breaking-change > Performance > DRY > Unnecessary > Intent > Architecture`.
+2. Category precedence for ties: `Prior-finding-correction > Security > Reusability > Silent-failure > Breaking-change > Performance > DRY > Unnecessary > Intent > Architecture`. All ten values are ranked — step 6.5 reuses this ladder verbatim, so a category missing here has no tie-break there either. `Prior-finding-correction` ranks first because it asserts an earlier finding was wrong; losing it in a merge silently restores the finding it was filed to retract.
 3. Confidence: keep highest.
 4. **Site list always survives.** When a cross-file finding (Subagent 3) merges with a
    single-file one, keep the UNION of their sites in `Class-sites`. Collapsing a
@@ -822,11 +913,15 @@ non-empty `Inverse risk:`.
 
 ### 4.6. Apply false-positive rules table
 
-A unified iterator over a rules table. Each rule has: `id`, `trigger` (regex matched against `Issue` or `Why`), `evidence_check` (a callable that returns `evidence_present | evidence_absent | inapplicable`), `action` (`drop` / `downgrade-1` / `downgrade-1-and-note`).
+A unified iterator over a rules table. Each rule has: `id`, either a `trigger` (regex matched against `Issue` or `Why`) or an `applies_to` (a finding class the rule runs on unconditionally, no text match), `evidence_check` (a callable that returns `evidence_present | evidence_absent | inapplicable`), and `action` (`drop` / `downgrade-1` / `downgrade-1-and-note` / `severity-conditional` / `re-anchor-or-drop` / `strip-fix`).
 
-Apply each rule in order. A rule fires when (1) `trigger` regex matches AND (2) `evidence_check` returns the expected branch. Log each fire to Filtered Out with the rule `id` + reason.
+Apply each rule in order. A `trigger` rule fires when (1) the regex matches AND (2) `evidence_check` returns the expected branch; an `applies_to` rule runs its `evidence_check` on every finding in its class.
 
-The rules themselves — the four-rule YAML table with every `trigger` regex and `evidence_check` body — live in `references/false-positive-rules.md`. Load it here whenever at least one finding survives step 4.5; skip it when the finding list is empty. That table is the single source of truth for false-positive filtering: adding a new false-positive class is a one-row YAML edit there, not a new prose section here.
+**At most one severity change per finding per pass.** When several rules fire, apply the strongest action once — `drop` beats `strip-fix` beats a downgrade — and log every rule `id` that fired. Without this cap the downgrades compound: an unverified distribution claim loses a tier for carrying no command, then loses another as "may be intentional", landing on exactly the softly-stated finding that the first rule exists to forbid. Two soft grounds, neither of which established the claim, should not add up to a verdict.
+
+Log each fire to Filtered Out with the rule `id` + reason.
+
+The rules themselves — the YAML table with every `trigger` / `applies_to` and `evidence_check` body — live in `references/false-positive-rules.md`. Load it here whenever at least one finding survives step 4.5; skip it when the finding list is empty. That table is the single source of truth for false-positive filtering: adding a new false-positive class is a one-row YAML edit there, not a new prose section here.
 
 ### 4.9. Proactive regression sweep (runs before prior-state suppression, 4.95)
 
@@ -835,9 +930,35 @@ Skip entirely when `CURRENT_ROUND == 1`.
 Step 4.95 below only re-examines a resolved finding when a reviewer happens to re-raise
 its exact ID — regressions caught by luck. This step catches them on purpose.
 
-Dispatch **V2 — Regression sweep verifier** over EVERY finding in `PRIOR_STATE` with
-`status in {resolved, dismissed, wontfix}`, regardless of whether any reviewer mentioned it
-this round. V2 gathers the evidence; main applies the rules below to its verdicts:
+**Build the closed set from GitHub, not from `status` alone.** A finding is closed for
+this sweep's purposes when *either*:
+
+- its `PRIOR_STATE.status` is in `{resolved, dismissed, wontfix}`, **or**
+- its `github_thread_id` resolves to a thread that GitHub reports as `isResolved: true`.
+
+```
+gh api graphql -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){
+  pullRequest(number:$n){reviewThreads(first:100){pageInfo{hasNextPage endCursor}
+  nodes{id isResolved comments(first:1){nodes{body}}}}}}}' -F o=<owner> -F r=<repo> -F n=<num>
+```
+
+Paginate past 100 — a truncated page reads as "not resolved" and silently shrinks the sweep.
+
+Keying on `status` alone was leaving most of this step inert. `dismissed` gets written
+automatically when the user deselects a finding, but **`resolved` has no automated writer**
+— it is set by hand, and on any machine where nobody hand-edits the state YAML, nothing is
+ever `resolved`. That is precisely the arm this sweep exists for: the regression case is a
+finding that *was fixed* and came back. Thread state is the signal that actually moves,
+because merging requires resolving threads.
+
+For the same reason, treat GitHub's `isResolved` as evidence that a finding was **closed**,
+never as evidence it was **correct**. Where a repository ruleset requires thread resolution
+to merge, resolution is a merge precondition, not agreement — authors resolve findings they
+dispute in order to ship.
+
+Dispatch **V2 — Regression sweep verifier** over EVERY finding in that closed set,
+regardless of whether any reviewer mentioned it this round. V2 gathers the evidence; main
+applies the rules below to its verdicts:
 
 1. **Re-verify by `rule_class`, not by ID hash.** The ID is
    `sha1(file::enclosing_symbol::rule_class)`, so the same defect resurfacing in a
@@ -862,7 +983,7 @@ this round. V2 gathers the evidence; main applies the rules below to its verdict
    This covers the findings this step REOPENS. The findings this round raised fresh get
    the same treatment at step 4.96; both feed the count at step 7.5.
 
-Done when every `PRIOR_STATE` entry with `status in {resolved, dismissed, wontfix}` has a
+Done when every entry in the closed set built above — **both arms** — has a
 recorded V2 verdict, and the verdict count equals the dispatched count. A missing verdict
 means V2 dropped that entry — re-check it inline rather than reading silence as still-closed.
 
@@ -933,7 +1054,16 @@ If ALL specified conditions match: DROP, log `suppressed by .claude/review-suppr
 
 **Critical/Serious override**: suppressions drop findings at any severity — a team that explicitly decided a pattern is acceptable outranks the review, and `reason` keeps the drop auditable.
 
-### 6. Gap check (Q1–Q6, Q7–Q9 if schema PR)
+### 6. Gap check (Q1–Q6, Q7–Q9 if schema PR, plus the lens axis)
+
+**Two axes, not one.** Besides the Q list, walk the lens axis: every entry in
+`<SKILL_DIR>/references/lens-map.md`'s `lens_index` whose `q_map` is `new-ground` — 13 of
+the lenses have no Q-number, so a check that iterates only Q1–Q9 reports full coverage
+while every one of them goes unexamined. Emit one `no gap` / `gap` entry per lens.
+
+This applies to the **inline** path as well as the dispatched one. Main runs this check
+itself whenever it holds the full diff, so wiring the lens axis into the verifier alone
+would fix it only for large PRs.
 
 For any question category where Subagent 1 said nothing, briefly think about whether the diff has anything in that category. Add findings if you spot misses. Include Q7–Q9 only if `INCLUDE_SCHEMA_CHECKS = true`.
 
@@ -959,9 +1089,75 @@ back. Route every finding this step adds back through:
 matter which step raised it; a gap-check finding that skips these writes nulls straight
 into the state file and blinds the next round's regression sweep.
 
+### 6.5. Cross-finding reconciliation
+
+Step 1 dedupe reconciles **identity** — same defect, two reviewers. Nothing yet reconciles
+**consistency**: two findings that are each defensible alone and cannot both be acted on.
+This is the only window where the set is final and unranked, so it runs here.
+
+This step adds no findings and changes no order. It only removes or merges.
+
+**Bucket first.** For each finding, collect the `(file, enclosing_symbol)` pairs its
+`Suggested fix:` would edit — the anchor site, plus any site the fix text names. Compare
+only findings sharing at least one pair. Findings on disjoint symbols cannot contradict;
+skipping them keeps this linear in practice rather than quadratic in the finding count.
+
+**Three contradiction classes:**
+
+1. **Opposite edits** — one fix adds what the other removes on the same symbol: add vs.
+   remove a guard, `await` vs. drop the `await`, widen vs. narrow a type, memoize vs. inline.
+2. **Order-dependent fixes** — each is correct alone; applied together they produce
+   something neither intended, because A moves or rewrites the line B's fix assumes.
+   Test: would applying A first change the code B's fix cites?
+3. **Contradicting premises** — A's `Why` asserts X and B's `Why` asserts not-X about the
+   same symbol ("value is always defined here" vs. "value can be null here"). Applies to
+   findings with no fix too; a review that states both is wrong somewhere regardless of
+   which is acted on.
+
+**Resolution — deterministic, in this order:**
+
+1. **Evidence beats assertion.** The finding whose claim is verifiable survives: it carries
+   a re-runnable command (`publish-the-command-or-do-not-claim`), an opened implementation
+   (`open-the-callee`, `declaration-is-not-implementation`), or a re-derived anchor
+   (`re-derive-the-anchor`). Drop the other, log the basis.
+2. **Severity, then Category precedence** — reuse step 1's dedupe ladder verbatim, so the
+   two mechanisms never rank the same pair differently.
+3. **Still tied → merge, never emit both fixes.** Keep one finding at the higher severity,
+   concatenate both `Why` bodies, and replace both suggestions with
+   `conflicting fixes — needs design`, naming the two directions. `/fix-pr-review` applies
+   suggestions verbatim; two incompatible ones in the same review means it applies whichever
+   it reaches first.
+
+**Route merged findings back through 4.56** — a merged or rewritten fix invalidates the
+`Inverse risk` derived for either original. Take `caused_by` from the surviving finding.
+
+Log every reconciliation to Filtered Out as
+`cross-finding contradiction — <id A> vs <id B>, kept <id>, basis <evidence|severity|merged>`.
+
+Done when no two surviving findings propose incompatible edits to the same
+`(file, enclosing_symbol)` pair, and every dropped or merged pair is logged.
+
+### 6.9. Assemble the coverage ledger
+
+Build this round's `ledger` from `LENS_ASSIGNMENTS` (Phase 1), the Phase 2 reviewer
+verdicts and the final finding set, following
+`<SKILL_DIR>/references/finding-state-schema.md`, "Phase 3 — assemble the ledger".
+
+Step 9.5, the terminal block and the posted body all read the object built **here**. Phase
+4 only writes it to disk. It has to be built at this point and not at write-back: the
+verdict gate runs before posting, and a gate whose input does not exist yet reads as zero —
+which passes. The failure would be silent and in the permissive direction.
+
+A cell with no reviewer verdict is `not-examined` with the reason. A missing verdict is
+never a `clean`.
+
 ### 7. Rank by severity
 
-Critical > Serious > Moderate > Minor.
+Critical > Serious > Moderate > Minor — tiers are defined in
+`<SKILL_DIR>/references/finding-output-format.md` ("Severity — what each tier means").
+Rank on the value the reviewer emitted; do not re-derive it here. The detectability
+modifier is applied once at emission, and applying it a second time here would
+double-raise every silent finding.
 
 ### 7.5. Compute `cascade_share`
 
@@ -983,7 +1179,50 @@ Zero active findings → `cascade_share = 0`, not a division by zero.
 Step 8 below reads this value for the verdict prefix, and Phase 4's **Cascade check**
 prints it. Neither recomputes it — one number, one definition, one round.
 
+#### Partition the active set (`new` / `carried` / `caused` / `reopened`)
+
+Phase 4 prints `<N> new · <C> caused by earlier fixes · <R> regressions reopened ·
+<F> carried`. Assign every active finding to **exactly one** bucket, testing in this
+order and stopping at the first match:
+
+1. **reopened** — the finding was closed in `PRIOR_STATE` and step 4.9's regression sweep
+   reopened it this round.
+2. **carried** — its id is in `PRIOR_STATE` with `status: active`. Raised before, still
+   unfixed. Not new, however many rounds it survives.
+3. **caused** — first raised this round and `caused_by` is non-null: the previous round's
+   fix introduced it.
+4. **new** — everything else.
+
+The four counts must sum to the active total. If they do not, the ids are unstable and
+the convergence line is fiction — say so rather than printing a sum that does not add up.
+
+The ordering is what makes the line mean anything. Without a `carried` bucket, one
+defect nobody has fixed yet is reported as a brand-new finding in every round, and five
+rounds of the same unfixed thing reads as a review that keeps discovering problems. It
+is the same problem, counted five times. `carried` is a backlog; `new` and `caused` are
+the only two that indicate the round did work.
+
 ### 8. Decide verdict (category-aware)
+
+**What blocks is Critical and Serious inside the change's blast radius.** Blast radius is
+wider than the diff:
+
+1. Every file in the diff.
+2. **The companion artifacts the change obligates** — a migration for a schema edit, a
+   locale key for a new user-facing string, a middleware mount for a new route, a task
+   dependency for a new pipeline step, a raised process limit for a new runtime dependency.
+3. **Callers and siblings of a changed exported symbol** — the one-hop set the Tier 2
+   lenses open.
+
+Points 2 and 3 are not decoration, and reading blast radius as "the diff" quietly disarms
+the bar for the worst class the study found. A missing migration is *by definition* a file
+that is not in the diff: the defect is the absence. Scope the bar to changed lines only and
+the highest-severity recurring class becomes structurally unblockable — every instance of
+it lives outside the diff.
+
+A Critical or Serious finding **outside** the blast radius is real, and is reported and
+filed; it does not hold this PR, because the PR did not cause it and its author is not
+the right person to fix it.
 
 - Any **Critical** → `request-changes`
 - Any **Serious** in `Category = Security | Silent-failure | Breaking-change | Reusability` → `request-changes` (these are never "just a comment"; Reusability is escalated because reimplemented code is a correctness risk via divergent fixes)
@@ -1017,6 +1256,28 @@ Nothing else moves. No finding is dropped, no severity is rewritten, the verdict
 stays `approve | comment | request-changes`, and Critical and Serious block exactly as
 they do at rounds 1–2.
 
+#### Round cap (`CURRENT_ROUND >= 3` is the last round)
+
+Round 3 is terminal. There is no round 4: whatever survives it is filed, not re-reviewed.
+
+**Enforced, not merely stated.** `CURRENT_ROUND` is computed from `last_round + 1` with no
+ceiling, so a fourth invocation is reachable. Key the cap on `>= 3`, not `== 3` — otherwise
+a run at round 4 gets the ratchet but neither the follow-up issue nor the terminal
+behaviour, which is the worst of both. When `CURRENT_ROUND > 3`, do not silently re-review:
+report that the cap was already reached, point at the existing follow-up issue, and stop.
+
+- Every finding still active after the ratchet goes into **one** follow-up issue for this
+  PR — not one issue per finding, and not a comment on an unrelated ticket.
+- The issue is created **complete or not at all.** A partially-written issue that loses
+  half the findings is worse than none, because the PR unblocks either way and the missing
+  half leaves no trace.
+- Once it exists, link it from the review body and unblock the PR.
+
+Rationale: rounds 1–2 fix real defects; by round 3 the measured share of findings that
+were themselves *introduced by the previous round's fixes* has collapsed to zero, which
+means later rounds are no longer converging on the change — they are widening scope. The
+cap converts an unbounded review loop into a bounded one plus a tracked backlog.
+
 ### 9. Decide Senior-engineer approval
 
 A binary verdict (with middle option):
@@ -1026,6 +1287,32 @@ A binary verdict (with middle option):
 - **Yes** — otherwise
 
 Write a one-sentence approval reason grounded in the most important finding (or absence — e.g., "Does what the issue asks, no Serious issues").
+
+### 9.5. Coverage gate (runs last; overrides steps 8 and 9)
+
+Read `ledger.cells_not_examined` from the ledger step 6.9 assembled.
+
+If it is greater than zero:
+
+- the verdict may not be `approve` — emit `comment` instead
+- Senior-engineer approval may not be `Yes` — emit `With changes` instead
+- the reason must state the gap in these terms, with both numbers filled in:
+
+  > No findings in the `<cells_examined>` cells examined; `<cells_not_examined>` not
+  > reviewed. This is not an approval of the unexamined code.
+
+This gate exists because there are three independent routes to an approval — step 8, the
+round-3 ratchet, and step 9 — and each computes its own. Gating them individually leaves
+the next route someone adds ungated. Anything that produces an approval must run before
+this step, so the invariant holds at one place instead of three.
+
+`not-applicable` cells are examined; they carry a stated reason and do not count here.
+`cannot-assess` cells do not gate either — an unrunnable check is a limit of the review,
+not a defect the author can fix — but `cells_cannot_assess` prints regardless, because a
+reader deciding whether to merge needs to know which questions nobody answered. Only
+`not-examined` gates. Silence dressed as a clean verdict is the failure this whole
+mechanism exists to make impossible — never resolve an unexamined cell to `clean` to
+clear the gate.
 
 ---
 
@@ -1040,15 +1327,21 @@ Write a one-sentence approval reason grounded in the most important finding (or 
 **Verdict**: <emoji> <approve | comment | request-changes>
 **Goal**: <intent goal>
 **Size**: <additions>/<deletions> across <N> files
-**Reviewers**: <list, with "(unavailable)" marker for any failed subagent>
+**Reviewers**: <list — "(unavailable)" for a failed Phase 2 reviewer, "<verifier> unavailable — verified inline" for a failed Phase 3 verifier>
 **Round**: <CURRENT_ROUND> (<active>/<resolved>/<dismissed> findings carried across rounds)
 **Convergence**: <N> new · <C> caused by earlier fixes · <R> regressions reopened · <F> carried
 <trend line — omit at round 1>
+**Mode**: <mode line — omit when no mode applies>
+**Coverage**: <cells_examined>/<cells_total> cells examined across <files_changed> files changed. <cells_cannot_assess> cannot be assessed without <artifact>. **<cells_not_examined> cells NOT examined — this review does not cover them.**
 
 ## Summary
 <2-3 sentence summary>
 
 ## Findings (<count>)
+<each entry is the full per-finding block from references/finding-output-format.md,
+ headed by its canonical id — C1 / S1 / M1 / m1. The same id labels this finding in the
+ posted review, the ledger and the handoff file; without it the author cannot tell which
+ terminal entry became which thread on the PR.>
 
 ### Critical
 <entries>
@@ -1077,7 +1370,7 @@ Write a one-sentence approval reason grounded in the most important finding (or 
 
 **Senior engineer approval**: Yes → ✅ · No → ❌ · With changes → ⚠️
 **Verdict**: approve → ✅ · comment → 💬 · request-changes → ❌
-**Severity headers**: Critical → 🔴 · Serious → 🟠 · Moderate → 🟡 · Minor → 🔵
+**Severity headers**: the tier emoji fixed in `references/finding-output-format.md`.
 
 Filtered out is mandatory in terminal output — it is the only way to see when the critic is over-filtering. Multi-round status is mandatory when `PRIOR_STATE.findings` is non-empty.
 
@@ -1146,21 +1439,37 @@ On "Fix now":
    ```
    ## Findings
 
+   ID: S1
    Severity: Serious
-   File: src/auth.ts:47
+   Confidence: high
+   File: src/stream.ts:47
    Category: Silent-failure
    Rule-class: silent-failure
-   Enclosing-symbol: handleStdinError
-   Issue: Unhandled stdin error can crash process
-   Why it matters: Production crash on communication failure
-   Suggested fix: Add error event handler
-   Inverse risk: handler that only logs turns a crash into a silent hang
+   Enclosing-symbol: handleStreamError
+   Issue: Unhandled stream error can crash the process
+   Why it matters: crash on communication failure with no handler
+   Suggested fix: attach an error event handler
+   Inverse risk: a handler that only logs turns a crash into a silent hang
    Class-sites: 2/3
+   class_completeness:
+     - finding: Unhandled stream error can crash the process
+       rule_class: silent-failure
+       signature: .on("error"
+       search: Grep("createStream\(", "src/") → 3 sites
+       sites:
+         - src/stream.ts:47: affected — no error listener
+         - src/pipe.ts:12: affected — no error listener
+         - src/sink.ts:88: not-affected — listener attached at construction
+       verdict: COMPLETE (all 3 sites reported)
    ```
 
-   `Inverse risk:` and `Class-sites:` are not optional here. `/fix-pr-review` keys its
-   "seed, don't re-derive" path on exactly these two labels; drop them and it re-derives
-   both from scratch, discarding the work steps 4.55 and 4.56 already did.
+   This file is the FULL per-finding block from `references/finding-output-format.md` —
+   every field, plus the `class_completeness:` audit. No field is optional here.
+   `/fix-pr-review` keys its "seed, don't re-derive" path on these labels; drop any and it
+   re-derives from scratch, discarding what steps 4.55 and 4.56 already did. Two that were
+   being dropped and should not be: `Confidence`, which is how the next skill orders its
+   triage, and the `class_completeness:` audit — `Class-sites: 2/3` says how many sibling
+   sites are affected but not WHICH, so without the audit the class sweep is redone in full.
 2. Invoke `/fix-pr-review /tmp/review-pr-<num>-findings.md`.
 3. Skip post-review prompts — `/fix-pr-review` handles its own workflow.
 
@@ -1182,7 +1491,7 @@ multiSelect: true
 
 - If findings exceed the option limit, split into multiple multiSelect questions grouped by severity (Critical/Serious first).
 - Deselected findings: move to Filtered out with reason `user-deselected before posting`. They stay local, are excluded from the summary body's finding count, and are recorded in the state file as `dismissed` with `dismissal_reason: user-deselected` so later rounds leave them closed.
-- If deselection removes every finding that drove the verdict, recompute the verdict (Phase 3 step 8) over the selected set before composing the summary body.
+- If deselection removes every finding that drove the verdict, recompute the verdict (Phase 3 step 8) over the selected set before composing the summary body — **then re-run step 9.5 over the recomputed verdict.** This is a fourth route to an approval, and the only one that runs after the coverage gate. Deselecting findings changes which findings hold the PR; it does not change which cells were examined, so an emptied finding list must still not produce an `approve` while `cells_not_examined > 0`.
 - If the user deselects everything, skip posting entirely — same outcome as "Keep local".
 
 ### Then ask
@@ -1193,7 +1502,7 @@ AskUserQuestion (cursor-selectable):
 header: "Post review"
 text: "Post this review to the PR? Verdict: <verdict>"
 options:
-  - "Post now" — Submit as <verdict> (uses rolling-review if prior /review-pr review exists)
+  - "Post now" — Submit as <verdict> (posts a new review; earlier rounds' reviews are left untouched)
   - "Keep local" — Don't post; stays in terminal
   - "Edit first" — Open body in $EDITOR before posting
 ```
@@ -1206,18 +1515,21 @@ know what round N settled.
 
 The full posting flow lives in `references/github-posting.md` — load it now. It handles:
 
-- **Step 0**: detect prior `<!-- review-pr:run -->` tagged review on the PR. If found within 30 days, use the rolling-review path (edit body in place, attach only NEW threads); otherwise create a fresh review.
+- **Step 0**: detect prior `<!-- review-pr:run -->` tagged reviews on the PR — read-only, for the round number, the dedupe of findings that already have threads, and the count of rounds already posted. Every round creates a fresh review; a submitted body is never edited.
 - **Step 0b**: verdict-body sync check — on re-runs with a `last_posted_review_id` in cache, warn when the previously-posted body verdict drifted from its GitHub state.
-- **Step 0c**: re-review thread resolution — resolve threads for findings now `resolved`, record the "Resolved since last review" line, and skip re-posting findings that already have threads.
+- **Step 0c**: re-review thread resolution — resolve threads for findings closed since the last round (either arm: state status or GitHub thread state), record the "Resolved since last review" line, and skip re-posting findings that already have threads.
 - **Steps 1-2**: compose summary body (with marker comment) + per-finding review comments.
 - **Step 3**: pre-posting hunk validation (line vs file-level routing).
-- **Step 4 / 4-rolling**: REST POST PENDING (or GraphQL `updatePullRequestReviewBody` for rolling).
-- **Step 5 / 5-rolling**: GraphQL `addPullRequestReviewThread` for file-level (skip threads already in `posted_comments` on rolling path).
-- **Step 6**: GraphQL `submitPullRequestReview` (skipped on rolling — prior review already submitted).
+- **Step 3b / 4**: drop findings that already carry a thread from an earlier round, then REST POST PENDING.
+- **Step 5**: GraphQL `addPullRequestReviewThread` for file-level threads.
+- **Step 6**: GraphQL `submitPullRequestReview`.
+- **Step 6b**: assert the review re-reads as SUBMITTED with the full thread count; failure routes to Step 7 and blocks the state write-back.
 - **Step 7**: failure recovery with disclosed partial state.
 - **Step 8**: cache write-back + state file update + thread resolution for fixed findings.
 
-Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, summary body content, list of findings (line-level + file-level), `PRIOR_STATE` (Step 0c compares against it), `$CACHE_FILE` path, `$STATE_FILE` path.
+Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, summary body content, list of findings (line-level + file-level), `PRIOR_STATE` (Step 0c compares against it), **the `ledger` object step 6.9 assembled**, `$CACHE_FILE` path, `$STATE_FILE` path.
+
+The ledger goes in memory, not by reading `$STATE_FILE`: Step 8c has not written it when Step 1 composes the body. Read from disk instead, round 1 renders the seed's zeros — which display as full coverage on the least-covered run of all — and round N renders round N−1's counters underneath round N's verdict.
 
 ### If edit first
 
