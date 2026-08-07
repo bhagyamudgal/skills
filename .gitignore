@@ -12,3 +12,10 @@ node_modules
 skills/*/cache/
 
 __pycache__/
+
+# The replay benchmark is private, adjudicated PR-review data. It is passed in by path
+# (--benchmark / REVIEW_PR_BENCHMARK) and must never land in this public repo, nor may
+# any run output derived from it.
+tools/replay/data/
+tools/replay/results/
+tools/replay/*.local.json
