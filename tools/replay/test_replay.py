@@ -11,6 +11,7 @@ import contextlib
 import io
 import json
 import pathlib
+import random
 import sys
 import tempfile
 import unittest
@@ -19,6 +20,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import benchmark as bench
 import match as matcher
+import perturb
 import run as runner
 import score
 
@@ -831,20 +833,20 @@ class TestStream(unittest.TestCase):
         cmd = [sys.executable, "-c",
                "import time,sys; sys.stdout.write('x\\n'); sys.stdout.flush(); "
                "time.sleep(30)"]
-        _, _, seconds, error = runner.stream(cmd, cwd=".", timeout=1)
+        _, _, seconds, _, error = runner.stream(cmd, cwd=".", timeout=1)
         self.assertEqual(error, "timeout")
         self.assertLess(seconds, 15)
 
     def test_a_silent_child_is_killed_at_the_deadline(self):
         cmd = [sys.executable, "-c", "import time; time.sleep(30)"]
-        _, _, seconds, error = runner.stream(cmd, cwd=".", timeout=1)
+        _, _, seconds, _, error = runner.stream(cmd, cwd=".", timeout=1)
         self.assertEqual(error, "timeout")
         self.assertLess(seconds, 15)
 
     def test_stderr_reaches_the_caller_instead_of_being_discarded(self):
         cmd = [sys.executable, "-c",
                "import sys; sys.stderr.write('fatal auth error\\n'); sys.exit(3)"]
-        _, _, _, error = runner.stream(cmd, cwd=".", timeout=10)
+        _, _, _, _, error = runner.stream(cmd, cwd=".", timeout=10)
         self.assertIn("fatal auth error", error)
         self.assertIn("exit 3", error)
 
@@ -852,10 +854,235 @@ class TestStream(unittest.TestCase):
         event = json.dumps({"type": "result", "total_cost_usd": 1.5,
                             "result": "Severity: Serious"})
         cmd = [sys.executable, "-c", f"print({event!r})"]
-        text, cost, _, error = runner.stream(cmd, cwd=".", timeout=10)
+        text, cost, _, denials, error = runner.stream(cmd, cwd=".", timeout=10)
         self.assertIsNone(error)
         self.assertEqual(cost, 1.5)
+        self.assertEqual(denials, [])
         self.assertIn("Severity: Serious", text)
+
+    def test_refused_tool_calls_are_carried_out_of_the_transcript(self):
+        """The CLI reports them once, in the result event. Left there they are invisible,
+        and a run that was never allowed to read the PR looks like a clean review."""
+        event = json.dumps({"type": "result", "total_cost_usd": 0.1, "result": "",
+                            "permission_denials": [
+                                {"tool_name": "Bash",
+                                 "tool_input": {"command": "gh pr diff https://x/pull/1"}}]})
+        cmd = [sys.executable, "-c", f"print({event!r})"]
+        _, _, _, denials, _ = runner.stream(cmd, cwd=".", timeout=10)
+        self.assertEqual(len(denials), 1)
+        self.assertEqual(denials[0]["tool_name"], "Bash")
+
+
+class TestPerturbation(unittest.TestCase):
+    """The perturbation table is a published claim about the matcher, so the thing that
+    produces it is tested like the matcher is."""
+
+    def setUp(self):
+        self.frozens = [
+            frozen("F1", "src/alpha/parser.ts", 100,
+                   "parseWidget swallows a malformed payload and returns an empty list"),
+            frozen("F2", "src/beta/store.ts", 40,
+                   "saveWidget writes before validateOwner runs so a foreign tenant wins",
+                   verdict="FALSE_POSITIVE"),
+            frozen("F3", "src/gamma/cache.ts", 12,
+                   "widgetCache never invalidates after a write completes"),
+        ]
+
+    def test_an_unperturbed_corpus_matches_itself_completely(self):
+        row = perturb.run_scenario(self.frozens, jitter=0, drop=0.0, keep_path=True,
+                                   seeds=2)
+        self.assertEqual(row["match_rate"], 1.0)
+        self.assertEqual(row["misassigned"], 0.0)
+
+    def test_more_drift_never_matches_better(self):
+        light = perturb.run_scenario(self.frozens, 5, 0.20, True, seeds=3)
+        heavy = perturb.run_scenario(self.frozens, 30, 0.80, True, seeds=3)
+        self.assertLessEqual(heavy["match_rate"], light["match_rate"])
+
+    def test_a_copy_carries_the_record_it_came_from(self):
+        """Without `origin`, a pair landing on a neighbour in the same file is
+        indistinguishable from a correct one and mis-assignment cannot be counted."""
+        copy = perturb.perturb(self.frozens[0], random.Random(1), 15, 0.4, True)
+        self.assertEqual(copy["origin"], "F1")
+        self.assertNotEqual(copy["id"], "F1")
+        self.assertLessEqual(abs(copy["line_start"] - 100), 15)
+
+    def test_dropping_a_signal_removes_it_rather_than_falsifying_it(self):
+        no_line = perturb.perturb(self.frozens[0], random.Random(1), None, 0.0, True)
+        no_path = perturb.perturb(self.frozens[0], random.Random(1), 5, 0.0, False)
+        self.assertIsNone(no_line["line_start"])
+        self.assertIsNone(no_path["path"])
+
+    def test_the_verdict_groups_the_bias_check_reads_are_counted(self):
+        row = perturb.run_scenario(self.frozens, 5, 0.2, True, seeds=1)
+        self.assertEqual(row["n_false"], 1)
+        self.assertEqual(row["n_true"], 2)
+
+    def test_the_table_and_the_bias_line_are_the_scripts_own_output(self):
+        rows = VERDICT_ROWS + [
+            {"pr": 8, "path": "src/delta/api.ts", "line": 5, "severity": "serious",
+             "claim": "listWidgets returns rows from tenants it should filter out",
+             "verdict": "FALSE_POSITIVE"}]
+        buffer = io.StringIO()
+        original = sys.argv
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            _write_benchmark(root, {"v.json": rows}, escaped=ESCAPED_ROWS)
+            sys.argv = ["perturb.py", "--benchmark", str(root), "--seeds", "2",
+                        "--bias-seeds", "2"]
+            try:
+                with contextlib.redirect_stdout(buffer):
+                    status = perturb.main()
+            finally:
+                sys.argv = original
+        text = buffer.getvalue()
+        self.assertEqual(status, 0)
+        self.assertIn("| perturbation | match | mis-assigned |", text)
+        self.assertIn("FP records (n=1)", text)
+        self.assertEqual(text.count("\n|"), len(perturb.SCENARIOS) + 2)
+
+    def test_a_corpus_with_no_false_positives_says_so_instead_of_printing_zero(self):
+        """Every row in this benchmark is CORRECT, so the bias check has one group. A
+        0.0% FP match rate there would read as "the matcher loses every FP"."""
+        buffer = io.StringIO()
+        original = sys.argv
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            _write_benchmark(root, {"v.json": VERDICT_ROWS}, escaped=ESCAPED_ROWS)
+            sys.argv = ["perturb.py", "--benchmark", str(root), "--seeds", "1",
+                        "--bias-seeds", "1"]
+            try:
+                with contextlib.redirect_stdout(buffer):
+                    perturb.main()
+            finally:
+                sys.argv = original
+        self.assertIn("NOT MEASURED", buffer.getvalue())
+
+
+class TestPermissionPolicy(unittest.TestCase):
+    """The invocation is the only thing standing between a measurement and a review that
+    posts to somebody's PR, so it is asserted rather than read."""
+
+    def test_the_command_grants_phase_ones_reads_and_never_prompts(self):
+        cmd = runner.build_command("https://github.com/o/r/pull/7", 8.0, None)
+        self.assertIn("--permission-mode", cmd)
+        self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "dontAsk")
+        self.assertIn("--allowedTools", cmd)
+        self.assertIn("Bash(gh pr view:*)", cmd)
+        self.assertIn("Bash(gh pr diff:*)", cmd)
+        self.assertIn("Read", cmd)
+
+    def test_the_subagent_dispatch_tool_is_granted_under_both_its_names(self):
+        """The skill is built on subagents. The CLI has called that tool `Task` and now
+        `Agent`; granting only one name denies every dispatch on the other build."""
+        for name in ("Agent", "Task"):
+            self.assertIn(name, runner.ALLOW)
+
+    def test_the_posting_path_stays_denied(self):
+        cmd = runner.build_command("https://github.com/o/r/pull/7", 8.0, "opus")
+        self.assertIn("--disallowed-tools", cmd)
+        for rule in ("Bash(gh pr review:*)", "Bash(gh pr comment:*)", "Bash(git push:*)"):
+            self.assertIn(rule, cmd)
+        self.assertEqual(cmd[cmd.index("--model") + 1], "opus")
+
+    def test_nothing_that_writes_is_granted(self):
+        """A replay reads. A write rule reaching ALLOW would let the benchmark modify the
+        checkout it is measuring, and a rule granted and denied at once is a policy whose
+        effect depends on precedence nobody should have to remember."""
+        for rule in ("Write", "Edit", "NotebookEdit"):
+            self.assertIn(rule, runner.DENY)
+            self.assertNotIn(rule, runner.ALLOW)
+        for rule in runner.ALLOW:
+            tool, _, prefix = rule.partition("(")
+            prefix = prefix.rstrip(")").removesuffix(":*")
+            self.assertFalse(
+                any(runner._rule_covers(denied, tool, prefix) for denied in runner.DENY),
+                f"{rule} is granted and denied at once")
+
+
+class TestDenialClassification(unittest.TestCase):
+    def test_a_denial_the_deny_list_explains_is_the_guard_working(self):
+        blocked, refused = runner.classify_denials([
+            {"tool_name": "Bash", "tool_input": {"command": "gh pr comment 7 --body x"}},
+            {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f q=x"}},
+        ])
+        self.assertEqual(len(blocked), 2)
+        self.assertEqual(refused, [])
+
+    def test_a_tool_level_rule_matches_a_call_with_no_command(self):
+        blocked, refused = runner.classify_denials([{"tool_name": "Write",
+                                                     "tool_input": {"file_path": "a.md"}}])
+        self.assertEqual(blocked, ["Write"])
+        self.assertEqual(refused, [])
+
+    def test_an_unanswerable_checkpoint_is_policy_not_misconfiguration(self):
+        """The skill offers choices and there is no human. That is a known property of
+        replaying it, not a machine that failed to grant something."""
+        blocked, refused = runner.classify_denials([
+            {"tool_name": "AskUserQuestion", "tool_input": {"questions": []}}])
+        self.assertEqual(blocked, ["AskUserQuestion"])
+        self.assertEqual(refused, [])
+
+    def test_a_denial_nothing_asked_for_is_a_refusal(self):
+        """`gh pr view` refused is the environment failing the harness, not the harness
+        stopping the skill — and it is the case that reads as an empty review."""
+        blocked, refused = runner.classify_denials([
+            {"tool_name": "Bash", "tool_input": {"command": "gh pr view https://x/pull/1"}}])
+        self.assertEqual(blocked, [])
+        self.assertEqual(len(refused), 1)
+        self.assertIn("gh pr view", refused[0])
+
+
+class TestRunExitCodes(unittest.TestCase):
+    """A refused run and an empty one used to be the same exit code and the same output.
+    They are the two things this harness most needs to tell apart."""
+
+    TRANSCRIPT = ("Severity: Serious\nFile: src/alpha/parser.ts:10\n"
+                  "Issue: parseWidget swallows a malformed payload\n")
+
+    def _run_main(self, text, denials, error=None):
+        buffer = io.StringIO()
+        original_argv, original_stream = sys.argv, runner.stream
+        with tempfile.TemporaryDirectory() as d:
+            out = pathlib.Path(d) / "run.json"
+            sys.argv = ["run.py", "--pr", "https://github.com/o/r/pull/7",
+                        "--out", str(out)]
+            runner.stream = lambda *a, **k: (text, 0.5, 1.0, denials, error)
+            try:
+                with contextlib.redirect_stdout(buffer):
+                    status = runner.main()
+                payload = json.loads(out.read_text())
+            finally:
+                sys.argv, runner.stream = original_argv, original_stream
+        return status, payload, buffer.getvalue()
+
+    def test_findings_and_no_denials_pass(self):
+        status, payload, _ = self._run_main(self.TRANSCRIPT, [])
+        self.assertEqual(status, runner.EXIT_OK)
+        self.assertEqual(len(payload["findings"]), 1)
+        self.assertEqual(payload["permissions"]["refused"], [])
+
+    def test_a_refused_read_is_not_reported_as_an_empty_review(self):
+        status, payload, text = self._run_main("", [
+            {"tool_name": "Bash", "tool_input": {"command": "gh pr diff https://x/pull/7"}}])
+        self.assertEqual(status, runner.EXIT_PERMISSION_REFUSED)
+        self.assertIn("PERMISSION REFUSED", text)
+        self.assertIn("gh pr diff", payload["permissions"]["refused"][0])
+
+    def test_a_genuinely_empty_review_keeps_its_own_code(self):
+        status, _, text = self._run_main("no findings here", [])
+        self.assertEqual(status, runner.EXIT_NO_FINDINGS)
+        self.assertNotIn("PERMISSION REFUSED", text)
+
+    def test_the_skill_being_stopped_from_posting_is_not_a_failure(self):
+        status, payload, _ = self._run_main(self.TRANSCRIPT, [
+            {"tool_name": "Bash", "tool_input": {"command": "gh pr review 7 --comment"}}])
+        self.assertEqual(status, runner.EXIT_OK)
+        self.assertEqual(len(payload["permissions"]["blocked_by_policy"]), 1)
+
+    def test_a_dead_cli_outranks_everything_else(self):
+        status, _, _ = self._run_main("", [], error="exit 1: not logged in")
+        self.assertEqual(status, runner.EXIT_CLI_ERROR)
 
 
 class TestOrphanFields(unittest.TestCase):
