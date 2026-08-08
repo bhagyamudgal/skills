@@ -158,6 +158,8 @@ Build a lean summary body (NO "Filtered out" section — internal only). **Alway
 
 <resolved-since-last-review line — wording below; omit on round 1>
 
+**Follow-ups**: <follow-up-issue line — wording below; omit entirely below round 3 and whenever no finding is still active>
+
 ### Additional findings  <!-- body-fallback findings only; omit the heading when there are none -->
 <each finding with no file reference, rendered with the Step 2 comment projection>
 
@@ -175,11 +177,11 @@ Build a lean summary body (NO "Filtered out" section — internal only). **Alway
 </details>
 ```
 
-**This template is the only place a review body is assembled.** Main passes the content — verdict, findings, intent, counters, the in-memory ledger — and Step 1 lays it out; main never hands over a pre-composed body. Every block the body can carry has a slot here; the sections below fill slots, they never append. A body specified in two places is how the ledger and the findings table drift out of sync.
+**This template is the only place a review body is assembled.** Main passes the content — verdict, findings, intent, counters, the in-memory ledger, the follow-up-issue outcome — and Step 1 lays it out; main never hands over a pre-composed body. Every block the body can carry has a slot here; the sections below fill slots, they never append. A body specified in two places is how the ledger and the findings table drift out of sync.
 
 ### What the body projects from the canonical header
 
-The template above renders the run-level header field list defined in `references/finding-output-format.md`. It carries `Number`, `Verdict`, `Severity counts`, `Senior engineer approval`, `Goal`, `Summary`, `Round`, `Convergence`, `Mode` and `Coverage`. Three canonical fields are deliberately absent:
+The template above renders the run-level header field list defined in `references/finding-output-format.md`. It carries `Number`, `Verdict`, `Severity counts`, `Senior engineer approval`, `Goal`, `Summary`, `Round`, `Convergence`, `Mode` and `Coverage`, plus one line that list does not yet define — `Follow-ups`, specified below. Three canonical fields are deliberately absent:
 
 - **`Title`** — GitHub renders the PR title directly above every review on the page. Repeating it costs a line and can contradict the page after a retitle.
 - **`Size`** — the Files-changed tab states additions, deletions and file count more accurately than a review body can, and restates them after every push.
@@ -222,6 +224,21 @@ All three tiers create resolvable, replyable GitHub threads. Body fallback is th
 **The ids on this line are the labels those findings carried when they were raised, taken from each entry's `label_history` in the state file — not this round's ids.** A finding on this line is by definition absent from this round's set, so main assigned it no id this round; ids are per-round labels and `S1` in round 4 is not `S1` in round 5. The label is what makes the line usable: it is what the reader saw in the round-4 body and on the round-4 thread. Where an entry has no `label_history` — closed before labels were persisted — write the `file:line` and the issue text alone and omit the id rather than minting one, which would collide with a live finding in this round's table.
 
 Every finding status is exactly one of `active`, `resolved` (with commit SHA), `dismissed` (with reason), `wontfix` (with reason), or `regression` — the enum in `references/finding-state-schema.md`. "Deferred" is not one of them: it leaves the reader unable to tell a shipped fix from an open one.
+
+**Follow-up-issue line**: fills the template slot under the resolved-since line, from round 3 onward, whenever any finding is still active at the round cap. Main passes the outcome in — it is resolved by `SKILL.md` Phase 4's **File the follow-up issue** step, which runs before this body is composed for exactly that reason. Posting never creates the issue and never infers one: an absent outcome renders no line, and a line is never written from a URL this file did not receive.
+
+Four renderings, one per outcome, and no fifth:
+
+```markdown
+**Follow-ups**: 4 findings still open after the final review round are tracked in https://github.com/<owner>/<repo>/issues/<n>
+**Follow-ups**: partially filed — https://github.com/<owner>/<repo>/issues/<n> is missing M2, m1. Treat as not filed.
+**Follow-ups**: filing failed — 4 findings still open after the final review round are tracked nowhere, 3 of them released from blocking this PR by the round-3 ratchet.
+**Follow-ups**: not filed — 4 findings still open after the final review round are tracked nowhere, 3 of them released from blocking this PR by the round-3 ratchet.
+```
+
+The last three exist because the round-3 ratchet stops Moderate and Minor findings holding the PR **on the stated promise that they are tracked instead**. Where they are not, the body says so in those words on the same surface that carries the unblocked verdict. Softening it to "will be followed up" or dropping the line entirely restores the original defect one layer out: a reader sees an approval and infers a backlog that does not exist.
+
+`Follow-ups` is a run-level field this body renders and the canonical header list in `references/finding-output-format.md` does not yet define. Until it is added there, this section is its definition — and the field is added THERE first if any second surface starts rendering it, per that file's own rule.
 
 ---
 

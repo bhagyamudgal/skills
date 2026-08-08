@@ -225,6 +225,7 @@ declared subset of these fields and invents none of its own.
 | `Round` | main | `CURRENT_ROUND`, plus active/resolved/dismissed counts carried across rounds |
 | `Convergence` | main, Phase 3 step 7.5 | new / caused-by-earlier-fixes / regressions-reopened / carried, plus the one trend sentence. Printed, never recomputed per surface. |
 | `Mode` | main | the run's non-default modes (see `Mode` below); omitted when the run is a plain in-repo full review |
+| `Follow-ups` | Phase 4's "File the follow-up issue" step | the round-cap backlog's fate — the issue URL when `filed`, and otherwise the stated reason there is none (`incomplete` / `failed` / `declined`). Omitted below round 3 and whenever no finding is still active. The wording of the three non-`filed` renderings is fixed in `github-posting.md` and must not be softened: the round cap releases findings from blocking on the promise that they are tracked, so a surface that implies a backlog which does not exist re-tells exactly the lie the step exists to prevent |
 | `Coverage` | ledger in the state file | `cells_examined` / `cells_total` across `files_changed`, plus `cells_cannot_assess` and `cells_not_examined` each when non-zero. `cells_examined` covers `{clean, finding, not-applicable}`; the three counters partition `cells_total`, so a surface renders them and never derives one by subtracting the others. The five-value verdict vocabulary and the partition are fixed in `finding-state-schema.md` |
 
 ### `Reviewers` — degraded runs
@@ -293,6 +294,7 @@ this file and names its subset.
 | Posted per-finding comment | `github-posting.md` Step 2 | per-finding block |
 | Batch consolidated report | `batch-mode.md` | header, one row per PR |
 | `/fix-pr-review` handoff file | SKILL.md, Phase 4 | per-finding block |
+| Follow-up issue body | SKILL.md, Phase 4 | per-finding block, minus `Lens` (the issue outlives the ledger cell it answered); `Rule-class` and `Enclosing-symbol` ride in the HTML marker that the read-back greps and a later round's lookup reads |
 | V1 class-sweep report | `verification-subagents.md` | `class_completeness:` audit |
 
 When a surface needs a field this file does not define, the field is added HERE first and

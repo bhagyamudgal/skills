@@ -10,7 +10,7 @@ This document defines both of `/review-pr`'s per-PR persistence files — the st
 
 | File | Holds | Written by |
 |---|---|---|
-| `.claude/review-state/<pr-number>.yml` | Per-finding lifecycle — `active` / `resolved` / `dismissed` / `wontfix` / `regression`, plus the cascade fields — and the round's coverage ledger | Phase 4 write-back — the only automated writer (see the writer caveat at the end of "Phase 4 — write back"). The ledger it writes is **built in Phase 3**, not here: every consumer reads it before Phase 4 runs |
+| `.claude/review-state/<pr-number>.yml` | Per-finding lifecycle — `active` / `resolved` / `dismissed` / `wontfix` / `regression`, plus the cascade fields — the round's coverage ledger, and the round-cap follow-up issue | Phase 4 write-back — the only automated writer (see the writer caveat at the end of "Phase 4 — write back"). The ledger it writes is **built in Phase 3**, not here: every consumer reads it before Phase 4 runs. `followup_issue` is likewise **decided in Phase 4's "File the follow-up issue" step**, before posting, and only persisted here |
 | `$HOME/.claude/skills/review-pr/cache/<owner>_<repo>_<pr-number>.json` | Per-run and per-comment GitHub facts — last reviewed SHA, last posted review IDs, and `posted_comments` (for `resolveReviewThread` + dedup against re-posting) | End of Phase 4, independent of GitHub state |
 
 `posted_comments` works alongside the state file: the cache holds per-comment GitHub IDs, the state file holds per-finding lifecycle. Both are necessary; neither is sufficient alone. The state file is the schema described first below; the cache follows under "Run-over-run cache".
@@ -37,6 +37,14 @@ repo: fileseye-org/fileseye
 created_at: 2026-04-12T13:29:50Z
 updated_at: 2026-05-08T19:11:42Z
 last_round: 6
+
+followup_issue:                     # round-cap backlog; null until a round >= 3 ends with a finding still active
+  status: filed                     # filed | incomplete | failed | declined
+  number: 412
+  url: https://github.com/fileseye-org/fileseye/issues/412
+  round_filed: 3
+  finding_ids: [9c4f2a8b1e]         # every finding active at the cap, filed or not
+  missing_ids: []                   # status: incomplete only — ids the read-back could not find
 
 findings:
   - id: 9c4f2a8b1e            # sha1(file::enclosing_symbol::rule_class), first 10 hex chars
@@ -141,6 +149,13 @@ ledger:
 | `created_at` | ISO 8601 UTC | yes | When the state file was first written |
 | `updated_at` | ISO 8601 UTC | yes | Last write timestamp |
 | `last_round` | int | yes | Highest round number observed (1-indexed) |
+| `followup_issue` | map | nullable | The one follow-up issue the round cap files for this PR, or the record of why there isn't one. `null` until a round `>= 3` ends with a finding still active. Written by Phase 4 write-back from the outcome `SKILL.md` Phase 4's "File the follow-up issue" step resolved — that step decides, write-back persists, and nothing else touches the key. A `filed` entry is never overwritten by a later round; `declined` / `failed` / `incomplete` may be replaced by a later round's `filed` |
+| `followup_issue.status` | enum | yes | `filed` (created AND read back with every finding present) \| `incomplete` (created, read-back short — treated as NOT filed) \| `failed` (creation errored, nothing exists) \| `declined` (user chose not to file). The four are not interchangeable: `incomplete` and `failed` differ by whether there is a URL to clean up, and `declined` is a user decision a later round must not re-litigate |
+| `followup_issue.number` | int | conditional | Issue number. Required for `filed` and `incomplete`; null for `failed` and `declined` |
+| `followup_issue.url` | string | conditional | Issue URL, as `gh issue create` returned it. Same requirement as `number` |
+| `followup_issue.round_filed` | int | conditional | Round that OPENED the issue. Required for `filed` and `incomplete`; a later round appending to the same issue does not reset it |
+| `followup_issue.finding_ids` | string[] | yes | The `findings[].id` of every finding still active when the round cap fired, whatever the status. Accumulates across rounds — an appending round adds its ids rather than replacing the list, or the earlier rounds' findings read as never filed. On `declined` / `failed` this is the list of findings tracked nowhere, the record of what the cap released into nothing. The round `> 3` branch compares it against that round's active set to decide whether anything is still uncovered |
+| `followup_issue.missing_ids` | string[] | conditional | `status: incomplete` only: ids the read-back could not find in the created issue. Forbidden on the other three |
 | `findings[].id` | string | yes | First 10 hex chars of `sha1(...)` — see ID strategy below |
 | `findings[].file` | string | yes | Repo-relative path |
 | `findings[].enclosing_symbol` | string | yes | Function/class/component containing the finding |
@@ -417,8 +432,9 @@ After successful posting (or after "Keep local"):
 3. For each finding whose fix has shipped (writer caveat below — this transition is currently made by hand): `status: resolved` + `commit_sha_resolved: <sha of the resolving commit>` regardless of prior status — but **only when every `class_sites` entry is `handled: true`**. If any site is still unhandled, keep the prior status (`active` / `regression`), write the updated `handled` flags, and leave `commit_sha_resolved` untouched: a fix covering part of the class is not a resolution. A regression that gets fully re-fixed goes back to `resolved` with the *new* commit SHA; the prior `commit_sha_resolved` is overwritten (only the latest resolving commit is kept — `label_history` retains the full timeline).
 4. For each closed finding the Phase 3 regression sweep reopened: an entry reopened because a `class_sites` site went unhandled or its `inverse_risk` failure mode materialized becomes `status: regression`; a `dismissed`/`wontfix` entry whose `depends_on` condition was voided becomes `status: active`, keeping `dismissal_reason` and `round_resolved` as history and naming the voiding commit in `last_message`.
 5. Persist the `ledger` object Phase 3 step 6.9 assembled, byte for byte. Phase 4 is not a second construction site: the gate has already ruled on these counters and both the terminal and the posted body have already printed them, so a ledger rebuilt here could contradict a verdict that has shipped. Re-assert the partition before writing; a violation means the object was mutated between the gate and the disk, and the round's coverage claim is void.
-6. Increment `last_round`. Update `updated_at`.
-7. Write the file atomically (temp + rename).
+6. Persist `followup_issue` from the outcome `SKILL.md` Phase 4's "File the follow-up issue" step resolved — `filed`, `incomplete`, `failed` or `declined`, with `finding_ids` set in every case. Write it on **every** path that reaches write-back, "Keep local" and a declined offer included: the point of the key is that round 4 can tell an issue that exists from one the user declined from a state file that was lost, and only the first of those three is self-evident from GitHub. Never synthesize it here from a URL the step did not return, and never write `filed` for an issue whose read-back was short — that is `incomplete`, and the distinction is the entire complete-or-not-at-all guarantee.
+7. Increment `last_round`. Update `updated_at`.
+8. Write the file atomically (temp + rename).
 
 State transitions in Phase 4:
 

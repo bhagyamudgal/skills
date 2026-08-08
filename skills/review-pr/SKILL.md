@@ -1245,8 +1245,11 @@ on top of the rules above:
    Serious, the verdict is `approve` even when Moderate and Minor findings remain — where
    rounds 1–2 would have landed on `comment`.
 2. **They report separately.** Print them in the Phase 4 body under the
-   `Follow-ups (non-blocking)` heading instead of under their own severity headings, and
-   offer to file them as issues in the post-review prompt.
+   `Follow-ups (non-blocking)` heading instead of under their own severity headings.
+   Phase 4's **File the follow-up issue** step then offers to file every finding still
+   active — this released tail included — as one issue. That step is what makes "tracked
+   instead of blocking" true, and it runs ahead of the post decision because the review
+   body links to what it creates.
 
 Rationale: a PR that has absorbed two rounds of fixes is being held by a long tail,
 and each extra round of Moderate-chasing is another chance to feed the cascade. The
@@ -1263,15 +1266,36 @@ Round 3 is terminal. There is no round 4: whatever survives it is filed, not re-
 **Enforced, not merely stated.** `CURRENT_ROUND` is computed from `last_round + 1` with no
 ceiling, so a fourth invocation is reachable. Key the cap on `>= 3`, not `== 3` — otherwise
 a run at round 4 gets the ratchet but neither the follow-up issue nor the terminal
-behaviour, which is the worst of both. When `CURRENT_ROUND > 3`, do not silently re-review:
-report that the cap was already reached, point at the existing follow-up issue, and stop.
+behaviour, which is the worst of both.
 
 - Every finding still active after the ratchet goes into **one** follow-up issue for this
   PR — not one issue per finding, and not a comment on an unrelated ticket.
 - The issue is created **complete or not at all.** A partially-written issue that loses
   half the findings is worse than none, because the PR unblocks either way and the missing
   half leaves no trace.
-- Once it exists, link it from the review body and unblock the PR.
+- **Phase 4's "File the follow-up issue" step is what creates it** — asks first, composes
+  the whole body, creates in one call, reads the issue back to confirm every finding
+  landed, records the number only then. Nothing else in this skill creates it, and no step
+  may assume it exists without reading `followup_issue` from the state file.
+- Once it exists, link it from the review body and unblock the PR. When it does NOT exist
+  — the user declined, or creation failed — the review body and the terminal say so in
+  those words. An unblocked PR whose findings went nowhere is a fact the reader is owed,
+  never something to paper over with a backlog nobody filed.
+
+When `CURRENT_ROUND > 3`, do not silently re-review. Report that the cap was already
+reached, then read `followup_issue` from `$STATE_FILE`:
+
+- `status: filed` and its `finding_ids` cover every finding still active → print that
+  issue's URL and stop. Never file a second issue for one PR; the duplicate is the copy
+  nobody reads.
+- no entry, or `status` in `{declined, failed, incomplete}`, or a `filed` entry missing a
+  finding active this round → run **File the follow-up issue** once over the uncovered
+  findings, then stop.
+
+Either branch still ends through the Phase 4 state write-back before stopping
+(`references/finding-state-schema.md`, "Phase 4 — write back"). Stopping short of it drops
+this round's `followup_issue` and leaves `last_round` unincremented, so round 5 arrives as
+round 4 again and re-asks a question already answered.
 
 Rationale: rounds 1–2 fix real defects; by round 3 the measured share of findings that
 were themselves *introduced by the previous round's fixes* has collapsed to zero, which
@@ -1358,6 +1382,12 @@ clear the gate.
 ## Follow-ups (non-blocking)
 <round >= 3 only: Moderate/Minor findings the severity ratchet released from blocking.
  Omit this heading entirely at rounds 1-2, where they appear under their own severity.>
+<plus the one tracking line from "File the follow-up issue" — the issue URL, or the
+ statement that nothing tracks these findings. It is appended once that step has run: the
+ answer does not exist when this block is first rendered, and a heading that lists
+ released findings without saying where they went is the promise this skill is not
+ allowed to leave open. The line names the whole filed set, not only this heading's
+ entries — the issue carries every finding still active at the cap.>
 
 ## Filtered out (<count>)
 <dropped findings with reasons — for auditability>
@@ -1408,6 +1438,186 @@ Phase 3: <s> (dedupe + verify + 3-prong + reusability audit + FP rules + prior-s
 Phase 4: <s>
 Total:   <s>
 ```
+
+### File the follow-up issue (round >= 3)
+
+Fires when `CURRENT_ROUND >= 3` AND at least one finding is still active after the
+ratchet. Skip entirely otherwise: at rounds 1–2 the review is not terminal, every finding
+is still owed another round, and there is no backlog to file.
+
+Scope is **every** still-active finding, per the round cap — round 3 is the last look, so
+an unfixed Critical needs filing as much as a released Minor. The Moderate and Minor the
+ratchet released are why the guarantee is load-bearing: they stopped blocking on the
+stated promise that this step tracks them.
+
+**It runs here — first interactive step of Phase 4, ahead of the self-review branch, the
+findings multiSelect and the post decision.** Two structural reasons. The issue number has
+to exist before `references/github-posting.md` Step 1 composes the body, because the body
+links to it and Step 1 is the one assembly point. And every other exit from Phase 4 —
+self-review "Fix now", "Keep local only", "Keep local", deselecting every finding — leaves
+without posting; an offer placed after any of them is an offer those paths never reach,
+and the ratchet's promise would die exactly where nobody is watching for it.
+
+**Creating an issue is an outward-facing write on the user's account: it happens only on
+an explicit choice, never as a side effect of reaching round 3.** In batch mode nobody is
+there to ask — the offer becomes a pending decision under `references/batch-mode.md`'s
+"don't stop" semantics, like every other checkpoint, and the subagent files nothing.
+
+The findings the multiSelect later deselects are not retracted from an issue already
+filed. Say so on the terminal line and move on: a dismissed item inside a filed backlog is
+visible and can be closed, an item that was never filed cannot.
+
+#### 1. Look for an issue this PR already has
+
+Read `followup_issue` from `$STATE_FILE` (`references/finding-state-schema.md`). If the
+state file was lost, fall back to the body marker — the same fallback
+`github-posting.md` Step 0 uses when the cache is gone:
+
+```bash
+gh issue list --repo "<owner>/<repo>" --state all --limit 5 \
+  --search 'in:body "review-pr:followup pr=<pr-number>"' --json number,url,body
+```
+
+If either route returns an issue whose markers already carry every still-active finding, do
+not ask and do not file: render it exactly as step 6's `filed` row, re-recording `number`,
+`url` and `finding_ids` if the marker search is what found it, and stop here. One PR gets
+one backlog; the second copy is the one nobody reads. If the issue carries only some of
+them, run steps 2–6 over the uncovered findings alone and **append them to that issue**
+rather than open a second one — step 4 carries both shapes.
+
+#### 2. Ask
+
+AskUserQuestion:
+
+```
+header: "Follow-ups"
+text: "Round <N> is the last review round. <K> finding(s) are still open, <R> of them released from blocking this PR by the ratchet. File all <K> as one follow-up issue on <owner>/<repo>?"
+options:
+  - "File the issue (Recommended)" — One issue carrying all <K> findings, linked from the review body
+  - "Don't file" — Nothing is created; these findings are tracked nowhere after this run
+```
+
+#### 3. Compose the WHOLE body before anything is created
+
+Write it to `/tmp/review-pr-<pr-number>-followups.md` in full, every still-active finding
+in it, ranked Critical → Minor. Nothing is sent until the file is complete — this is
+where "complete or not at all" is actually enforceable, because a body that turns out
+short is still just a local file.
+
+Title (conventional-commit style, matching this skill's commit vocabulary):
+
+```
+chore(review): follow-ups from PR #<pr-number> review
+```
+
+Body:
+
+````markdown
+<!-- review-pr:followup pr=<pr-number> round=<round> -->
+Non-blocking findings from the round-<round> review of <pr-url>. The severity ratchet
+released them from holding that PR; they are recorded here instead.
+
+Head reviewed: `<head_sha>`
+
+### <id> · <severity-emoji> <Severity> — `<path:line>`
+<!-- review-pr:followup id=<finding-id-hash> rule-class=<slug> symbol=<enclosing-symbol> -->
+<Category><confidence-suffix>
+
+**<Issue one-sentence>**
+
+**Why it matters**: <one sentence>
+
+**Suggested fix**: <one sentence, actionable>
+
+**Inverse risk**: <the failure mode the fix trades into, or "none — pure addition">
+
+**Class-sites**: <A>/<N> — affected sites over the entries in the sweep's site list
+
+<one `###` block per still-active finding>
+````
+
+**What the issue projects from the per-finding block.** This is a projection of
+`references/finding-output-format.md`, declared here the way every other surface declares
+its subset. It carries `Severity` (emoji + word), the run's canonical id, `File`,
+`Category`, `Issue`, `Why it matters`, `Suggested fix`, `Inverse risk` and `Class-sites` —
+enough that whoever picks the issue up months later does not have to re-derive the review.
+`Confidence` renders as ` · <medium|low> confidence` on the category line and is omitted
+at `high`, as on a posted comment: an unhedged backlog item reads as certain. `Rule-class`
+and `Enclosing-symbol` ride in the HTML marker rather than as visible lines — a reader has
+no use for either, but they are two of the three id components, so step 1's marker search
+can recompute ids from the issue body when the state file is gone. `Lens` is dropped: it
+names the question that found the defect, and a backlog reader is acting on the defect.
+
+#### 4. Create — one call, whole body
+
+```bash
+FOLLOWUP_URL=$(gh issue create --repo "<owner>/<repo>" \
+  --title "chore(review): follow-ups from PR #<pr-number> review" \
+  --body-file "/tmp/review-pr-<pr-number>-followups.md")
+FOLLOWUP_NUMBER="${FOLLOWUP_URL##*/}"
+```
+
+When step 1 found this PR's issue and only some findings are uncovered, the same composed
+file goes on that issue as one comment instead — one backlog per PR, however many rounds
+add to it:
+
+```bash
+gh issue comment "$FOLLOWUP_NUMBER" --repo "<owner>/<repo>" \
+  --body-file "/tmp/review-pr-<pr-number>-followups.md"
+```
+
+Either shape is **one call carrying every finding it owes**. Never create or comment and
+then add the rest in a further call: a second write that fails leaves precisely the
+half-written backlog the cap forbids, and the PR is already unblocked by then.
+
+A `gh issue create` that errors or prints nothing is **not** proof that nothing was
+created. Re-run step 1's marker search before any retry; a blind second attempt is how a
+PR ends up with two partial backlogs.
+
+#### 5. Read the issue back and verify every finding is present
+
+```bash
+FOLLOWUP_BODY=$(gh issue view "$FOLLOWUP_NUMBER" --repo "<owner>/<repo>" \
+  --json body,comments -q '[.body] + [.comments[].body] | join("\n")')
+MISSING=""
+for id in <the still-active findings' id hashes>; do
+  printf '%s' "$FOLLOWUP_BODY" | grep -q "review-pr:followup id=$id" || MISSING="$MISSING $id"
+done
+```
+
+Read comments as well as the body — an appended round lives in a comment, and a check that
+reads the body alone reports every appended finding missing.
+
+Verify against what GitHub returned, never against the local file. The local file is what
+this run meant to send; the guarantee is about what landed. Truncation, a rejected body
+and a partial write all look identical from the sending side.
+
+#### 6. Record the outcome and render it — four cases, no fifth
+
+| Outcome | `followup_issue.status` | Terminal line under `Follow-ups (non-blocking)` | Review-body `Follow-ups` line |
+|---|---|---|---|
+| Read-back found every id | `filed` + `number`, `url`, `round_filed`, `finding_ids` | `<K> finding(s) filed as <url>.` | the URL |
+| Read-back found the issue short | `incomplete` + `number`, `url`, `finding_ids`, `missing_ids` | `<url> is missing <ids> — treat as NOT filed. Full body kept at /tmp/review-pr-<n>-followups.md.` | names the issue AND the missing ids |
+| The create or the append errored | `failed`, `number`/`url` null unless an earlier round's issue exists, `finding_ids` = the still-active set | `Filing failed: <error>. <K> finding(s) are tracked nowhere. Body kept at /tmp/review-pr-<n>-followups.md.` | states they are tracked nowhere |
+| User chose "Don't file" | `declined`, `number`/`url` null, `finding_ids` = the still-active set | `<K> finding(s) are tracked nowhere — not filed, and the ratchet has already released <R> of them from holding this PR.` | states they are tracked nowhere |
+
+`finding_ids` accumulates — a round that appends adds its ids to the list rather than
+replacing it, and `round_filed` keeps the round that opened the issue. Replacing either
+would report the earlier rounds' findings as never filed.
+
+`incomplete` is treated as not filed on purpose: a partial issue is the one case where the
+PR unblocks AND the missing half leaves no trace, so it is reported louder than a plain
+failure, not quieter. Do not close or delete the partial issue — say what is missing and
+keep the composed body on disk so it can be pasted in by hand.
+
+`declined`, `failed` and `incomplete` never claim a backlog exists. The wording is the
+point: "tracked nowhere" is what the reader needs to act, and any softer phrasing
+re-tells the exact lie this step was built to end.
+
+Whatever the outcome, `followup_issue` is persisted by the Phase 4 state write-back on
+every path, "Keep local" included — see "Phase 4 — write back" in
+`references/finding-state-schema.md`. It is what stops round 4 filing a duplicate, and
+what lets round 4 tell a declined backlog from a lost state file.
 
 ### Self-review detection
 
@@ -1527,7 +1737,7 @@ The full posting flow lives in `references/github-posting.md` — load it now. I
 - **Step 7**: failure recovery with disclosed partial state.
 - **Step 8**: cache write-back + state file update + thread resolution for fixed findings.
 
-Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, summary body content, list of findings (line-level + file-level), `PRIOR_STATE` (Step 0c compares against it), **the `ledger` object step 6.9 assembled**, `$CACHE_FILE` path, `$STATE_FILE` path.
+Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, summary body content, list of findings (line-level + file-level), `PRIOR_STATE` (Step 0c compares against it), **the `ledger` object step 6.9 assembled**, **the `followup_issue` outcome the follow-up step resolved** (its Step 1 has a slot for it, and an outcome that never arrives renders as no line at all — which reads as rounds 1–2), `$CACHE_FILE` path, `$STATE_FILE` path.
 
 The ledger goes in memory, not by reading `$STATE_FILE`: Step 8c has not written it when Step 1 composes the body. Read from disk instead, round 1 renders the seed's zeros — which display as full coverage on the least-covered run of all — and round N renders round N−1's counters underneath round N's verdict.
 
