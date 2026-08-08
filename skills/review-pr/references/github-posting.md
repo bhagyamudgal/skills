@@ -164,6 +164,12 @@ Build a lean summary body (NO "Filtered out" section — internal only). **Alway
 <each finding with no file reference, rendered with the Step 2 comment projection>
 
 **Coverage**: <cells_examined>/<cells_total> cells examined across <files_changed> files changed. <cells_cannot_assess> cells cannot be assessed without <artifact>.  <!-- second sentence omitted entirely when cells_cannot_assess == 0 --> **<cells_not_examined> cells NOT examined — this review does not cover them.**  <!-- third sentence omitted entirely when cells_not_examined == 0 -->
+<!-- When Phase 3 step 6.9 produced NO ledger, the whole line is replaced by:
+     **Coverage**: none recorded — no ledger was produced this round, so this review
+     states nothing about what it examined.
+     Never render zeros in that case and never drop the line. An absent ledger reads as
+     zero under any ordinary comparison, so a run that examined nothing would otherwise
+     display as fully covered — indistinguishable from the best possible result. -->
 
 <details>
 <summary>Coverage ledger — round <round>, head <head_sha></summary>

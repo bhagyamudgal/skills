@@ -1375,7 +1375,22 @@ Write a one-sentence approval reason grounded in the most important finding (or 
 
 Read `ledger.cells_not_examined` from the ledger step 6.9 assembled.
 
-If it is greater than zero:
+**First: is there a ledger at all?** If step 6.9 produced none — no reviewer returned cell
+verdicts, Phase 2 never dispatched, the assembly step did not run — then treat this as the
+strongest possible gate, not the weakest:
+
+- the verdict may not be `approve`, and Senior-engineer approval may not be `Yes`
+- say so in these words: *"No coverage ledger was produced this round. This review states
+  nothing about what it examined."*
+
+Absent is not zero. An unset `cells_not_examined` reads as `0` under any ordinary
+comparison, which passes the gate — so the one run that examined **nothing** would sail
+through the check built to stop exactly that, while a run that honestly recorded a single
+gap is blocked. This is not hypothetical: the first live run of this skill produced no
+ledger at all, and only failed to approve because its verdict was `request-changes` on
+unrelated grounds.
+
+If a ledger exists and `cells_not_examined` is greater than zero:
 
 - the verdict may not be `approve` — emit `comment` instead
 - Senior-engineer approval may not be `Yes` — emit `With changes` instead
@@ -1416,6 +1431,7 @@ clear the gate.
 <trend line — omit at round 1>
 **Mode**: <mode line — omit when no mode applies>
 **Coverage**: <cells_examined>/<cells_total> cells examined across <files_changed> files changed. <cells_cannot_assess> cannot be assessed without <artifact>. **<cells_not_examined> cells NOT examined — this review does not cover them.**
+<when step 6.9 produced no ledger, this line reads instead: **Coverage**: none recorded — no ledger was produced this round, so this review states nothing about what it examined. Never omit the line and never render zeros; an absent ledger and a fully-covered one must not look alike.>
 <coderabbit hint — one line, only on the first run against this repo in a session when `CR_CONFIG_PRESENT=false`; omit entirely otherwise>
 
 ## Summary
