@@ -26,10 +26,10 @@ rules:
     applies_to: |
       Every finding carrying a File: <path>:<line>, before any other rule reads that line.
     evidence_check: |
-      Require an anchor_text — the exact source line the finding is about, as the reviewer read it.
+      Read the finding's `Anchor-text:` field — the cited source line verbatim, as the reviewer read it.
       If the finding carries none, adopt the line the citation currently points at in the post-image,
       and only when that line contains the symbol named in Issue; otherwise treat as no match.
-      Re-derive the line by searching the POST-image for anchor_text:
+      Re-derive the line by searching the POST-image for that `Anchor-text`:
         - stashed diff, new side, first
         - gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha> when the file is not fully stashed
       One match     → rewrite File: to that match's post-image line number.
@@ -39,7 +39,7 @@ rules:
       a prior review comment, another reviewer's output, or the position where it was first noticed.
       A rebase moves lines and leaves the file right; the anchor must be recomputed, not inherited.
     action: re-anchor-or-drop
-    log_reason: "re-derive-the-anchor — <path>:<old> -> <new>, or dropped when anchor_text is absent from the post-image at <head-sha>"
+    log_reason: "re-derive-the-anchor — <path>:<old> -> <new>, or dropped when the Anchor-text is absent from the post-image at <head-sha>"
 
   - id: open-the-callee
     applies_to: |
@@ -161,7 +161,8 @@ rules:
       A claim quantifying over CODE is INAPPLICABLE — "this branch is never reached", "the guard
       always returns early", "every caller passes a string", "the loop always runs once" are settled
       by reading the code, and the File: anchor already tells a reader where to read.
-      Require a command in Why / Evidence / Fix that a reader can paste and run UNMODIFIED:
+      Require a command in `Why it matters` or `Suggested fix` — the two fields that exist —
+      that a reader can paste and run UNMODIFIED:
         - psql / docker exec ... psql carrying a full SELECT with real table and column names
         - a script or CLI invocation with every argument bound
         - gh api ... --jq, or a log/analytics query including its time window

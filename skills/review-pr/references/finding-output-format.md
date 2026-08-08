@@ -43,6 +43,8 @@ Category:    Intent | Unnecessary | DRY | Performance | Security |
              Reusability | Silent-failure | Breaking-change |
              Architecture | Prior-finding-correction
 Rule-class:  <2-3 word slug — e.g., silent-failure, n+1-query, error-code-wrong-branch>
+Anchor-text: <the cited source line, verbatim, as you read it — omit for module-scope
+             findings that carry no :line>
 Lens:        <lens ids that raised this, comma-separated — e.g. L8, L12;
              "none — <the check that raised it>" when no lens did, e.g. "none — Q3",
              "none — cross-file sweep", "none — silent-failure pass">

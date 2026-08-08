@@ -1416,6 +1416,7 @@ clear the gate.
 <trend line — omit at round 1>
 **Mode**: <mode line — omit when no mode applies>
 **Coverage**: <cells_examined>/<cells_total> cells examined across <files_changed> files changed. <cells_cannot_assess> cannot be assessed without <artifact>. **<cells_not_examined> cells NOT examined — this review does not cover them.**
+<coderabbit hint — one line, only on the first run against this repo in a session when `CR_CONFIG_PRESENT=false`; omit entirely otherwise>
 
 ## Summary
 <2-3 sentence summary>
