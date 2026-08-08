@@ -10,6 +10,11 @@ over the 60% of findings a matcher could place, with the other 40% quietly disca
 is a statement about the matcher. Every finding is accounted for here: matched,
 ambiguous, or unmatched.
 
+Findings are bucketed by the source and tier THIS RUN emitted, keeping only the verdict
+from the frozen record. Reading the tier off the frozen record instead makes the
+instrument blind to a severity change, which is the axis the skill's tier definitions
+move; severity drift against the frozen tiers is reported next to precision.
+
 Usage:
     python3 tools/replay/score.py --benchmark ~/path/to/benchmark --self-check
     python3 tools/replay/score.py --benchmark ~/path/to/benchmark --findings run.json
@@ -134,12 +139,31 @@ def holdout_split(escaped, seed=HOLDOUT_SEED, fraction=HOLDOUT_FRACTION):
                       "n_holdout": len(reserved), "holdout_digest": digest}
 
 
+def _bucket_key(frozen, replay):
+    """Corpus comes from the benchmark file; source and tier describe THIS run's output.
+
+    Keying source and tier off the frozen record makes the harness blind to the one axis
+    it exists to measure: a replay emitting the same claims a tier lower produces
+    byte-identical headline numbers, because the tier is read off the record rather than
+    off the run. It also files every skill finding that happens to match a CodeRabbit
+    record under CodeRabbit's rate, which nothing gates — so a run reasserting
+    CodeRabbit's false positives passes.
+
+    The verdict is the one thing that stays frozen: it is ground truth about whether the
+    CLAIM is true, which no replay can restate. Pass replay=None for a record with no
+    replay side at all — an unmatched frozen record, or the benchmark's own baseline —
+    where frozen attribution is the only attribution there is.
+    """
+    side = replay if replay is not None else frozen
+    return (frozen["corpus"], side["source"], side["tier"])
+
+
 def grade(result):
     """Turn a match result into precision counts, keeping unmatched visible."""
     buckets = {}
     for m in result["matched"]:
         f = m["frozen"]
-        key = (f["corpus"], f["source"], f["tier"])
+        key = _bucket_key(f, m["replay"])
         b = buckets.setdefault(key, {"n": 0, "false": 0, "true": 0, "ungraded": 0,
                                      "verdicts": {}})
         b["n"] += 1
@@ -185,6 +209,42 @@ def headline_rates(buckets):
     return out
 
 
+def tier_drift(result):
+    """Where this run put a matched finding relative to where the benchmark put it.
+
+    This is the only view of a severity-semantics change. Precision answers "was the
+    claim true"; nothing else here answers "did the run rank it the same way", and a
+    change that moves findings between tiers is otherwise invisible in every number
+    above — a de-escalated finding just quietly leaves the high-tier denominator.
+
+    Reported, never gated. Three reasons: the frozen tiers were adjudicated under the
+    severity semantics a change under test is entitled to move, so drift is what an
+    intended change looks like rather than a failure; the verdicts grade the truth of a
+    claim and never the appropriateness of its severity, so nothing here can say which
+    direction was correct; and a cross-source pair compares two tiers set under two
+    different crosswalks, which is why they are counted separately instead of being
+    silently averaged into the distribution. The half of drift that does carry a
+    consequence already reaches the exit code through the headline, which now counts a
+    finding at the tier the replay emitted it at.
+    """
+    drift = {"escalated": 0, "de_escalated": 0, "unchanged": 0, "cross_source": 0,
+             "by_verdict": {}}
+    for m in result["matched"]:
+        replay, frozen = m["replay"], m["frozen"]
+        if replay["tier"] == frozen["tier"]:
+            direction = "unchanged"
+        elif replay["tier"] == "high":
+            direction = "escalated"
+        else:
+            direction = "de_escalated"
+        drift[direction] += 1
+        drift["cross_source"] += replay["source"] != frozen["source"]
+        verdict = frozen.get("verdict") or "UNGRADED"
+        by_verdict = drift["by_verdict"].setdefault(direction, {})
+        by_verdict[verdict] = by_verdict.get(verdict, 0) + 1
+    return drift
+
+
 def frozen_baseline(frozens):
     """The benchmark's own rates, recomputed under one definition.
 
@@ -194,7 +254,7 @@ def frozen_baseline(frozens):
     """
     out = {}
     for f in frozens:
-        key = (f["corpus"], f["source"], f["tier"])
+        key = _bucket_key(f, None)
         b = out.setdefault(key, {"n": 0, "false": 0, "true": 0, "verdicts": {}})
         b["n"] += 1
         v = f.get("verdict") or "UNGRADED"
@@ -367,8 +427,26 @@ def gate(args, result, findings, headline):
     return (EXIT_UNCERTIFIABLE if blockers else EXIT_OK), blockers
 
 
+def _report_drift(drift):
+    print("\n" + "=" * 78)
+    print("SEVERITY DRIFT — the tier this run emitted vs the tier the benchmark froze")
+    print(f"  escalated    (low -> high): {drift['escalated']}")
+    print(f"  de-escalated (high -> low): {drift['de_escalated']}")
+    print(f"  unchanged:                  {drift['unchanged']}")
+    print(f"  of which cross-source pairs: {drift['cross_source']}"
+          f"   (two tiers set under two crosswalks — not a like-for-like comparison)")
+    for direction in ("escalated", "de_escalated"):
+        moved = drift["by_verdict"].get(direction)
+        if moved:
+            verdicts = ", ".join(f"{k}={v}" for k, v in sorted(moved.items()))
+            print(f"  {direction}: {verdicts}")
+    print("  Drift never gates: the benchmark grades whether a claim is TRUE, never "
+          "whether\n  its severity was right, so no direction here is a pass or a fail on "
+          "its own.")
+
+
 def report(args, frozens, findings, result, buckets, headline, base, recall, split,
-           notes, status, blockers):
+           notes, status, blockers, drift):
     n = len(findings)
     matched = len(result["matched"])
     rate = matched / n if n else 0.0
@@ -407,6 +485,8 @@ def report(args, frozens, findings, result, buckets, headline, base, recall, spl
         r = "n/a" if h["fp_rate"] is None else f"{h['fp_rate'] * 100:.2f}%"
         print(f"  HEADLINE  {source:<16} high-tier FP+HALL = {h['false']}/{h['graded']}"
               f" = {r}   (target <= 5.00%)  {h['verdict']}")
+
+    _report_drift(drift)
 
     print("\n" + "=" * 78)
     print("FROZEN BASELINE — the benchmark's own rates, recomputed under one definition")
@@ -532,6 +612,7 @@ def main():
     result = matcher.match(findings, frozens, window=args.window)
     buckets = grade(result)
     headline = headline_rates(buckets)
+    drift = tier_drift(result)
     base = frozen_baseline(frozens)
     recall = score_recall(findings, escaped, reserved, args.recall_threshold,
                           args.permutations)
@@ -559,7 +640,7 @@ def main():
                                     for m in result["ambiguous"]],
             },
             "precision": {"|".join(k): v for k, v in buckets.items()},
-            "headline": headline,
+            "headline": headline, "tier_drift": drift,
             "frozen_baseline": {"|".join(k): v for k, v in base.items()},
             "recall": recall,
         }
@@ -567,7 +648,7 @@ def main():
         print(f"wrote {args.json}\n")
 
     report(args, frozens, findings, result, buckets, headline, base, recall, split,
-           notes, status, blockers)
+           notes, status, blockers, drift)
     # Only the skill's own rate can fail this — CodeRabbit's is a comparison point in
     # this benchmark, not something this repo can regress or fix.
     return status

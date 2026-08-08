@@ -1,9 +1,11 @@
 # Replay benchmark harness for `/review-pr`
 
-Measures two things about a `/review-pr` run against a frozen, adjudicated benchmark:
+Measures three things about a `/review-pr` run against a frozen, adjudicated benchmark:
 
 - **Precision** — Critical+Serious false-positive rate. Target: **≤ 5%**.
 - **Recall** — escaped defects a diff would have shown, and how many the run names.
+- **Severity drift** — where the run put a finding relative to where the benchmark put
+  it. Reported, never gated.
 
 and one thing about itself:
 
@@ -76,7 +78,9 @@ One bit cannot carry three outcomes, so there are three codes:
 | 2 | **cannot certify** — the run does not support a precision claim either way |
 
 CodeRabbit's rate never affects the exit code; it is a comparison point in this
-benchmark, not something this repo can regress or fix.
+benchmark, not something this repo can regress or fix. It is filled by findings whose
+own `source` says `coderabbit`, not by skill findings that happen to match a CodeRabbit
+record — see "Attribution".
 
 Exit 2 fires when the match rate is below `--min-match-rate` (default 60%), when the run
 produced no findings, when no high-tier skill finding was graded, or in `--gold` mode,
@@ -146,6 +150,35 @@ FP rate is therefore optimistic by a few percent relative whenever match rate is
 100%. Read the FP rate next to the match rate, never alone — which the exit code now
 enforces rather than merely advising: below `--min-match-rate` the run exits 2 instead of
 reporting a rate it cannot stand behind.
+
+## Attribution, and severity drift
+
+A matched pair has two sides, and the two are not interchangeable. **Source and tier come
+from the replay** — they describe what this run emitted. **The verdict comes from the
+frozen record** — it is ground truth about whether the *claim* is true, which no replay
+can restate. Corpus is the benchmark file's own label. A record with no replay side at
+all — an unmatched frozen record, or the `FROZEN BASELINE` block — keeps frozen
+attribution, because that is the only attribution it has.
+
+Keying the tier off the frozen record made the harness blind to the one axis a severity
+change moves: a run re-emitting identical claims a tier lower produced byte-identical
+headline numbers. It also filed every skill finding that happened to match a CodeRabbit
+record under CodeRabbit's rate — which never gates — so a run reasserting someone else's
+false positives exited 0.
+
+`SEVERITY DRIFT` counts matched pairs whose replay tier differs from the frozen tier:
+escalated, de-escalated, unchanged, broken down by the verdict that moved, plus the count
+of **cross-source pairs**, where the two tiers were set under two different crosswalks and
+are not a like-for-like comparison. On `--self-check` every pair is unchanged by
+construction, which is why self-check cannot exercise any of this on its own.
+
+Drift never affects the exit code. The frozen tiers were adjudicated under the severity
+semantics a change under test is entitled to move, so drift is what an intended change
+looks like rather than a failure; the verdicts grade the truth of a claim and never the
+appropriateness of its severity, so nothing here can say which direction was right. The
+half of drift that does carry a consequence reaches the exit code through the headline
+anyway, since a finding is now counted at the tier the run emitted it at — an escalated
+false positive enters the gated denominator, a de-escalated one leaves it.
 
 ## Recall
 

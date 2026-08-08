@@ -117,6 +117,119 @@ class TestGrading(unittest.TestCase):
         self.assertTrue(0.09 < hi < 0.10)
 
 
+def replay_of(record, **overrides):
+    """A replay finding for the same construct, re-emitted with its own severity/source."""
+    row = dict(record, id=f"R-{record['id']}", **overrides)
+    row["severity_raw"] = row["severity"]
+    row["tier"] = bench._tier(row["source"], row["severity"])
+    return row
+
+
+class TestBucketAttribution(unittest.TestCase):
+    """Buckets describe what the run emitted; only the verdict comes from the benchmark."""
+
+    def test_a_de_escalated_false_positive_leaves_the_high_tier_rate(self):
+        """Emitting a Critical-graded false positive as Minor is a de-escalation, and the
+        high-tier rate must stop counting it — the tier is a property of this run."""
+        frozens = [frozen("F1", "src/a/x.ts", 10, "widgetCache is never invalidated",
+                          verdict="FALSE_POSITIVE", severity="critical")]
+        replay = [replay_of(frozens[0], severity="minor")]
+        buckets = score.grade(matcher.match(replay, frozens))
+        head = score.headline_rates(buckets)
+        self.assertNotIn("review-pr-skill", head)
+        self.assertEqual(buckets[("synthetic", "review-pr-skill", "low")]["false"], 1)
+
+    def test_an_escalated_finding_enters_the_high_tier_denominator(self):
+        """A trivial claim re-emitted as Critical is a severity regression. It cannot be
+        seen at all while the tier is read off the frozen record."""
+        frozens = [frozen("F1", "src/a/x.ts", 10, "widgetCache is never invalidated",
+                          verdict="CORRECT_TRIVIAL", severity="minor")]
+        replay = [replay_of(frozens[0], severity="critical")]
+        buckets = score.grade(matcher.match(replay, frozens))
+        head = score.headline_rates(buckets)
+        self.assertEqual(head["review-pr-skill"]["graded"], 1)
+        self.assertEqual(head["review-pr-skill"]["false"], 0)
+
+    def test_a_skill_finding_matching_a_coderabbit_record_counts_as_the_skill(self):
+        frozens = [frozen("F1", "src/a/x.ts", 10, "widgetCache is never invalidated",
+                          verdict="FALSE_POSITIVE", source="coderabbit",
+                          severity="major")]
+        replay = [replay_of(frozens[0], source="review-pr-skill",
+                            severity="serious")]
+        head = score.headline_rates(score.grade(matcher.match(replay, frozens)))
+        self.assertNotIn("coderabbit", head)
+        self.assertEqual(head["review-pr-skill"]["false"], 1)
+
+    def test_reasserting_a_coderabbit_false_positive_fails_the_gate(self):
+        """CodeRabbit's rate never gates, so misfiling a skill finding under it let a run
+        reassert someone else's false positives and still exit 0."""
+        frozens = [frozen("F1", "src/a/x.ts", 10, "widgetCache is never invalidated",
+                          verdict="FALSE_POSITIVE", source="coderabbit",
+                          severity="major")]
+        replay = [replay_of(frozens[0], source="review-pr-skill",
+                            severity="serious")]
+        result = matcher.match(replay, frozens)
+        status, _ = score.gate(TestExitGate.Args(), result, replay,
+                               score.headline_rates(score.grade(result)))
+        self.assertEqual(status, score.EXIT_REGRESSION)
+
+    def test_a_record_with_no_replay_side_keeps_frozen_attribution(self):
+        record = frozen("F1", "src/a/x.ts", 10, "widgetCache is never invalidated",
+                        source="coderabbit", severity="major")
+        self.assertEqual(score._bucket_key(record, None),
+                         ("synthetic", "coderabbit", "high"))
+
+
+class TestTierDrift(unittest.TestCase):
+    def setUp(self):
+        self.frozens = [
+            frozen("F1", "src/a/x.ts", 10, "widgetCache is never invalidated after write",
+                   verdict="CORRECT_TRIVIAL", severity="minor"),
+            frozen("F2", "src/b/y.ts", 20, "saveWidget skips validateOwner entirely",
+                   verdict="FALSE_POSITIVE", severity="critical"),
+            frozen("F3", "src/c/z.ts", 30, "parseWidget swallows a malformed payload"),
+        ]
+
+    def _drift(self, replay):
+        return score.tier_drift(matcher.match(replay, self.frozens))
+
+    def test_each_direction_is_counted(self):
+        replay = [replay_of(self.frozens[0], severity="critical"),
+                  replay_of(self.frozens[1], severity="minor"),
+                  replay_of(self.frozens[2])]
+        drift = self._drift(replay)
+        self.assertEqual(drift["escalated"], 1)
+        self.assertEqual(drift["de_escalated"], 1)
+        self.assertEqual(drift["unchanged"], 1)
+
+    def test_drift_names_the_verdict_it_moved(self):
+        """Escalating a trivially-true claim and de-escalating a false positive are
+        opposite outcomes; a bare count of moves cannot tell them apart."""
+        replay = [replay_of(self.frozens[0], severity="critical"),
+                  replay_of(self.frozens[1], severity="minor")]
+        drift = self._drift(replay)
+        self.assertEqual(drift["by_verdict"]["escalated"], {"CORRECT_TRIVIAL": 1})
+        self.assertEqual(drift["by_verdict"]["de_escalated"], {"FALSE_POSITIVE": 1})
+
+    def test_a_cross_source_pair_is_counted_separately(self):
+        frozens = [frozen("F1", "src/a/x.ts", 10, "widgetCache is never invalidated",
+                          source="coderabbit", severity="major")]
+        drift = score.tier_drift(matcher.match(
+            [replay_of(frozens[0], source="review-pr-skill", severity="serious")],
+            frozens))
+        self.assertEqual(drift["cross_source"], 1)
+        self.assertEqual(drift["unchanged"], 1)
+
+    def test_drift_alone_never_changes_the_exit_code(self):
+        replay = [replay_of(self.frozens[0], severity="critical"),
+                  replay_of(self.frozens[2])]
+        result = matcher.match(replay, self.frozens)
+        status, _ = score.gate(TestExitGate.Args(), result, replay,
+                               score.headline_rates(score.grade(result)))
+        self.assertEqual(score.tier_drift(result)["escalated"], 1)
+        self.assertEqual(status, score.EXIT_OK)
+
+
 class TestHoldout(unittest.TestCase):
     def setUp(self):
         self.defects = [{"id": f"d{i:03d}"} for i in range(100)]
