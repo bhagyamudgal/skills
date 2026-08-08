@@ -505,7 +505,11 @@ If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` f
 
    Return an explicit verdict for **every** (file, lens) pair — `clean`, `finding`,
    `not-applicable` with a one-line reason, or `cannot-assess` naming the artifact that
-   would answer it. A pair you say nothing about is recorded as `not-examined`, which
+   would answer it. Emit them in the cell-line shape defined in
+   `<SKILL_DIR>/references/finding-output-format.md`, "Coverage-ledger cell verdicts" — one
+   line per cell, after your findings, in the order the assignments were given. A verdict in
+   any other shape is unparseable to ledger assembly and is recorded as `not-examined`,
+   exactly as silence is. A pair you say nothing about is recorded as `not-examined`, which
    blocks approval, so silence costs more than an honest `not-applicable`. Never resolve a
    pair you did not actually examine to `clean`.
 
@@ -527,6 +531,12 @@ If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` f
    file the diff was already editing. Answering Q3 honestly does not discharge L8.
 
 4. Answer Q1–Q6 EXPLICITLY (plus Q7–Q9 if `INCLUDE_SCHEMA_CHECKS = true`). Each must be addressed, even if just "No issues".
+
+   Emit the answers in the `Q<n>:` line shape defined in
+   `<SKILL_DIR>/references/finding-output-format.md`, "Question answers", before your
+   findings. Phase 3 step 4.5 **retracts** unfounded Q6 clearances, and it can only retract
+   a claim it can locate — a "no issues" written in prose that main cannot find is a
+   clearance that survives the check meant to withdraw it.
 
    Q1. Intent — Does this PR actually solve the stated goal? Where's the gap?
    Q2. Unnecessary changes — Files, abstractions, config, or indirection not required by the goal? (Collapses scope creep + overengineering — reporting separately produces dupes.)

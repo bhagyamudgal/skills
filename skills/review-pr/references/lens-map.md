@@ -47,7 +47,28 @@ Tier 3 lenses (`L13`–`L16`) are assigned by this map like any other, **but the
 
 ---
 
-## Always-on L8 is hop 1
+## The `LENS_ASSIGNMENTS` block
+
+What main writes once in Phase 1 after evaluating this map, and hands to each chunk
+reviewer filtered to that chunk's files. One line per changed file:
+
+```
+<path>  [<file_type ids>]  <lens ids>
+<path>  SKIPPED — <skip_reason>
+```
+
+- `<path>` — repo-relative, and the **byte-identical** string the reviewer must echo back
+  in its cell verdicts (`finding-output-format.md`, "Coverage-ledger cell verdicts"). A
+  display name or a shortened path matches no ledger row.
+- `<file_type ids>` — every type this path matched, comma-separated. Union, never first hit.
+- `<lens ids>` — the applicable set, each marked `*` when it came from `always_on` and bare
+  when a file type or a signal assigned it. The `L8` carve-out below turns on that mark.
+
+The grammar is declared here rather than inside the reviewer prompt because three consumers
+read this block — the reviewer, the ledger assembly step and the batch transport — and a
+shape stated only in one consumer's prompt is a shape the other two are guessing at. The
+path field in particular is now load-bearing in two directions: it is the join key between
+this block and every cell verdict returned against it.
 
 `L8` is Tier 2, and the ledger's rule is that a Tier 2 lens answered without opening anything is `not-examined`, not `clean`. `L8` is also `always_on`. Read together at full strength those two make every file in every PR owe the lens's whole hop sequence — siblings, a literal grep, the mirror operation, the shared helper — and one missed hop anywhere forbids approval. A rule that forbids every approval is not strict, it is noise: readers learn the coverage line is always red and stop reading it, which costs more than the lens ever returned.
 
@@ -71,7 +92,7 @@ The alternative — dropping `L8` from `always_on` — was rejected: the yield b
 lens_index:
   META: { tier: 0, q_map: new-ground,  name: "would anything emit a signal?" }
   L1:   { tier: 1, q_map: new-ground,  name: "success-shaped failure return" }
-  L2:   { tier: 1, q_map: refines-Q5,  name: "validation that does not validate" }
+  L2:   { tier: 1, q_map: refines-Q5-inverted, name: "validation that does not validate" }
   L3:   { tier: 1, q_map: new-ground,  name: "transaction / atomicity boundary" }
   L4:   { tier: 1, q_map: new-ground,  name: "bounded read over an unstable order" }
   L5:   { tier: 1, q_map: refines-Q5,  name: "numeric value crossing a write boundary" }
@@ -410,4 +431,4 @@ Adding a lens or a file type is a one-row edit. The bar for each:
 - **A new `file_types` row** needs a path glob or content signature that an agent can evaluate without judgment, plus the lens list. If you cannot write the detection rule, the row is not ready.
 - **A new `signals` row** needs a regex over changed lines, and a `side:` when the defect is a removal. Prefer a slightly over-firing pattern with a tight lens over a precise pattern that misses — the lens's "not a finding" section is the filter, and dismissing a signal is cheap while missing one is not.
 - **A new lens** needs a `lens_index` entry with its tier and its `q_map`, and it must clear `lenses.md`'s evidence bar: **three independently-observed instances.** Record the count in `lenses.md`; a lens with no count is taste, and the catalogue is explicitly not that.
-- **`q_map: new-ground` is load-bearing and is read.** It marks a lens with no Q-number, and V3's lens axis is built from exactly this set. Filing a lens under a Q it does not belong to removes it from the gap check — reinstating the silent-coverage failure this map exists to prevent, with no other symptom. Fill it correctly on every new lens.
+- **`q_map` is load-bearing and is read.** `new-ground` marks a lens no Q-number reaches; the `-inverted` suffix marks one a Q-number reaches from the opposite direction, discharging nothing. V3's lens axis is built from both, and the suffix is what puts a refinement on it — a lens described as inverted in prose but filed as a bare `refines-Q<N>` is off the axis with no other symptom. Filing a lens under a Q it does not belong to removes it from the gap check — reinstating the silent-coverage failure this map exists to prevent, with no other symptom. Fill it correctly on every new lens.

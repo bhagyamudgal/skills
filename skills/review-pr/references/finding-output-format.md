@@ -209,6 +209,34 @@ They are per-round labels. `M3` in round 2 need not be `M3` in round 3; cross-ro
 identity is the `sha1(file::enclosing_symbol::rule_class)` hash defined in
 `finding-state-schema.md`.
 
+## Question answers (Q1–Q9)
+
+Every reviewer handed the Q list owes one line per question, emitted **before** the findings:
+
+```questions
+Q<n>: <no-issues | finding | not-applicable> | <note>
+```
+
+- `<n>` — `1`…`9`, matching the Q numbering in the prompt. `Q6a` is written `Q6`.
+- `no-issues` — the reviewer asked the question and found nothing. This is a claim, not a
+  default: it asserts the check ran.
+- `finding` — the question produced at least one finding; those findings appear in the
+  per-finding block below, each carrying `Lens: none — Q<n>` so the two halves join.
+- `not-applicable` — the diff contains nothing the question can apply to. Note required.
+- Questions outside the run's scope (Q7–Q9 when `INCLUDE_SCHEMA_CHECKS = false`) are
+  omitted entirely rather than answered `not-applicable`; main knows which were in scope.
+
+**Why this is a declared shape rather than prose.** Phase 3 step 4.5 does not merely read
+these claims, it **retracts** them: when a reviewer's `reusability_searches:` audit is
+missing or shallow, main must "drop ALL Q6 `No issues` claims". A retraction step needs to
+locate the thing it retracts. Answered in free prose, a Q6 clearance main cannot find is a
+clearance that survives — and unlike an unparseable cell, which fails closed to
+`not-examined` and blocks approval, an unretracted "no issues" **fails open**: it reads as
+a question that was asked and answered when the audit proving it was asked is absent.
+
+Main treats a missing or unparseable Q line as `not-examined` for that question and says so
+in the gap check, exactly as it treats a missing cell. Silence is never a `no-issues`.
+
 ## Coverage-ledger cell verdicts
 
 The second shape defined here, and by volume the larger one. **Subagent 1 and its chunk

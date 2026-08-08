@@ -199,10 +199,11 @@ entries against the full in-scope category list (Q1–Q6, plus Q7–Q9 when
 `INCLUDE_SCHEMA_CHECKS` is true), lens entries against the set the prompt's selection rule
 picks out: every `lens_index` entry whose `q_map` is `new-ground` or ends in `-inverted`,
 less `META`. **Re-derive that set from the map rather than reconciling against a count.**
-Against the map as it stands it is 13 entries — and 13 is also what the pre-widening
-`new-ground` count came to before `META` was excluded from it, so a count carried over from
-either earlier reading reconciles cleanly over a set with the wrong membership. Membership
-is the check; the number is a coincidence of this revision of the map.
+Against the map as it stands it is 14 entries. It has already been 12 and 13 across three
+revisions of this rule, and at one point 13 was *also* what the pre-widening `new-ground`
+count came to while naming a different set — so a count carried over from any earlier
+reading can reconcile cleanly over the wrong membership. Membership is the check; the
+number is a property of this revision of the map and nothing else.
 
 `SKILL.md` step 6 runs this same check inline whenever main holds the full diff, and it
 selects with this same rule, `META` excluded there too. One check with two executors has to
