@@ -872,6 +872,18 @@ class TestStream(unittest.TestCase):
         self.assertEqual(len(denials), 1)
         self.assertEqual(denials[0]["tool_name"], "Bash")
 
+    def test_denials_from_every_result_event_are_kept(self):
+        """A subagent's refusals arrive in its own result event; the parent's final one
+        lists none. The skill reviews inside subagents, so reading only the last event
+        would miss nearly every refusal there is."""
+        subagent = json.dumps({"type": "result", "result": "", "permission_denials": [
+            {"tool_name": "Bash", "tool_input": {"command": "gh pr comment 7 --body x"}}]})
+        parent = json.dumps({"type": "result", "result": "Severity: Serious",
+                             "permission_denials": []})
+        cmd = [sys.executable, "-c", f"print({subagent!r}); print({parent!r})"]
+        _, _, _, denials, _ = runner.stream(cmd, cwd=".", timeout=10)
+        self.assertEqual(len(denials), 1)
+
 
 class TestPerturbation(unittest.TestCase):
     """The perturbation table is a published claim about the matcher, so the thing that
@@ -888,11 +900,14 @@ class TestPerturbation(unittest.TestCase):
                    "widgetCache never invalidates after a write completes"),
         ]
 
-    def test_an_unperturbed_corpus_matches_itself_completely(self):
+    def test_zero_drift_places_every_copy_on_its_own_record(self):
+        """The floor the table is read against: whatever mis-assignment the rows show is
+        drift, not two records in the corpus the matcher could never tell apart."""
         row = perturb.run_scenario(self.frozens, jitter=0, drop=0.0, keep_path=True,
                                    seeds=2)
         self.assertEqual(row["match_rate"], 1.0)
         self.assertEqual(row["misassigned"], 0.0)
+        self.assertEqual(row["misassigned_share"], 0.0)
 
     def test_more_drift_never_matches_better(self):
         light = perturb.run_scenario(self.frozens, 5, 0.20, True, seeds=3)
@@ -1023,6 +1038,31 @@ class TestDenialClassification(unittest.TestCase):
         self.assertEqual(blocked, ["AskUserQuestion"])
         self.assertEqual(refused, [])
 
+    def test_a_chained_or_piped_command_is_matched_per_segment(self):
+        """The skill chains and pipes freely. Matching a prefix against the whole string
+        files the guard stopping a post as a harness failure, and lets a denied read hide
+        behind a leading `cd`."""
+        blocked, refused = runner.classify_denials([
+            {"tool_name": "Bash",
+             "tool_input": {"command": "cd repo && gh pr comment 7 --body x"}},
+            {"tool_name": "Bash",
+             "tool_input": {"command": "cd repo && gh pr diff 7 | head -200"}},
+        ])
+        self.assertEqual(len(blocked), 1)
+        self.assertEqual(len(refused), 1)
+        self.assertIn("gh pr diff", refused[0])
+
+    def test_a_denial_with_no_readable_input_still_names_something(self):
+        blocked, refused = runner.classify_denials([{"tool_name": "", "tool_input": {}}])
+        self.assertEqual(blocked, [])
+        self.assertEqual(refused, ["unnamed tool call"])
+
+    def test_an_empty_pattern_covers_nothing(self):
+        """`Tool()` read as "matches everything" would file every refusal as expected and
+        silence the exit code permanently."""
+        self.assertFalse(runner._rule_covers("Bash()", "Bash", "gh pr view 7"))
+        self.assertTrue(runner._rule_covers("Bash", "Bash", "gh pr view 7"))
+
     def test_a_denial_nothing_asked_for_is_a_refusal(self):
         """`gh pr view` refused is the environment failing the harness, not the harness
         stopping the skill — and it is the case that reads as an empty review."""
@@ -1068,6 +1108,15 @@ class TestRunExitCodes(unittest.TestCase):
         self.assertEqual(status, runner.EXIT_PERMISSION_REFUSED)
         self.assertIn("PERMISSION REFUSED", text)
         self.assertIn("gh pr diff", payload["permissions"]["refused"][0])
+
+    def test_a_refusal_warns_but_does_not_throw_away_a_run_that_produced_findings(self):
+        """A partially refused run is worth less than a clean one and far more than
+        nothing; discarding its findings over one denied command is the wrong trade."""
+        status, payload, text = self._run_main(self.TRANSCRIPT, [
+            {"tool_name": "Bash", "tool_input": {"command": "bash -c 'find packages'"}}])
+        self.assertEqual(status, runner.EXIT_OK)
+        self.assertIn("PERMISSION REFUSED", text)
+        self.assertEqual(len(payload["permissions"]["refused"]), 1)
 
     def test_a_genuinely_empty_review_keeps_its_own_code(self):
         status, _, text = self._run_main("no findings here", [])

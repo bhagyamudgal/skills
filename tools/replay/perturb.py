@@ -64,8 +64,9 @@ SCENARIOS = (
 )
 
 # The row the bias check is measured on: enough drift to lose some records, not so much
-# that what is left is noise.
-BIAS_SCENARIO = 1
+# that what is left is noise. Named rather than indexed so reordering SCENARIOS cannot
+# silently move the bias figure onto a different perturbation.
+BIAS_SCENARIO = "±15 lines, 40% dropped"
 
 
 def reword(claim, rng, drop):
@@ -107,28 +108,36 @@ def _verdict_group(record):
 
 
 def run_scenario(frozens, jitter, drop, keep_path, seeds=SEEDS):
-    """Match `seeds` independently perturbed copies of the corpus against the originals."""
+    """Match `seeds` independently perturbed copies of the corpus against the originals.
+
+    Mis-assignment is returned as a share of the pairs the matcher accepted as well as a
+    count: heavy drift shrinks the denominator, so a rising count next to a collapsing
+    match rate understates how much of what survived is wrong.
+    """
     groups = {"false": [], "true": []}
     for record in frozens:
         group = _verdict_group(record)
         if group:
             groups[group].append(record["id"])
 
-    rates, misassigned, group_rates = [], [], {"false": [], "true": []}
+    rates, misassigned, wrong_shares, group_rates = [], [], [], {"false": [], "true": []}
     for s in range(seeds):
         rng = random.Random(PERTURB_SEED + s)
         replays = [perturb(f, rng, jitter, drop, keep_path) for f in frozens]
         result = matcher.match(replays, frozens)
-        rates.append(len(result["matched"]) / len(replays) if replays else 0.0)
-        misassigned.append(sum(1 for m in result["matched"]
-                               if m["frozen"]["id"] != m["replay"]["origin"]))
+        accepted = result["matched"]
+        rates.append(len(accepted) / len(replays) if replays else 0.0)
+        wrong = sum(1 for m in accepted if m["frozen"]["id"] != m["replay"]["origin"])
+        misassigned.append(wrong)
+        wrong_shares.append(wrong / len(accepted) if accepted else 0.0)
 
-        placed = {m["replay"]["origin"] for m in result["matched"]}
+        placed = {m["replay"]["origin"] for m in accepted}
         for group, ids in groups.items():
             if ids:
                 group_rates[group].append(
                     sum(1 for i in ids if i in placed) / len(ids))
     return {"match_rate": _mean(rates), "misassigned": _mean(misassigned),
+            "misassigned_share": _mean(wrong_shares),
             "false_match_rate": _mean(group_rates["false"]),
             "true_match_rate": _mean(group_rates["true"]),
             "n_false": len(groups["false"]), "n_true": len(groups["true"])}
@@ -156,11 +165,19 @@ def main():
 
     if not args.benchmark:
         ap.error("--benchmark or REVIEW_PR_BENCHMARK is required")
+    if args.seeds < 1 or args.bias_seeds < 1:
+        ap.error("seed counts must be at least 1")
     root = pathlib.Path(args.benchmark).expanduser()
     if not root.is_dir():
         ap.error(f"benchmark dir not found: {root}")
 
-    frozens, _ = bench.load_verdicts(root)
+    frozens, notes = bench.load_verdicts(root)
+    # The loader's own warnings — a subsumed re-export, a partial overlap inflating the
+    # corpus — decide whether these rows describe 241 findings or 241 rows holding fewer.
+    # On stderr so the table stays pipeable into the README.
+    for note in notes:
+        print(note, file=sys.stderr)
+
     rows = [run_scenario(frozens, *scenario[1:], seeds=args.seeds)
             for scenario in SCENARIOS]
 
@@ -169,9 +186,10 @@ def main():
     print("| perturbation | match | mis-assigned |")
     print("| --- | --- | --- |")
     for (label, _, _, _), row in zip(SCENARIOS, rows):
-        print(f"| {label} | {_pct(row['match_rate'])} | {row['misassigned']:.1f} |")
+        print(f"| {label} | {_pct(row['match_rate'])} | {row['misassigned']:.1f} "
+              f"({_pct(row['misassigned_share'])} of accepted) |")
 
-    label, jitter, drop, keep_path = SCENARIOS[BIAS_SCENARIO]
+    label, jitter, drop, keep_path = next(s for s in SCENARIOS if s[0] == BIAS_SCENARIO)
     bias = run_scenario(frozens, jitter, drop, keep_path, seeds=args.bias_seeds)
     print(f"\nMatcher bias at \"{label}\", {args.bias_seeds} seeds:")
     if not bias["n_false"] or not bias["n_true"]:

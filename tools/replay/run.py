@@ -85,6 +85,19 @@ DENY = ["Bash(gh pr review:*)", "Bash(gh pr comment:*)", "Bash(gh pr edit:*)",
 # `bash -c` is deliberately absent even though the skill's reusability search wraps its
 # globs in it: granting it grants arbitrary shell, which is the write access the rest of
 # this list exists to withhold. That search degrades and says so, which is the trade.
+#
+# That reasoning does not fully survive the list it introduces, and saying so here is
+# cheaper than discovering it later. `sed -i` writes in place, `find` takes `-delete` and
+# `-exec`, and `xargs` runs whatever it is piped — each is a shell the `bash -c` rule was
+# written to refuse, reached by another name. They stay because the skill uses all three
+# for reads and removing them degrades the review more than the residual risk warrants;
+# what changes is the claim. This list withholds every *intended* write path and is not a
+# sandbox: it stops a review that means to post from posting, not a review that has been
+# argued into `sed -i`.
+#
+# So: run replays against a throwaway clone, never a working tree you care about. The
+# reproducibility rule already points this at merged PRs, where there is nothing live to
+# damage; this is the same discipline for the local side.
 ALLOW = ["Read", "Grep", "Glob", "Agent", "Task", "Skill", "TodoWrite",
          "Bash(gh pr view:*)", "Bash(gh pr diff:*)", "Bash(gh pr list:*)",
          "Bash(gh pr checks:*)", "Bash(gh issue view:*)", "Bash(gh issue list:*)",
@@ -269,6 +282,10 @@ def stream(cmd, cwd, timeout):
                             chunks.append(c.get("text", ""))
                 elif event.get("type") == "result":
                     cost = event.get("total_cost_usd", 0.0)
+                    # Every result event, not just the last: a subagent's refusals arrive
+                    # in its own result event and the parent's final one lists none. The
+                    # skill runs most of the review inside subagents, so reading only the
+                    # last event would miss almost every refusal there is to see.
                     denials.extend(event.get("permission_denials") or [])
                     chunks.append(event.get("result") or "")
         finally:
@@ -336,16 +353,17 @@ def main():
     if err:
         return EXIT_CLI_ERROR
     if refused:
-        # Its own exit code, and named, because the alternative is the failure this
-        # harness exists to catch: a run that was never allowed to read the PR reporting
-        # the same empty findings list as a run that read it and found nothing.
         print(f"PERMISSION REFUSED — {len(refused)} tool call(s) the harness meant to "
-              f"allow were denied. This run measured nothing; findings above are partial "
-              f"at best. First: {refused[0]}")
-        return EXIT_PERMISSION_REFUSED
-    # Zero findings from a real PR is almost always a harness failure (budget cut, an
-    # unanswerable prompt, a format change) rather than a clean PR. Fail loudly.
-    return EXIT_OK if findings else EXIT_NO_FINDINGS
+              f"allow were denied, so this run saw less of the PR than it should have. "
+              f"First: {refused[0]}")
+    if not findings:
+        # Refusal gets its own code because the alternative is the failure this harness
+        # exists to catch: a run never allowed to read the PR reporting the same empty
+        # findings list as a run that read it and found nothing. With findings in hand
+        # the run is still worth scoring, so the refusal is a printed warning instead of
+        # a discarded result.
+        return EXIT_PERMISSION_REFUSED if refused else EXIT_NO_FINDINGS
+    return EXIT_OK
 
 
 if __name__ == "__main__":

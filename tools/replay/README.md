@@ -137,38 +137,43 @@ high-tier FP rates on that run: skill **3.31%** (5/151, PASS), CodeRabbit **16.1
 Identity is the weakest test there is — every signal agrees to the byte. What the accept
 threshold is worth under the drift a replay actually produces comes from
 `python3 tools/replay/perturb.py`, which perturbs the same 241 records by known amounts
-and re-matches them against the originals. The table below is that command's output
-verbatim (5 seeds a row): match rate, and the mean number of pairs assigned to the
-*wrong* record.
+and re-matches them against the originals. The rows below are that command's table (5
+seeds a row): match rate, and the mean number of pairs assigned to the *wrong* record.
 
 | perturbation | match | mis-assigned |
 | --- | --- | --- |
-| ±5 lines, 20% of claim words dropped and shuffled | 99.4% | 0.4 |
-| ±15 lines, 40% dropped | 91.1% | 0.4 |
-| ±30 lines (past the window), 40% dropped | 78.2% | 0.4 |
-| ±15 lines, 60% dropped | 68.6% | 0.4 |
-| no line numbers at all, 40% dropped | 89.8% | 0.2 |
-| no path at all, 40% dropped | 62.8% | 0.2 |
-| ±15 lines, 80% dropped | 30.2% | 1.0 |
+| ±5 lines, 20% of claim words dropped and shuffled | 99.4% | 0.4 (0.2% of accepted) |
+| ±15 lines, 40% dropped | 91.1% | 0.4 (0.2% of accepted) |
+| ±30 lines (past the window), 40% dropped | 78.2% | 0.4 (0.2% of accepted) |
+| ±15 lines, 60% dropped | 68.6% | 0.4 (0.2% of accepted) |
+| no line numbers at all, 40% dropped | 89.8% | 0.2 (0.1% of accepted) |
+| no path at all, 40% dropped | 62.8% | 0.2 (0.1% of accepted) |
+| ±15 lines, 80% dropped | 30.2% | 1.0 (1.4% of accepted) |
 
 Mis-assignment is reported next to match rate because it is the worse failure: a pair on
 the wrong record grades a replay finding against somebody else's verdict, and nothing
-downstream can see that it did. A match rate that holds up while mis-assignment climbs is
-worse than one that falls.
+downstream can see that it did. It is given as a share as well as a count because heavy
+drift shrinks the denominator — 1.0 wrong pair out of the 73 that survive at 80% is a
+different statement from 0.4 out of 220. At zero perturbation it is 0.0, so what the
+column measures is drift and not a pair of near-duplicate records in the corpus.
 
 The perturbation is a **model of drift, not a measurement of it**. It says how the matcher
 degrades as line and claim agreement are withdrawn; it does not say how much of either a
 live replay withdraws, which only a live replay can establish.
 
-**Known bias**: the records the matcher fails to place are enriched for false positives —
-at ±15/40%, FP records match at **88.3%** (n=18) against **90.9%** for true ones (n=223).
-That check takes its own, much larger sample (100 draws) because the table's 5 seeds
-cannot resolve it: the FP group is 18 records, one record is 5.6 points, and five draws
-put the figure anywhere from 88% to 93% — far enough to flip the sign of the gap. Read it
-as a direction, not a coefficient. The direction means the measured FP rate is optimistic
-whenever match rate is below 100%, so read the FP rate next to the match rate, never alone
-— which the exit code enforces rather than merely advises: below `--min-match-rate` the
-run exits 2 instead of reporting a rate it cannot stand behind.
+**Known bias, weakly**: at ±15/40% over 100 draws, FP records match at **88.3%** (n=18)
+against **90.9%** for true ones (n=223) — unplaced records lean slightly toward false
+positives. Two separate limits sit on that number. The 100 draws (against the table's 5)
+remove sampling noise in the perturbation itself: at 5 seeds the same figure lands
+anywhere from 88% to 93%, far enough to flip the sign. What they cannot remove is the
+corpus: 18 FP records means one record is 5.6 points, so a 2.6-point gap is well inside
+one record's worth of resolution. Treat the direction as suggestive and the magnitude as
+unestablished; a firm coefficient needs more adjudicated false positives, not more draws.
+
+Taken as a direction, it means the measured FP rate is optimistic whenever match rate is
+below 100%, so read the FP rate next to the match rate, never alone — which the exit code
+enforces rather than merely advises: below `--min-match-rate` the run exits 2 instead of
+reporting a rate it cannot stand behind.
 
 ## Attribution, and severity drift
 
@@ -319,8 +324,15 @@ so a scored run always states what it read; it is not enforced against the live 
 back `This command requires approval`, the review ends before it starts, and the run
 reports zero findings — the exact silent failure this benchmark exists to catch. The run
 therefore passes `--permission-mode dontAsk` with an explicit read-only `--allowedTools`
-list: the two `gh pr` reads, the other `gh`/`git` read subcommands the skill reaches for,
-and `Read`/`Grep`/`Glob`/`Task`/`TodoWrite`.
+list: the two `gh pr` reads, the other `gh`/`git` read subcommands and the shell read
+utilities (`jq`, `grep`, `find`, `head`, …) the skill reaches for, the file tools, and the
+subagent dispatch tool under **both** names the CLI has given it — `Task` in older builds,
+`Agent` in the installed one. Granting one name only would deny every subagent the skill
+runs on, which is most of the review.
+
+`bash -c` is deliberately not granted, even though the skill wraps its reusability-search
+globs in it: granting `bash -c` grants arbitrary shell, which is exactly the write access
+the rest of the list withholds. That search degrades, loudly, and the run says so.
 
 `dontAsk` states the headless contract outright — never prompt, refuse whatever the
 allowlist does not cover. `bypassPermissions` would also make the run work, and is the
@@ -342,13 +354,20 @@ there is nobody to answer them. Denying it states that where the appended prompt
 asks, and keeps an unanswerable checkpoint out of the bucket that means "this harness is
 misconfigured".
 
-**A refusal is not an empty review.** The CLI reports every refused tool call in the
-`result` event, and the run splits them in two. A denial the deny list explains is the
-guard working — the skill reached for its posting path and was stopped — and is recorded
-under `permissions.blocked_by_policy` without failing the run. Any other denial means the
-run was refused something it was meant to have; those land in `permissions.refused` and
-exit **3** with the first one named. Without that split, a machine that grants nothing and
-a PR with nothing wrong both print `findings=0` and exit 1.
+**A refusal is not an empty review.** The CLI reports refused tool calls in `result`
+events — a subagent's in its own, which is why every result event is read and not just
+the last — and the run splits them in two. A denial the deny list explains is the guard
+working — the skill reached for its posting path and was stopped — and is recorded under
+`permissions.blocked_by_policy` without failing the run. Any other denial means the run
+was refused something it was meant to have, and lands in `permissions.refused`: printed as
+a `PERMISSION REFUSED` line naming the first, and, **when the run also produced no
+findings**, exit **3**. Without that split, a machine that grants nothing and a PR with
+nothing wrong both print `findings=0` and exit 1. A refused run that still produced
+findings is worth scoring with the warning attached, so it is not thrown away over one
+denied command.
+
+Rules are matched per shell segment, so `cd repo && gh pr comment …` is still recognised
+as the posting path rather than reported as a refusal nobody asked for.
 
 `run.py`'s own exit codes — `score.py`'s three are listed further up:
 
@@ -357,7 +376,7 @@ a PR with nothing wrong both print `findings=0` and exit 1.
 | 0 | findings parsed |
 | 1 | none parsed — nearly always a budget cut-off or a format change, not a clean PR |
 | 2 | the CLI failed or timed out (`error` carries its stderr tail) |
-| 3 | a tool call the harness meant to allow was refused; this run measured nothing |
+| 3 | nothing parsed **and** a tool call the harness meant to allow was refused |
 
 The timeout is enforced by a watchdog that kills the child at the deadline, not by a
 clock check inside the read loop: `for line in proc.stdout` blocks until a line arrives,
@@ -374,14 +393,16 @@ whose severity line the transcript dropped).
 **Verification status**: `run.py`'s parsing, permission policy, denial classification,
 exit codes and output shape are unit tested, and the output is confirmed to load cleanly
 into `score.py`. The permission flags were additionally exercised against the installed
-CLI on a throwaway fixture with a stub `gh` on `PATH`: with settings pinned to a directory
-holding none, `gh pr view` and `gh pr diff` are refused without the allowlist and run with
-it; `gh pr comment` is refused either way and appears in `permission_denials`; a deny rule
-beats an allow rule for the same command; and `Write` is reported disabled "in subagents
-as well as here".
+CLI on a throwaway fixture with a stub `gh` on `PATH` and settings pinned to a directory
+holding none. Confirmed there: `gh pr view` and `gh pr diff` are refused without the
+allowlist and run with it; a piped `gh pr view … | jq …` runs with both segments granted;
+`gh pr comment` is refused either way and lands in `permission_denials`; a deny rule beats
+an allow rule for the same command; `Write` is reported disabled "in subagents as well as
+here"; the dispatch tool is `Agent` in this build; and a subagent's refusal surfaces in
+its own `result` event rather than the parent's.
 
 It has still **not** been executed end-to-end against a live PR — that costs a full review
-run against a private repo. Treat its per-run cost, timeout and budget defaults as
-untested estimates, and the first live run as the thing that establishes whether the
-allowlist covers every command the skill actually reaches for. Exit 3 is what will say so
-if it does not.
+run against a private repo. Only a live run will settle whether the allowlist covers every
+command the skill actually reaches for, and the per-run cost, timeout and budget defaults
+remain untested estimates. The `PERMISSION REFUSED` line is what will name the gap if
+there is one.
