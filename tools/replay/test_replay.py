@@ -833,31 +833,31 @@ class TestStream(unittest.TestCase):
         cmd = [sys.executable, "-c",
                "import time,sys; sys.stdout.write('x\\n'); sys.stdout.flush(); "
                "time.sleep(30)"]
-        _, _, seconds, _, error = runner.stream(cmd, cwd=".", timeout=1)
-        self.assertEqual(error, "timeout")
-        self.assertLess(seconds, 15)
+        _, run = runner.stream(cmd, cwd=".", timeout=1)
+        self.assertEqual(run["error"], "timeout")
+        self.assertLess(run["seconds"], 15)
 
     def test_a_silent_child_is_killed_at_the_deadline(self):
         cmd = [sys.executable, "-c", "import time; time.sleep(30)"]
-        _, _, seconds, _, error = runner.stream(cmd, cwd=".", timeout=1)
-        self.assertEqual(error, "timeout")
-        self.assertLess(seconds, 15)
+        _, run = runner.stream(cmd, cwd=".", timeout=1)
+        self.assertEqual(run["error"], "timeout")
+        self.assertLess(run["seconds"], 15)
 
     def test_stderr_reaches_the_caller_instead_of_being_discarded(self):
         cmd = [sys.executable, "-c",
                "import sys; sys.stderr.write('fatal auth error\\n'); sys.exit(3)"]
-        _, _, _, _, error = runner.stream(cmd, cwd=".", timeout=10)
-        self.assertIn("fatal auth error", error)
-        self.assertIn("exit 3", error)
+        _, run = runner.stream(cmd, cwd=".", timeout=10)
+        self.assertIn("fatal auth error", run["error"])
+        self.assertIn("exit 3", run["error"])
 
     def test_a_clean_run_reports_no_error(self):
         event = json.dumps({"type": "result", "total_cost_usd": 1.5,
                             "result": "Severity: Serious"})
         cmd = [sys.executable, "-c", f"print({event!r})"]
-        text, cost, _, denials, error = runner.stream(cmd, cwd=".", timeout=10)
-        self.assertIsNone(error)
-        self.assertEqual(cost, 1.5)
-        self.assertEqual(denials, [])
+        text, run = runner.stream(cmd, cwd=".", timeout=10)
+        self.assertIsNone(run["error"])
+        self.assertEqual(run["cost_usd"], 1.5)
+        self.assertEqual(run["denials"], [])
         self.assertIn("Severity: Serious", text)
 
     def test_refused_tool_calls_are_carried_out_of_the_transcript(self):
@@ -868,9 +868,9 @@ class TestStream(unittest.TestCase):
                                 {"tool_name": "Bash",
                                  "tool_input": {"command": "gh pr diff https://x/pull/1"}}]})
         cmd = [sys.executable, "-c", f"print({event!r})"]
-        _, _, _, denials, _ = runner.stream(cmd, cwd=".", timeout=10)
-        self.assertEqual(len(denials), 1)
-        self.assertEqual(denials[0]["tool_name"], "Bash")
+        _, run = runner.stream(cmd, cwd=".", timeout=10)
+        self.assertEqual(len(run["denials"]), 1)
+        self.assertEqual(run["denials"][0]["tool_name"], "Bash")
 
     def test_denials_from_every_result_event_are_kept(self):
         """A subagent's refusals arrive in its own result event; the parent's final one
@@ -881,8 +881,8 @@ class TestStream(unittest.TestCase):
         parent = json.dumps({"type": "result", "result": "Severity: Serious",
                              "permission_denials": []})
         cmd = [sys.executable, "-c", f"print({subagent!r}); print({parent!r})"]
-        _, _, _, denials, _ = runner.stream(cmd, cwd=".", timeout=10)
-        self.assertEqual(len(denials), 1)
+        _, run = runner.stream(cmd, cwd=".", timeout=10)
+        self.assertEqual(len(run["denials"]), 1)
 
 
 class TestPerturbation(unittest.TestCase):
@@ -1080,18 +1080,22 @@ class TestRunExitCodes(unittest.TestCase):
     TRANSCRIPT = ("Severity: Serious\nFile: src/alpha/parser.ts:10\n"
                   "Issue: parseWidget swallows a malformed payload\n")
 
-    def _run_main(self, text, denials, error=None):
+    def _run_main(self, text, denials, error=None, dispatches=4, argv=()):
         buffer = io.StringIO()
         original_argv, original_stream = sys.argv, runner.stream
+        telemetry = {"cost_usd": 0.5, "seconds": 1.0, "denials": denials,
+                     "dispatches": dispatches, "error": error}
         with tempfile.TemporaryDirectory() as d:
             out = pathlib.Path(d) / "run.json"
             sys.argv = ["run.py", "--pr", "https://github.com/o/r/pull/7",
-                        "--out", str(out)]
-            runner.stream = lambda *a, **k: (text, 0.5, 1.0, denials, error)
+                        "--out", str(out), *argv]
+            runner.stream = lambda *a, **k: (text, telemetry)
             try:
                 with contextlib.redirect_stdout(buffer):
                     status = runner.main()
-                payload = json.loads(out.read_text())
+                # A pre-flight failure returns before the CLI is launched, so there is
+                # no run to record and no file to read.
+                payload = json.loads(out.read_text()) if out.exists() else None
             finally:
                 sys.argv, runner.stream = original_argv, original_stream
         return status, payload, buffer.getvalue()
@@ -1132,6 +1136,259 @@ class TestRunExitCodes(unittest.TestCase):
     def test_a_dead_cli_outranks_everything_else(self):
         status, _, _ = self._run_main("", [], error="exit 1: not logged in")
         self.assertEqual(status, runner.EXIT_CLI_ERROR)
+
+    def test_an_unreadable_review_gets_its_own_code_and_keeps_its_text(self):
+        review = TestFormatFailure.MARKDOWN_REVIEW
+        status, payload, text = self._run_main(review, [])
+        self.assertEqual(status, runner.EXIT_FORMAT_FAILURE)
+        self.assertIn("FORMAT FAILURE", text)
+        self.assertTrue(payload["format"]["failure"])
+        self.assertEqual(payload["findings"], [])
+        self.assertIn("cache is never invalidated", payload["raw_review"]["text"])
+
+    def test_an_unrelated_refusal_is_not_reported_as_the_cause_of_an_empty_run(self):
+        """Both happened on the live run and neither caused the other. Exit 3 claimed the
+        refused command was why nothing parsed; the format change was."""
+        status, _, text = self._run_main(TestFormatFailure.MARKDOWN_REVIEW, [
+            {"tool_name": "Bash",
+             "tool_input": {"command": "for n in 1 2; do sed -n \"${n}p\" a.ts; done"}}])
+        self.assertEqual(status, runner.EXIT_FORMAT_FAILURE)
+        self.assertIn("PERMISSION REFUSED", text)
+        self.assertIn("separate question", text)
+        self.assertLess(text.index("PERMISSION REFUSED"), text.index("FORMAT FAILURE"))
+
+    def test_a_clean_run_is_still_reported_as_clean_not_as_a_format_failure(self):
+        status, payload, text = self._run_main(TestFormatFailure.CLEAN_REVIEW, [])
+        self.assertEqual(status, runner.EXIT_NO_FINDINGS)
+        self.assertNotIn("FORMAT FAILURE", text)
+        self.assertFalse(payload["format"]["failure"])
+
+    def test_a_single_pass_run_says_so_next_to_its_finding_count(self):
+        status, payload, text = self._run_main(self.TRANSCRIPT, [], dispatches=0)
+        self.assertEqual(status, runner.EXIT_OK)
+        self.assertEqual(payload["subagent_dispatches"], 0)
+        self.assertIn("subagents=0", text)
+        self.assertIn("SINGLE-PASS", text)
+
+    def test_a_multi_agent_run_records_its_dispatches_and_does_not_warn(self):
+        _, payload, text = self._run_main(self.TRANSCRIPT, [], dispatches=4)
+        self.assertEqual(payload["subagent_dispatches"], 4)
+        self.assertNotIn("SINGLE-PASS", text)
+
+    def test_the_run_states_which_skill_produced_it(self):
+        _, payload, _ = self._run_main(self.TRANSCRIPT, [])
+        self.assertIn("skill", payload)
+        self.assertEqual(payload["skill"]["name"], "review-pr")
+
+    def test_a_skill_mismatch_fails_before_the_budget_is_spent(self):
+        """The CLI is never launched: the run as configured would measure a different
+        artifact than the one named, and finding that out costs a full review."""
+        with tempfile.TemporaryDirectory() as branch:
+            status, payload, text = self._run_main(
+                self.TRANSCRIPT, [], argv=("--skill-dir", branch))
+        self.assertEqual(status, runner.EXIT_CLI_ERROR)
+        self.assertIn("SKILL MISMATCH", text)
+        self.assertIsNone(payload)
+
+
+class TestFormatFailure(unittest.TestCase):
+    """The counters that exist to make silent loss loud only catch output that *almost*
+    parsed. A review emitted in a wholly different shape trips none of them: no findings,
+    no unparsed blocks, no orphan fields — every number agreeing nothing was lost."""
+
+    # A real review in a shape the field grammar cannot see: headings instead of
+    # `Severity:` lines, and the field labels bolded so the `^\s*field\s*:` anchor misses.
+    MARKDOWN_REVIEW = ("# Review of the widget cache\n\n"
+                       "### Critical - the cache is never invalidated after a write\n\n"
+                       "`src/alpha/cache.ts:42` - Rule-class `stale-read`\n\n"
+                       "**Why it matters**: a second reader sees the pre-write value.\n"
+                       "**Suggested fix**: drop the entry inside the same transaction.\n"
+                       "**Inverse risk**: dropping it outside re-opens the window.\n\n"
+                       "### Serious - parseWidget swallows a malformed payload\n\n"
+                       "`src/alpha/parser.ts:118` - Rule-class `swallowed-error`\n\n"
+                       "**Suggested fix**: raise instead of returning an empty list.\n"
+                       "**Class-sites**: 2 of 3 parsers.\n") + "prose. " * 300
+
+    CLEAN_REVIEW = ("# Review of the widget cache\n\nNothing blocking. "
+                    "Verified clean: the invalidation runs inside the transaction, the "
+                    "parser raises on a malformed payload, and the two callers agree on "
+                    "units.\n") + "I checked each hunk against its caller. " * 100
+
+    def test_a_review_the_parser_cannot_read_is_not_an_empty_pr(self):
+        findings, dropped = runner.parse_findings(self.MARKDOWN_REVIEW, 7)
+        self.assertEqual(findings, [])
+        self.assertEqual(dropped, {"blocks": 0, "orphan_fields": 0})
+        self.assertTrue(runner.diagnose_format(self.MARKDOWN_REVIEW, findings,
+                                               dropped)["failure"])
+
+    def test_a_clean_review_is_never_called_a_format_failure(self):
+        """The false direction that matters: calling a real clean run a harness failure
+        teaches the operator to disbelieve the signal."""
+        findings, dropped = runner.parse_findings(self.CLEAN_REVIEW, 7)
+        self.assertGreater(len(self.CLEAN_REVIEW), runner.MIN_REVIEW_CHARS)
+        self.assertFalse(runner.diagnose_format(self.CLEAN_REVIEW, findings,
+                                                dropped)["failure"])
+
+    def test_one_recognised_field_line_means_the_grammar_survived(self):
+        """A run that parsed something is an ordinary parse with drops, not a format
+        change, however much unparsed vocabulary surrounds it."""
+        text = self.MARKDOWN_REVIEW + "\nSeverity: Minor\nFile: src/beta/store.ts\n" \
+                                      "Issue: storeWidget crosses the module boundary\n"
+        findings, dropped = runner.parse_findings(text, 7)
+        self.assertEqual(len(findings), 1)
+        self.assertFalse(runner.diagnose_format(text, findings, dropped)["failure"])
+
+    def test_an_orphan_field_alone_still_counts_as_the_grammar_surviving(self):
+        text = self.MARKDOWN_REVIEW + "\nCategory: Correctness\n"
+        findings, dropped = runner.parse_findings(text, 7)
+        self.assertEqual(dropped["orphan_fields"], 1)
+        self.assertFalse(runner.diagnose_format(text, findings, dropped)["failure"])
+
+    def test_a_short_output_cannot_trip_the_gate(self):
+        """Below a page of text there is no review to have lost, whatever words it used."""
+        text = "**Suggested fix**: rename it.\n**Inverse risk**: none.\n"
+        findings, dropped = runner.parse_findings(text, 7)
+        self.assertLess(len(text), runner.MIN_REVIEW_CHARS)
+        self.assertFalse(runner.diagnose_format(text, findings, dropped)["failure"])
+
+    def test_one_stray_marker_in_long_prose_is_a_turn_of_phrase(self):
+        text = self.CLEAN_REVIEW + "\nNo suggested fix is needed for any of it.\n"
+        findings, dropped = runner.parse_findings(text, 7)
+        self.assertEqual(runner.diagnose_format(text, findings, dropped)["markers"], 1)
+        self.assertFalse(runner.diagnose_format(text, findings, dropped)["failure"])
+
+
+class TestRawReviewSurvivesTheParser(unittest.TestCase):
+    """An output nothing can parse is an output nobody can audit. The review has to
+    outlive the grammar that failed to read it."""
+
+    def test_the_review_text_is_persisted_verbatim(self):
+        kept = runner.raw_review(TestFormatFailure.MARKDOWN_REVIEW)
+        self.assertIn("cache is never invalidated", kept["text"])
+        self.assertEqual(kept["chars"], len(TestFormatFailure.MARKDOWN_REVIEW))
+        self.assertFalse(kept["truncated"])
+
+    def test_an_oversized_review_is_clipped_and_says_how_long_it_really_was(self):
+        text = "x" * (runner.RAW_REVIEW_LIMIT + 5000)
+        kept = runner.raw_review(text)
+        self.assertTrue(kept["truncated"])
+        self.assertEqual(kept["chars"], len(text))
+        self.assertEqual(len(kept["text"]), runner.RAW_REVIEW_LIMIT)
+
+    def test_score_py_never_reads_the_raw_review_as_findings(self):
+        """Prose scored against adjudicated verdicts would invent a measurement out of
+        text nobody structured."""
+        payload = {"findings": [], "raw_review": runner.raw_review(
+            TestFormatFailure.MARKDOWN_REVIEW)}
+        tmp = pathlib.Path(__file__).with_name("_test_raw_review.json")
+        tmp.write_text(json.dumps(payload))
+        try:
+            self.assertEqual(score.load_findings(tmp), [])
+        finally:
+            tmp.unlink()
+
+
+class TestResultEchoIsNotCountedTwice(unittest.TestCase):
+    def test_the_final_result_event_does_not_duplicate_the_review(self):
+        """The CLI's result event restates the last assistant message verbatim. Appended
+        blind it doubles every finding parsed out of it, and the matcher can only report
+        the copies as unmatched — a duplicate-driven drop in the measured match rate."""
+        review = ("Severity: Serious\nFile: src/alpha/parser.ts:118\n"
+                  "Issue: parseWidget swallows a malformed payload\n")
+        assistant = json.dumps({"type": "assistant",
+                                "message": {"content": [{"type": "text", "text": review}]}})
+        result = json.dumps({"type": "result", "total_cost_usd": 1.0, "result": review})
+        cmd = [sys.executable, "-c", f"print({assistant!r}); print({result!r})"]
+        text, _ = runner.stream(cmd, cwd=".", timeout=10)
+        findings, _ = runner.parse_findings(text, 7)
+        self.assertEqual(len(findings), 1)
+
+    def test_a_result_with_no_assistant_text_before_it_is_still_kept(self):
+        result = json.dumps({"type": "result", "total_cost_usd": 1.0,
+                             "result": "Severity: Serious\nFile: a.ts:1\nIssue: x\n"})
+        cmd = [sys.executable, "-c", f"print({result!r})"]
+        text, _ = runner.stream(cmd, cwd=".", timeout=10)
+        self.assertEqual(len(runner.parse_findings(text, 7)[0]), 1)
+
+
+class TestSubagentDispatchCount(unittest.TestCase):
+    """Zero dispatches means the phases that live inside subagents never ran. The run
+    that exposed this counted permission denials but never counted dispatches, so a
+    single-pass review was indistinguishable in the JSON from a four-agent one."""
+
+    def _stream_with(self, tool_names):
+        content = [{"type": "text", "text": "working"}]
+        content += [{"type": "tool_use", "name": n, "input": {}} for n in tool_names]
+        event = json.dumps({"type": "assistant", "message": {"content": content}})
+        cmd = [sys.executable, "-c", f"print({event!r})"]
+        return runner.stream(cmd, cwd=".", timeout=10)[1]
+
+    def test_dispatches_are_counted_under_both_tool_names(self):
+        self.assertEqual(self._stream_with(["Agent", "Task", "Agent"])["dispatches"], 3)
+
+    def test_other_tool_calls_are_not_counted_as_dispatches(self):
+        self.assertEqual(self._stream_with(["Read", "Grep", "Bash"])["dispatches"], 0)
+
+    def test_a_run_with_no_dispatches_reports_zero_rather_than_nothing(self):
+        self.assertEqual(self._stream_with([])["dispatches"], 0)
+
+
+class TestSkillProvenance(unittest.TestCase):
+    """`--model` pins the model; the artifact actually under measurement was neither
+    pinned nor recorded, so a scored run could not state which skill produced it."""
+
+    def _skill(self, root, body="---\nname: review-pr\n---\nreview it\n"):
+        d = pathlib.Path(root) / ".claude" / "skills" / "review-pr"
+        (d / "references").mkdir(parents=True)
+        (d / "SKILL.md").write_text(body)
+        (d / "references" / "finding-output-format.md").write_text("Severity:\nFile:\n")
+        return d
+
+    def test_the_skill_the_cli_will_load_is_resolved_and_fingerprinted(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = self._skill(d)
+            found = runner.resolve_skill(d, home=d)
+            self.assertEqual(found["resolved"], str(skill.resolve()))
+            self.assertEqual(len(found["fingerprint"]), 12)
+
+    def test_editing_the_skill_moves_the_fingerprint(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = self._skill(d)
+            before = runner.fingerprint_skill(skill)
+            (skill / "SKILL.md").write_text("---\nname: review-pr\n---\nreview it well\n")
+            self.assertNotEqual(runner.fingerprint_skill(skill), before)
+
+    def test_renaming_a_reference_moves_the_fingerprint(self):
+        """A hash over contents alone would call a renamed reference file the same skill."""
+        with tempfile.TemporaryDirectory() as d:
+            skill = self._skill(d)
+            before = runner.fingerprint_skill(skill)
+            reference = skill / "references" / "finding-output-format.md"
+            reference.rename(reference.with_name("output-format.md"))
+            self.assertNotEqual(runner.fingerprint_skill(skill), before)
+
+    def test_a_directory_the_cli_will_load_is_recorded_as_pinned(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = self._skill(d)
+            found = runner.resolve_skill(d, requested=str(skill), home=d)
+            self.assertTrue(found["pinned"])
+            self.assertEqual(found["requested"], str(skill.resolve()))
+
+    def test_asking_for_a_directory_the_cli_will_not_load_is_not_pinned(self):
+        """The failure the operator hit: the run measured the published skill while the
+        branch under test sat in a directory the CLI never looked at."""
+        with tempfile.TemporaryDirectory() as installed, \
+                tempfile.TemporaryDirectory() as branch:
+            self._skill(installed)
+            found = runner.resolve_skill(installed, requested=branch, home=installed)
+            self.assertFalse(found["pinned"])
+            self.assertNotEqual(found["resolved"], found["requested"])
+
+    def test_an_unresolvable_skill_says_so_instead_of_guessing(self):
+        with tempfile.TemporaryDirectory() as d:
+            found = runner.resolve_skill(d, home=d)
+            self.assertIsNone(found["resolved"])
+            self.assertIsNone(found["fingerprint"])
 
 
 class TestOrphanFields(unittest.TestCase):

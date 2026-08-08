@@ -7,7 +7,7 @@ block out of the streamed transcript. That coupling is deliberate: the format fi
 one place the shape is defined, and a second JSON emitter in the skill would be a second
 shape to keep in sync.
 
-Three properties this harness must have, in order:
+Four properties this harness must have, in order:
 
 1. **It never writes to a real PR.** The skill's Phase 4 posts reviews through `gh`, and
    a benchmark run that comments on someone's PR is an incident, not a measurement. The
@@ -18,16 +18,24 @@ Three properties this harness must have, in order:
    and any refusal left over is reported as a refusal — never as an empty review.
 3. **It is reproducible.** Replay MERGED or CLOSED PRs. An open PR's head moves, so the
    run scores against a commit the frozen verdicts were never adjudicated on. `--sha` is
-   recorded in the output so a scored run always states what it read.
+   recorded in the output so a scored run always states what it read, and the skill
+   directory that produced the review is resolved and fingerprinted into the same output.
+4. **It cannot lose a review it obtained.** The parser reads one grammar; the reviewer is
+   free to emit another. A review that arrives in an unparseable shape is reported as a
+   format failure with its own exit code, and the text is persisted verbatim so the
+   findings survive the parser that could not read them.
 
-Exit codes: 0 findings parsed, 1 none parsed, 2 the CLI failed or timed out, 3 a tool
-call the harness meant to allow was refused.
+Exit codes: 0 findings parsed, 1 none parsed, 2 the CLI failed or timed out or is
+misconfigured, 3 nothing parsed and a tool call the harness meant to allow was refused,
+4 a review arrived and no part of it parsed.
 
 Usage:
     python3 tools/replay/run.py --pr https://github.com/o/r/pull/123 --out run.json
     python3 tools/replay/run.py --pr <url> --sha <merge-sha> --budget 8.0 --out run.json
+    python3 tools/replay/run.py --pr <url> --skill-dir skills/review-pr --out run.json
 """
 import argparse
+import hashlib
 import json
 import pathlib
 import re
@@ -43,6 +51,38 @@ STDERR_TAIL = 400
 
 # Enough of a refused command to recognise which one it was.
 DENIAL_LABEL = 120
+
+# The review text is kept in the output so a run survives its own format bugs, but a
+# runaway transcript must not turn a findings file into something nothing will open.
+# The head is what is kept: the review leads with its findings and trails into process
+# notes, so a truncated tail loses the least.
+RAW_REVIEW_LIMIT = 400_000
+
+# Vocabulary the finding format owns and ordinary review prose does not. A reviewer who
+# emitted findings reaches for these words whatever shape it wraps them in; a genuinely
+# clean PR has no fix to suggest and no rule-class to name, so it writes none of them.
+# `Severity`, `File` and `Issue` are deliberately absent — they are ordinary English and
+# would fire on a clean review that merely discusses severity.
+FORMAT_MARKERS = ("suggested fix", "inverse risk", "rule-class", "class-sites",
+                  "why it matters")
+
+# Both gates must trip before a run is called a format failure, and both are set where a
+# clean review cannot reach them. One marker is a turn of phrase ("no suggested fix is
+# needed"); two is the format's vocabulary being used. The character floor is roughly a
+# page — below it there is no review to have lost, and calling a short clean run a format
+# failure would be the same silent-lie defect pointed the other way.
+MIN_FORMAT_MARKERS = 2
+MIN_REVIEW_CHARS = 2000
+
+# The names the dispatch tool has carried across CLI builds. Counted, not just allowed:
+# the skill's reviewer phases live inside subagents, so a run that dispatched none
+# answered none of the questions those phases exist to ask.
+DISPATCH_TOOLS = ("Agent", "Task")
+
+# The skill this harness measures, and where a CLI build looks for it. Project scope
+# outranks user scope, which is the order the CLI itself resolves in.
+SKILL_NAME = "review-pr"
+SKILL_MANIFEST = "SKILL.md"
 
 FIELDS = {
     "severity": "severity", "confidence": "confidence", "file": "file",
@@ -82,9 +122,14 @@ DENY = ["Bash(gh pr review:*)", "Bash(gh pr comment:*)", "Bash(gh pr edit:*)",
 # name wrong denies every one of them — and a rule naming a tool that does not exist in a
 # given build costs nothing.
 #
-# `bash -c` is deliberately absent even though the skill's reusability search wraps its
-# globs in it: granting it grants arbitrary shell, which is the write access the rest of
-# this list exists to withhold. That search degrades and says so, which is the trade.
+# Shell control flow is deliberately absent — `bash -c`, and equally `for`, `while`, `if`
+# and any other construct that opens a shell. Granting any of them grants arbitrary shell,
+# which is the write access the rest of this list exists to withhold. This costs real
+# reads: batching line lookups as `for n in 64 151; do sed -n "${n}p" f; done` is a
+# natural thing for a reviewer to reach for, and `_segments` splits it on `;` into pieces
+# whose first word is `for`, matching no prefix rule. Such a loop is refused, shows up in
+# `permissions.refused`, and the reviewer falls back to one command per read. That trade
+# stands: a rule that admits a read-only loop admits every other loop too.
 #
 # That reasoning does not fully survive the list it introduces, and saying so here is
 # cheaper than discovering it later. `sed -i` writes in place, `find` takes `-delete` and
@@ -117,6 +162,7 @@ EXIT_OK = 0
 EXIT_NO_FINDINGS = 1
 EXIT_CLI_ERROR = 2
 EXIT_PERMISSION_REFUSED = 3
+EXIT_FORMAT_FAILURE = 4
 
 GUARD = (
     "You are running inside a non-interactive benchmark harness. Do NOT post, comment, "
@@ -168,6 +214,91 @@ def parse_findings(text, pr):
         f["source"] = "review-pr-skill"
         kept.append(f)
     return kept, {"blocks": len(findings) - len(kept), "orphan_fields": orphans}
+
+
+def diagnose_format(text, findings, dropped):
+    """Did a review arrive that the grammar could not see any part of?
+
+    `unparsed.blocks` and `unparsed.orphan_fields` only catch output that *almost*
+    parsed — a block missing its file, a field line before its severity. Output in a
+    wholly different shape trips neither, so a reviewer that emitted its findings as
+    markdown headings and `**Suggested fix**:` in bold reports zero findings, zero
+    unparsed blocks and zero orphans: every counter agreeing that nothing was lost.
+
+    That case is separated from a genuinely clean PR by two gates, both of which must
+    trip. Nothing parsed *at all* — one recognised field line anywhere means the grammar
+    was understood and this is an ordinary parse, not a format change. And the text both
+    runs long and uses the format's own vocabulary, which a clean review has no occasion
+    to write.
+
+    The gates are set to under-report on purpose. A reviewer that abandons the grammar
+    *and* its vocabulary — plain JSON, or `Fix:` for `Suggested fix:` — passes this
+    undetected and lands on exit 1, where the operator reads a `raw_review` that plainly
+    is a review. Calling a real clean run a format failure is the worse error: it teaches
+    the operator to disbelieve the signal, which is how the next real one gets waved
+    through.
+    """
+    markers = sum(text.lower().count(marker) for marker in FORMAT_MARKERS)
+    parsed_anything = bool(findings) or dropped["blocks"] or dropped["orphan_fields"]
+    failure = (not parsed_anything
+               and len(text) >= MIN_REVIEW_CHARS
+               and markers >= MIN_FORMAT_MARKERS)
+    return {"failure": failure, "markers": markers}
+
+
+def raw_review(text):
+    """The review as the reviewer wrote it, so a run outlives the parser that read it.
+
+    Held under its own key and never merged into `findings`: `score.py` reads `findings`
+    and would otherwise be handed prose to match against adjudicated verdicts, inventing
+    a measurement out of text nobody structured. `chars` is the length before truncation,
+    so a clipped review says so rather than looking short.
+    """
+    return {"chars": len(text), "truncated": len(text) > RAW_REVIEW_LIMIT,
+            "text": text[:RAW_REVIEW_LIMIT]}
+
+
+def fingerprint_skill(path):
+    """Content hash of a skill directory, so a scored run states what it measured.
+
+    Paths and bytes both, in sorted order: a renamed reference file changes the artifact
+    under test as surely as an edited one, and a hash over contents alone would miss it.
+    """
+    digest = hashlib.sha256()
+    for f in sorted(p for p in path.rglob("*") if p.is_file()):
+        digest.update(str(f.relative_to(path)).encode())
+        digest.update(f.read_bytes())
+    return digest.hexdigest()[:12]
+
+
+def resolve_skill(repo, requested=None, name=SKILL_NAME, home=None):
+    """Which skill directory the CLI will load, and whether it is the one asked for.
+
+    `claude -p` has no flag that points a session at a skill directory — `--plugin-dir`
+    takes plugins, not skills — so the run cannot pin what it measures. It can state it.
+    The search order mirrors the CLI's own: project scope before user scope.
+
+    `--skill-dir` is therefore a *claim to verify*, not an install. When it names a
+    directory the CLI will not load, the run is measuring a different artifact than the
+    operator asked for, and saying so before spending a review's worth of budget is the
+    entire point of the check.
+
+    `home` is a parameter so the user scope can be pointed somewhere else. Without it a
+    test asserting "nothing resolves" passes or fails on whether the machine running it
+    happens to have the skill installed, which is not a property of this code.
+    """
+    home = pathlib.Path(home) if home else pathlib.Path.home()
+    candidates = [pathlib.Path(repo).expanduser() / ".claude" / "skills" / name,
+                  home / ".claude" / "skills" / name]
+    resolved = next((c for c in candidates if (c / SKILL_MANIFEST).is_file()), None)
+    wanted = pathlib.Path(requested).expanduser().resolve() if requested else None
+    return {
+        "name": name,
+        "requested": str(wanted) if wanted else None,
+        "resolved": str(resolved.resolve()) if resolved else None,
+        "fingerprint": fingerprint_skill(resolved) if resolved else None,
+        "pinned": bool(wanted and resolved and resolved.resolve() == wanted),
+    }
 
 
 def _segments(command):
@@ -242,17 +373,28 @@ def build_command(pr_url, budget, model):
 
 
 def stream(cmd, cwd, timeout):
-    """Run the CLI, returning (assistant_text, cost_usd, seconds, denials, error).
+    """Run the CLI, returning (assistant_text, telemetry).
+
+    Telemetry carries `cost_usd`, `seconds`, `denials`, `dispatches` and `error` in a dict
+    rather than as four more positional returns, because the caller of a six-tuple writes
+    `_, _, _, _, x =` and the next field added to it is dropped without a diagnostic —
+    which is the shape of failure this whole module exists to make loud.
 
     Refused tool calls are collected rather than left in the transcript: they are the one
     signal that separates "the review was not allowed to read the PR" from "the review
     read the PR and found nothing", and both otherwise print as zero findings.
+
+    Subagent dispatches are counted for the same reason. The skill runs its reviewer
+    phases inside subagents, and a run where the dispatch tool was never exposed does the
+    whole review single-pass in main — a different experiment, producing none of the
+    output only a subagent writes, and otherwise indistinguishable in the JSON.
 
     stderr is captured rather than discarded: when the CLI dies before emitting a single
     event, stderr holds the only statement of why, and a harness that throws it away
     reports an auth failure or a bad flag as "this PR had no findings".
     """
     chunks, denials, cost, started = [], [], 0.0, time.time()
+    dispatches = 0
     timed_out = threading.Event()
     with tempfile.TemporaryFile(mode="w+") as errfile:
         proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=errfile,
@@ -280,6 +422,8 @@ def stream(cmd, cwd, timeout):
                     for c in event.get("message", {}).get("content", []):
                         if c.get("type") == "text":
                             chunks.append(c.get("text", ""))
+                        elif c.get("type") == "tool_use" and c.get("name") in DISPATCH_TOOLS:
+                            dispatches += 1
                 elif event.get("type") == "result":
                     cost = event.get("total_cost_usd", 0.0)
                     # Every result event, not just the last: a subagent's refusals arrive
@@ -287,7 +431,14 @@ def stream(cmd, cwd, timeout):
                     # skill runs most of the review inside subagents, so reading only the
                     # last event would miss almost every refusal there is to see.
                     denials.extend(event.get("permission_denials") or [])
-                    chunks.append(event.get("result") or "")
+                    # The result event restates the last assistant message verbatim.
+                    # Appended blind it doubles the review, and with it every finding
+                    # parsed out of it — inflating the run's finding count with duplicates
+                    # the matcher can only report as unmatched, which drags the match rate
+                    # down and reads as a worse reviewer.
+                    result_text = event.get("result") or ""
+                    if result_text and result_text not in "\n".join(chunks):
+                        chunks.append(result_text)
         finally:
             watchdog.cancel()
             if proc.poll() is None:
@@ -305,7 +456,9 @@ def stream(cmd, cwd, timeout):
         error = None
     # One join for both paths. Splicing the chunks differently on the way out of a
     # timeout silently changes how the parser sees block boundaries.
-    return "\n".join(chunks), cost, time.time() - started, denials, error
+    return "\n".join(chunks), {"cost_usd": cost, "seconds": time.time() - started,
+                               "denials": denials, "dispatches": dispatches,
+                               "error": error}
 
 
 def main():
@@ -322,6 +475,10 @@ def main():
                          "off during Phase 1 and reads as 'found nothing'.")
     ap.add_argument("--timeout", type=int, default=3600, help="seconds")
     ap.add_argument("--model", help="pin the model so runs are comparable over time")
+    ap.add_argument("--skill-dir", help="the skill directory this run is meant to "
+                                        "measure. Verified against the one the CLI will "
+                                        "actually load, and recorded either way — the "
+                                        "CLI has no flag that pins it")
     ap.add_argument("--transcript", help="also write the raw assistant text")
     args = ap.parse_args()
 
@@ -330,32 +487,70 @@ def main():
     if pr_number is None:
         ap.error(f"cannot read a PR number out of {args.pr}")
 
+    repo = str(pathlib.Path(args.repo).expanduser())
+    skill = resolve_skill(repo, args.skill_dir)
+    if args.skill_dir and not skill["pinned"]:
+        # Before the budget, not after: a run that measures the published skill while the
+        # operator is testing a branch answers a question nobody asked, and it costs a
+        # full review to find out.
+        print(f"SKILL MISMATCH — asked to measure {skill['requested']}, but the CLI will "
+              f"load {skill['resolved'] or 'a skill this harness cannot see'}. Link the "
+              f"directory into {repo}/.claude/skills/{skill['name']} and rerun.")
+        return EXIT_CLI_ERROR
+
     cmd = build_command(args.pr, args.budget, args.model)
-    text, cost, secs, denials, err = stream(cmd, str(pathlib.Path(args.repo).expanduser()),
-                                            args.timeout)
+    text, run = stream(cmd, repo, args.timeout)
     findings, dropped = parse_findings(text, pr_number)
-    blocked, refused = classify_denials(denials)
+    fmt = diagnose_format(text, findings, dropped)
+    blocked, refused = classify_denials(run["denials"])
+    err = run["error"]
     payload = {
         "pr": pr_number, "pr_url": args.pr, "sha": args.sha, "model": args.model,
-        "cost_usd": round(cost, 4), "seconds": round(secs, 1), "error": err,
+        "skill": skill,
+        "cost_usd": round(run["cost_usd"], 4), "seconds": round(run["seconds"], 1),
+        "error": err, "subagent_dispatches": run["dispatches"],
         "permissions": {"blocked_by_policy": blocked, "refused": refused},
-        "unparsed": dropped, "findings": findings,
+        "unparsed": dropped, "format": fmt,
+        "raw_review": raw_review(text), "findings": findings,
     }
     pathlib.Path(args.out).write_text(json.dumps(payload, indent=2))
     if args.transcript:
         pathlib.Path(args.transcript).write_text(text)
 
     print(f"pr={pr_number} findings={len(findings)} "
+          f"subagents={run['dispatches']} "
           f"unparsed_blocks={dropped['blocks']} "
           f"orphan_fields={dropped['orphan_fields']} "
           f"blocked_by_policy={len(blocked)} refused={len(refused)} "
-          f"cost=${cost:.2f} {secs:.0f}s {err or ''}")
+          f"skill={skill['fingerprint'] or 'unresolved'} "
+          f"cost=${run['cost_usd']:.2f} {run['seconds']:.0f}s {err or ''}")
     if err:
         return EXIT_CLI_ERROR
+    if not run["dispatches"]:
+        print("SINGLE-PASS — no subagent was dispatched. The skill's reviewer phases run "
+              "inside subagents, so whatever only a subagent writes was never written "
+              "and the questions those phases ask were never asked. This is a different "
+              "experiment from a multi-agent run; do not compare the two silently.")
+    # Refusals are reported before the emptiness is diagnosed, and separately from it.
+    # Folding them together once blamed an unrelated denied read for an empty findings
+    # list that a format change had caused, sending the operator after the wrong thing.
     if refused:
         print(f"PERMISSION REFUSED — {len(refused)} tool call(s) the harness meant to "
               f"allow were denied, so this run saw less of the PR than it should have. "
+              f"Whether that is why anything below is empty is a separate question. "
               f"First: {refused[0]}")
+    # Diagnosed in order of what the evidence supports. A review that arrived and did not
+    # parse is the strongest claim available — it names the defect outright — so it is
+    # tested before the weaker inference that a refusal is what emptied the run.
+    if fmt["failure"]:
+        print(f"FORMAT FAILURE — {payload['raw_review']['chars']} characters of review "
+              f"text and not one parseable field line. The reviewer produced findings "
+              f"this parser cannot see; they are preserved verbatim under `raw_review` "
+              f"in {args.out}. Read that text against the finding-output-format "
+              f"reference, work out which of the two moved, and fix it. Do not score "
+              f"this run — an empty findings list here means the harness failed, not the "
+              f"PR was clean.")
+        return EXIT_FORMAT_FAILURE
     if not findings:
         # Refusal gets its own code because the alternative is the failure this harness
         # exists to catch: a run never allowed to read the PR reporting the same empty

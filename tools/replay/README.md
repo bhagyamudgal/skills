@@ -54,6 +54,10 @@ python3 tools/replay/score.py --self-check
 python3 tools/replay/run.py --pr https://github.com/o/r/pull/123 --out run.json
 python3 tools/replay/score.py --findings run.json --json results.json
 
+# State which skill the run is meant to measure. Verified against the one the CLI will
+# actually load, and the run refuses to start if they differ.
+python3 tools/replay/run.py --pr <url> --skill-dir skills/review-pr --out run.json
+
 # Narrow the frozen set.
 python3 tools/replay/score.py --findings run.json --source review-pr-skill
 python3 tools/replay/score.py --findings run.json --corpus verdicts_skill
@@ -330,9 +334,11 @@ subagent dispatch tool under **both** names the CLI has given it — `Task` in o
 `Agent` in the installed one. Granting one name only would deny every subagent the skill
 runs on, which is most of the review.
 
-`bash -c` is deliberately not granted, even though the skill wraps its reusability-search
-globs in it: granting `bash -c` grants arbitrary shell, which is exactly the write access
-the rest of the list withholds. That search degrades, loudly, and the run says so.
+**No shell control flow is granted** — not `bash -c`, which the skill wraps its
+reusability-search globs in, and not `for` / `while` / `if` either. Granting any of them
+grants arbitrary shell, which is exactly the write access the rest of the list withholds.
+Those reads degrade, loudly, and the run says so; the segment-splitting that makes a
+read-only loop refusable is described under "A refusal is not an empty review" below.
 
 `dontAsk` states the headless contract outright — never prompt, refuse whatever the
 allowlist does not cover. `bypassPermissions` would also make the run work, and is the
@@ -367,16 +373,24 @@ findings is worth scoring with the warning attached, so it is not thrown away ov
 denied command.
 
 Rules are matched per shell segment, so `cd repo && gh pr comment …` is still recognised
-as the posting path rather than reported as a refusal nobody asked for.
+as the posting path rather than reported as a refusal nobody asked for. The same splitting
+is why **shell control flow stays refused**: a read-only batch such as
+`for n in 12 40; do sed -n "${n}p" f; done` splits into segments whose first word is
+`for`, which matches no prefix rule. Batching line reads is a natural thing for a reviewer
+to reach for, so this will recur — and it stays refused, because a rule that admits a
+read-only loop (`Bash(for:*)`) admits arbitrary shell, which is the write access the whole
+allowlist exists to withhold. The cost is one command per read and a line in
+`permissions.refused`.
 
 `run.py`'s own exit codes — `score.py`'s three are listed further up:
 
 | code | meaning |
 | --- | --- |
 | 0 | findings parsed |
-| 1 | none parsed — nearly always a budget cut-off or a format change, not a clean PR |
-| 2 | the CLI failed or timed out (`error` carries its stderr tail) |
+| 1 | none parsed, and nothing suggests a review was lost — a clean PR or a budget cut-off |
+| 2 | the CLI failed, timed out, or is misconfigured (`error` carries its stderr tail) |
 | 3 | nothing parsed **and** a tool call the harness meant to allow was refused |
+| 4 | **a review arrived and no part of it parsed** — see "A format failure is not a clean PR" |
 
 The timeout is enforced by a watchdog that kills the child at the deadline, not by a
 clock check inside the read loop: `for line in proc.stdout` blocks until a line arrives,
@@ -390,6 +404,90 @@ lost: `blocks` (a block with no severity, or with neither a file nor an issue) a
 `orphan_fields` (field lines arriving before any `Severity:` opened a block — a finding
 whose severity line the transcript dropped).
 
+### A format failure is not a clean PR
+
+Both `unparsed` counters only catch output that **almost** parsed. A reviewer that emits
+its findings in a wholly different shape — headings instead of `Severity:` lines, field
+labels in bold so the `^\s*field\s*:` anchor misses them — trips neither. The run then
+reports `findings=0 unparsed_blocks=0 orphan_fields=0`: every counter built to make silent
+loss loud agreeing that nothing was lost.
+
+`format.failure` separates that from a clean PR on two gates, **both** of which must trip:
+
+- **Nothing parsed at all.** One recognised field line anywhere — even an orphan — means
+  the grammar was understood, and this is an ordinary parse with drops.
+- **A substantial output using the format's own vocabulary.** At least
+  `MIN_REVIEW_CHARS` (2000) of text, and at least `MIN_FORMAT_MARKERS` (2) occurrences of
+  words the finding format owns and clean prose does not: *suggested fix*, *inverse risk*,
+  *rule-class*, *class-sites*, *why it matters*. `Severity`, `File` and `Issue` are
+  deliberately **not** markers — they are ordinary English and would fire on a clean review
+  that merely discusses severity.
+
+**The gates under-report on purpose.** A reviewer that abandons the grammar *and* its
+vocabulary — plain JSON, or `Fix:` for `Suggested fix:` — passes undetected and lands on
+exit 1, where the operator reads a `raw_review` that is plainly a review. That is the
+cheaper error. Calling a genuinely clean run a format failure teaches the operator to
+disbelieve the signal, which is how the next real one gets waved through.
+
+Exit 4 says outright not to score the run: an empty findings list there means the harness
+failed, not that the PR was clean. `score.py` does not read `format.failure` — it would
+report the same "the run produced no findings at all" it reports for a clean PR, so the
+run's own exit code is the gate.
+
+### The review survives the parser
+
+`raw_review` holds the assistant text verbatim — `{chars, truncated, text}`, clipped at
+`RAW_REVIEW_LIMIT` (400 000 characters, head kept: a review leads with its findings and
+trails into process notes). `chars` is the length **before** truncation, so a clipped
+review says so rather than looking short.
+
+It is a sibling of `findings`, never merged into it. `score.py`'s `load_findings` reads
+`findings` and nothing else, so prose cannot reach the matcher and be graded against
+adjudicated verdicts — a measurement invented out of text nobody structured. Without this
+key a run that hits a format bug leaves its review in a streamed transcript nobody
+specified a shape for, where independent readings of the same text disagree on how many
+findings it contained and neither is checkable.
+
+### Dispatches are counted, not assumed
+
+`subagent_dispatches` counts `Agent`/`Task` `tool_use` events across the stream. The skill
+runs its reviewer phases inside subagents; a run that dispatched none did the whole review
+single-pass in main, which is a **different experiment** — the output only a subagent
+writes was never written, and the questions those phases exist to ask were never asked.
+The count sits next to `findings` in the status line and a zero prints a `SINGLE-PASS`
+warning, because the two runs are otherwise indistinguishable in the JSON. Granting the
+tool under both names does not guarantee a build exposes it; this is the instrument that
+says whether it did.
+
+The final `result` event restates the last assistant message verbatim, so it is appended
+only when the text is not already present. Appended blind it doubled the review — and with
+it every finding parsed out of it, which the matcher can only report as unmatched
+duplicates, dragging the measured match rate down and reading as a worse reviewer.
+
+### Which skill produced the review
+
+`--model` pins the model. The skill is the artifact actually under measurement and the CLI
+gives no way to pin it: there is no skill-directory flag, and `--plugin-dir` takes plugins,
+not skills. **So the run does not control which skill version runs.** It resolves and
+records one instead, under `skill`:
+
+```json
+"skill": {"name": "review-pr", "requested": null,
+          "resolved": "/…/.claude/skills/review-pr",
+          "fingerprint": "ab12cd34ef56", "pinned": false}
+```
+
+Resolution mirrors the CLI's own order — project `.claude/skills/<name>` before user
+`~/.claude/skills/<name>` — and the fingerprint is a sha256 over the tree's sorted paths
+**and** bytes, so a renamed reference file moves it as surely as an edited one.
+
+`--skill-dir` is a claim to verify, not an install. When it names a directory the CLI will
+not load, the run prints `SKILL MISMATCH` and exits 2 **before launching the CLI**: the run
+as configured would measure a different artifact than the one named, and finding that out
+after the fact costs a full review's budget. To actually pin it, link the directory into
+`<repo>/.claude/skills/<name>` yourself — the harness will not write to the checkout it is
+measuring.
+
 **Verification status**: `run.py`'s parsing, permission policy, denial classification,
 exit codes and output shape are unit tested, and the output is confirmed to load cleanly
 into `score.py`. The permission flags were additionally exercised against the installed
@@ -401,8 +499,20 @@ an allow rule for the same command; `Write` is reported disabled "in subagents a
 here"; the dispatch tool is `Agent` in this build; and a subagent's refusal surfaces in
 its own `result` event rather than the parent's.
 
-It has still **not** been executed end-to-end against a live PR — that costs a full review
-run against a private repo. Only a live run will settle whether the allowlist covers every
-command the skill actually reaches for, and the per-run cost, timeout and budget defaults
-remain untested estimates. The `PERMISSION REFUSED` line is what will name the gap if
-there is one.
+It has now been executed **once** end-to-end against a live PR. What that run settled:
+
+- The read allowlist covers the review. One refusal in the whole run, and it was shell
+  control flow (see above) — a batch of line reads the reviewer re-issued one at a time.
+- The cost and timeout defaults are the right order of magnitude: roughly $5 and eleven
+  minutes for one large PR, inside the $8 budget and well inside the hour.
+- The three blind spots the run exposed are the four sections above. The review parsed to
+  **zero** findings while all three "nothing was lost" counters read zero, the text existed
+  only in a `--transcript` file with no specified shape, no subagent was dispatched at all,
+  and the skill under measurement was whatever was last installed rather than the branch
+  being tested. Every one of those is now instrumented; none was visible in the output JSON
+  before.
+
+Still untested end-to-end: everything downstream of a run that parses. A live run has not
+yet produced a findings file that reached `score.py`, so the match rate, precision and
+recall numbers a real replay would report remain unmeasured — the frozen self-check is the
+only evidence those paths work.
