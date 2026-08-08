@@ -21,12 +21,12 @@ Each one is loaded only on the branch that reaches it — some by main, some by 
 
 - `references/batch-mode.md` — orchestration rules, "don't stop" semantics, consolidated-report template, end-of-run decision prompt. Loaded by **main** at Phase 1 when the user gives 2+ PR URLs or asks for all open PRs.
 - `references/q6-reusability-search.md` — Phase 1 repo-map shell + STEP A enumeration + STEP B search algorithm + Q6 control-flow gap. Loaded by **main** in Phase 1 when `packages/` or `apps/` exists, and by **Subagent 1** when the diff has 1+ new top-level definitions.
-- `references/finding-output-format.md` — the per-finding field block, the `class_completeness:` audit shape, and the run-level closing block. The one copy of the finding shape, and the definitions of the severity tiers. Loaded by **Subagent 1**, **Subagent 3**, **V1** and **V3** before they write any finding — and by **main**, which authors findings of its own in Phase 3 (the reusability audit at step 4.5, the gap check at step 6) and would otherwise assign severities without ever reading the tier definitions.
+- `references/finding-output-format.md` — the per-finding field block, the `class_completeness:` audit shape, and the run-level closing block. The one copy of the finding shape, and the definitions of the severity tiers. Loaded by **Subagent 1**, **Subagent 2**, **Subagent 3**, **V1** and **V3** before they write any finding — and by **main**, which authors findings of its own in Phase 3 (the reusability audit at step 4.5, the gap check at step 6) and would otherwise assign severities without ever reading the tier definitions. This roster must list every loader, not only the ones worth mentioning: a loader missing here reads as an emitter working without the contract, which is what the roster exists to rule out.
 - `references/schema-design-checks.md` — Q7 (overlap), Q8 (1:1 consolidation), Q9 (cross-table FK) checks. Loaded by **Subagent 1** when `INCLUDE_SCHEMA_CHECKS = true`, and by **V3** when the gap check covers Q7–Q9.
 - `references/lens-map.md` — the file-type and signal detection rules that decide which lenses apply to which changed file, as data rather than prose. Loaded by **main** in Phase 1 to build the coverage ledger's cell set.
 - `references/lenses.md` — the lens catalogue: per lens, its trigger, the question it asks, what does and does not qualify as a finding, and for Tier 2 the artifact to open. Loaded by **Subagent 1** for the lenses its files selected, and by **V3**, whose gap check iterates the `new-ground` lens set as its second axis. **Not** by Subagent 3: it is scoped to cross-file patterns, receives no `LENS_ASSIGNMENTS` and returns no lens verdicts — the per-file cells are Subagent 1's alone. Do not add a loader to this list without checking that the named prompt actually loads it; a manifest entry is prose, the prompt is what executes.
 - `references/verification-subagents.md` — V1/V2/V3 dispatch conditions + the exact prompt each is given. Loaded by **main** in Phase 3 at the first of steps 4.55 / 4.9 / 6 that fires.
-- `references/false-positive-rules.md` — the YAML rules table each surviving finding is run through: four `applies_to` / precondition rules (`re-derive-the-anchor`, `open-the-callee`, `declaration-is-not-implementation`, `publish-the-command-or-do-not-claim`) and four `trigger` rules (`wrapped-coercion`, `intent-alignment`, `library-behavior-citation`, `default-fallback`). Loaded by **main** at Phase 3 step 4.6 when any finding survives step 4.5. The file is the single source for the rule set — do not restate the roster here, it goes stale.
+- `references/false-positive-rules.md` — the YAML rules table each surviving finding is run through, in the order the file lists them. Loaded by **main** at Phase 3 step 4.6 when any finding survives step 4.5. The file is the single source for the rule set, including which rules are `applies_to` and which are `trigger`, and which carry an `exempt_lenses` key. No roster here: the last one drifted, classifying two `trigger` rules as preconditions while the same sentence said not to restate it.
 - `references/finding-state-schema.md` — both persistence files: `.claude/review-state/<pr>.yml` (schema, finding-ID strategy, state machine, Phase 4 write-back) and the run-over-run cache (schema + the three replay branches). Loaded by **main** in Phase 1 before the review-state read and the cache check, and again in Phase 4 before the state write-back.
 - `references/github-posting.md` — three-phase REST/GraphQL posting flow + post-submit assertion + re-run preflight (verdict-body sync, thread dedupe, thread resolution) + failure recovery. Loaded by **main** in Phase 4 when the user chooses to post.
 
@@ -154,11 +154,29 @@ mkdir -p "$STATE_DIR"
 if [ -f "$STATE_FILE" ]; then
   PRIOR_STATE=$(cat "$STATE_FILE")
 else
-  PRIOR_STATE='{ pr: <num>, repo: "<owner>/<repo>", findings: [], last_round: 0 }'
+  PRIOR_STATE='{ pr: <num>, repo: "<owner>/<repo>", findings: [], last_round: 0,
+                 ledger: { round: 0, rows: [], cells_total: 0, cells_examined: 0,
+                           cells_cannot_assess: 0, cells_not_examined: 0 } }'
 fi
 
 CURRENT_ROUND=$(( $(echo "$PRIOR_STATE" | yq '.last_round') + 1 ))
 ```
+
+### Round-cap short-circuit (before any reviewing)
+
+If `CURRENT_ROUND > 3`, stop here. Print the round number, the follow-up issue from
+`PRIOR_STATE.followup_issue` (or that none was filed and why), and exit without dispatching
+a single reviewer.
+
+This check belongs at the point `CURRENT_ROUND` is computed, not at the verdict. The cap's
+own wording is "do not silently re-review" — sited in Phase 3 that is unachievable, because
+by then Phase 1 has run, every Phase 2 reviewer has been dispatched and every Phase 3
+verifier has finished. The run would announce it should not have re-reviewed *after* paying
+the entire cost of re-reviewing.
+
+The exception is a `followup_issue.status` of `failed`, `incomplete` or `declined`: there
+the backlog does not exist, so offer to file it (Phase 4's "File the follow-up issue" step)
+against `PRIOR_STATE.findings` still `active`, then stop. Filing needs no new review.
 
 `PRIOR_STATE.findings` is passed into Subagent 1's prompt (filtered to `status in {resolved, dismissed, wontfix}`) so the reviewer suppresses already-handled findings upfront. Phase 3 step 4.95 enforces this as a safety net.
 
@@ -195,7 +213,19 @@ If `additions + deletions > 2000`:
 
 ### Wall-time instrumentation (start)
 
-Capture `PHASE_START_TIME=$(date +%s)` at the top of Phase 1 and similar at each later phase. Print elapsed total in Phase 4.
+Capture one timestamp at the top of each phase, named so Phase 4 can find it:
+
+```
+PHASE_START_1=$(date +%s)     # here, top of Phase 1
+PHASE_START_2=$(date +%s)     # top of Phase 2, before the first reviewer dispatch
+PHASE_START_3=$(date +%s)     # top of Phase 3, before step 1 dedupe
+PHASE_START_4=$(date +%s)     # top of Phase 4, before the terminal block
+```
+
+Phase 4 computes per-phase elapsed from consecutive pairs and the total from
+`PHASE_START_1`. "Capture one at each later phase" is not a step — name each variable and
+its site, or Phase 4 reads `PHASE_START_*` and finds only the first one, printing a
+per-phase breakdown whose later rows have no source.
 
 ### Detect cwd-vs-PR-repo mismatch (cross-repo mode)
 
@@ -221,11 +251,15 @@ gh api "repos/<owner>/<repo>/contents/.coderabbit.yaml" >/dev/null 2>&1 \
   || CR_CONFIG_PRESENT=false
 ```
 
-If `CR_CONFIG_PRESENT=false` AND this is the first run of `/review-pr` against this repo in the current session, hint once after Phase 4 output:
+If `CR_CONFIG_PRESENT=false` AND this is the first run of `/review-pr` against this repo in the current session, print the hint once **inside the Phase 4 terminal block**, on its own line below `Coverage`:
 
 > No `.coderabbit.yaml` in `<owner>/<repo>` — adding one pushes style + convention checks into CodeRabbit. The `coderabbit-config` skill carries a template (`npx skills add bhagyamudgal/skills@coderabbit-config`). Future `/review-pr` runs in this repo will be tighter.
 
 The hint is informational — it never gates posting.
+
+It goes inside the terminal block rather than after Phase 4 because Phase 4's last step
+declares itself the final turn of this skill, so "after Phase 4 output" is a slot nothing
+ever reaches. A hint scheduled after the end never prints.
 
 ### Size-based routing (determine SIZE_MODE)
 
@@ -913,9 +947,11 @@ non-empty `Inverse risk:`.
 
 ### 4.6. Apply false-positive rules table
 
-A unified iterator over a rules table. Each rule has: `id`, either a `trigger` (regex matched against `Issue` or `Why`) or an `applies_to` (a finding class the rule runs on unconditionally, no text match), `evidence_check` (a callable that returns `evidence_present | evidence_absent | inapplicable`), and `action` (`drop` / `downgrade-1` / `downgrade-1-and-note` / `severity-conditional` / `re-anchor-or-drop` / `strip-fix`).
+A unified iterator over a rules table. Each rule has: `id`, either a `trigger` (regex matched against `Issue` or `Why`) or an `applies_to` (a finding class the rule runs on unconditionally, no text match), an optional `exempt_lenses` (a list of lens ids that switches that rule off for a finding), `evidence_check` (a callable that returns `evidence_present | evidence_absent | inapplicable`), and `action` (`drop` / `downgrade-1` / `downgrade-1-and-note` / `severity-conditional` / `re-anchor-or-drop` / `strip-fix`).
 
-Apply each rule in order. A `trigger` rule fires when (1) the regex matches AND (2) `evidence_check` returns the expected branch; an `applies_to` rule runs its `evidence_check` on every finding in its class.
+Apply each rule in order. **Check `exempt_lenses` first, before the selector**: if the rule carries the key and the finding's `Lens:` line names any lens in it, the rule is `inapplicable` for that finding — do not match its regex, do not run its `evidence_check`, do not apply its action — and log the skip to Filtered Out as `<rule-id> inapplicable — exempt lens <Lx>`. Otherwise: a `trigger` rule fires when (1) the regex matches AND (2) `evidence_check` returns the expected branch; an `applies_to` rule runs its `evidence_check` on every finding in its class.
+
+Reading `Lens:` is part of this step. The exemption is data on the rule, not a judgement call — a carve-out only main remembers is a carve-out that does not run, which is how an authorization-widening finding came to be downgraded by the rule it was declared exempt from.
 
 **At most one severity change per finding per pass.** When several rules fire, apply the strongest action once — `drop` beats `strip-fix` beats a downgrade — and log every rule `id` that fired. Without this cap the downgrades compound: an unverified distribution claim loses a tier for carrying no command, then loses another as "may be intentional", landing on exactly the softly-stated finding that the first rule exists to forbid. Two soft grounds, neither of which established the claim, should not add up to a verdict.
 
@@ -1057,13 +1093,25 @@ If ALL specified conditions match: DROP, log `suppressed by .claude/review-suppr
 ### 6. Gap check (Q1–Q6, Q7–Q9 if schema PR, plus the lens axis)
 
 **Two axes, not one.** Besides the Q list, walk the lens axis: every entry in
-`<SKILL_DIR>/references/lens-map.md`'s `lens_index` whose `q_map` is `new-ground` — 13 of
-the lenses have no Q-number, so a check that iterates only Q1–Q9 reports full coverage
-while every one of them goes unexamined. Emit one `no gap` / `gap` entry per lens.
+`<SKILL_DIR>/references/lens-map.md`'s `lens_index` whose `q_map` is `new-ground` **or**
+ends in `-inverted`, less `META`. Emit one `no gap` / `gap` entry per lens.
 
-This applies to the **inline** path as well as the dispatched one. Main runs this check
-itself whenever it holds the full diff, so wiring the lens axis into the verifier alone
-would fix it only for large PRs.
+**Re-derive that set from the map; never hard-code a count here.** The selection rule is
+"lenses no Q-number can discharge", and the two values qualify for opposite reasons —
+`new-ground` because no question reaches the lens at all, `-inverted` because the question
+that names it asks the mirror-image thing and can be answered honestly while the lens's
+own class walks through. Skip `META`: it raises the tier of a silent finding rather than
+producing findings of its own, so its entry could only ever read `no gap`, which is the
+vacuous verdict this check exists to prevent.
+
+Stating the rule rather than a list is deliberate: a lens filed `refines-Q<N>-inverted`
+later is picked up without another edit here, and this check has already been fixed once
+for iterating a stale enumeration.
+
+This applies to the **inline** path as well as the dispatched one, and both must select
+the same set. Main runs this check itself whenever it holds the full diff, so wiring the
+lens axis into the verifier alone would fix it only for large PRs — and two paths through
+one check that select differently is how the count and the set drifted apart before.
 
 For any question category where Subagent 1 said nothing, briefly think about whether the diff has anything in that category. Add findings if you spot misses. Include Q7–Q9 only if `INCLUDE_SCHEMA_CHECKS = true`.
 
@@ -1282,17 +1330,18 @@ behaviour, which is the worst of both.
   those words. An unblocked PR whose findings went nowhere is a fact the reader is owed,
   never something to paper over with a backlog nobody filed.
 
-When `CURRENT_ROUND > 3`, do not silently re-review. Report that the cap was already
-reached, then read `followup_issue` from `$STATE_FILE`:
+**`CURRENT_ROUND > 3` never reaches this step.** Phase 1's round-cap short-circuit stops
+the run before any reviewer is dispatched, and owns the whole of that behaviour: reading
+`followup_issue` from `$STATE_FILE`, printing a `filed` issue's URL, or filing once over
+the uncovered findings when the entry is absent or reads `declined` / `failed` /
+`incomplete`. Never file a second issue for one PR — the duplicate is the copy nobody
+reads.
 
-- `status: filed` and its `finding_ids` cover every finding still active → print that
-  issue's URL and stop. Never file a second issue for one PR; the duplicate is the copy
-  nobody reads.
-- no entry, or `status` in `{declined, failed, incomplete}`, or a `filed` entry missing a
-  finding active this round → run **File the follow-up issue** once over the uncovered
-  findings, then stop.
+The rule lives at the point `CURRENT_ROUND` is computed because that is the only place it
+can be honoured. Do not restate the branch here; two copies of one cap drift, and the copy
+downstream of the work it is meant to prevent is the one that stops being true.
 
-Either branch still ends through the Phase 4 state write-back before stopping
+Either path still ends through the Phase 4 state write-back before stopping
 (`references/finding-state-schema.md`, "Phase 4 — write back"). Stopping short of it drops
 this round's `followup_issue` and leaves `last_round` unincremented, so round 5 arrives as
 round 4 again and re-asks a question already answered.
@@ -1655,6 +1704,7 @@ On "Fix now":
    File: src/stream.ts:47
    Category: Silent-failure
    Rule-class: silent-failure
+   Lens: L1
    Enclosing-symbol: handleStreamError
    Issue: Unhandled stream error can crash the process
    Why it matters: crash on communication failure with no handler

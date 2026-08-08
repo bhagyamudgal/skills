@@ -1,15 +1,22 @@
 # False-positive rules table (Phase 3 step 4.6)
 
-Loaded by main at Phase 3 step 4.6, whenever at least one finding survives step 4.5. SKILL.md keeps the iterator contract — `id` / `trigger` or `applies_to` / `evidence_check` / `action`, applied in order, every fire logged to Filtered Out with the rule `id`. This file holds the rules that iterator runs, and is the single source of truth for false-positive filtering: adding a new false-positive class is a one-row edit here.
+Loaded by main at Phase 3 step 4.6, whenever at least one finding survives step 4.5. SKILL.md keeps the iterator contract — `id` / `trigger` or `applies_to` / optional `exempt_lenses` / `evidence_check` / `action`, applied in order, every fire logged to Filtered Out with the rule `id`. This file holds the rules that iterator runs, and is the single source of truth for false-positive filtering: adding a new false-positive class is a one-row edit here.
 
-The table is consulted per finding, not read linearly. Rules carry one of two selectors:
+The table is consulted per finding, not read linearly. Rules carry one of two selectors, and may carry an off-switch:
 
 - `trigger` — a regex matched against the finding's `Issue` / `Why` text. Run the `evidence_check` only when the regex hits.
 - `applies_to` — no text match. The rule runs on every finding in the class it names, and states what the reviewer must have done before the finding may be emitted at all.
+- `exempt_lenses` — optional, and not a selector: a list of lens ids that switches the rule OFF for a finding. Evaluated BEFORE that rule's `trigger` or `applies_to`. When the finding's `Lens:` line names any listed lens, the rule returns `inapplicable` for that finding — no regex is matched, no `evidence_check` runs, no action applies — and the skip is logged to Filtered Out as `<rule-id> inapplicable — exempt lens <Lx>`, so which rule did NOT run is as auditable as which one fired. A rule carrying no `exempt_lenses` key runs on every finding. A `Lens:` line of the form `none — <check>` names no lens and is never exempt.
 
 `applies_to` rules are listed first, and run first: they correct the anchor and the suggested fix that the later rules' `evidence_check` bodies read, so running them last would mean the text rules verified against a line the emitted finding no longer points at.
 
 At most one severity change per finding per pass. When several rules fire, apply the strongest action once — `drop` beats `strip-fix` beats a downgrade — and log every rule `id` that fired. Two independent soft grounds must not compound into a two-step downgrade.
+
+**Lens exemptions.** `intent-alignment` fires only on findings whose own text claims a change is undeclared — unscoped, out of scope, not in the description, silently changes behavior. For a claim of that shape, overlap with the PR's stated intent refutes it: the change was declared after all, the finding is noise, and killing it is the rule's whole purpose, which the exemption leaves standing. The exempt lenses share that vocabulary without making that claim. Both ask about a scope belonging to the **code** rather than to the PR — who else a changed guard now admits, what a changed validator now accepts — and neither can state its finding without the words the regex matches. An author who intended to widen a guard has said nothing about whether they intended to admit everyone the widening admits; the admitted set is precisely the set nobody enumerated, which is why the lens exists at all. For these findings, overlap with intent is structurally guaranteed and carries no information about whether the code is right, so measuring it decides nothing and costs a tier — and at Minor, the finding.
+
+**Exempt only a finding that does the exempt lens's work.** It must state what that lens asks for: for an authorization or validation scope, the set admitted or accepted before the change and after it, or a count or name of what is newly reachable. A finding whose entire content is that a guard changed and the description does not mention it is making the scope-creep claim after all, carries no delta, and stays subject to the rule. A `Lens:` line is not a way to buy immunity for one.
+
+**An exemption is not immunity, and does not suspend the one-change cap.** It removes a single rule from one finding's candidate set; every other rule still runs on it. A widening finding asserting that most stored records are now reachable still owes `publish-the-command-or-do-not-claim` a query it can paste and run, and still loses that claim and a tier without one. Because only one severity change applies per pass, exempting `intent-alignment` changes the outcome only where its action would have been the strongest to fire: an exemption can never raise a severity, and never rescues a finding that another rule drops on its own grounds.
 
 ---
 
@@ -70,6 +77,7 @@ rules:
     log_reason: "wrapped-coercion FP — call wrapped in Number(...) on same line"
 
   - id: intent-alignment
+    exempt_lenses: [L2, L18]   # see "Lens exemptions" above
     trigger: |
       (?i)unscoped|semantic (drift|change)|not mentioned|not in (the )?description|scope creep|out of scope|outside (the )?stated goal|beyond PR scope|undeclared change|silently changes behavior
     evidence_check: |

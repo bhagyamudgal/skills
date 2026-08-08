@@ -86,10 +86,28 @@ precisely on the large PRs where schema changes live, so a dropped flag drops Q7
 where they were most likely to fire.
 
 **The gap check has two axes and the Q list is only one of them.** Most of the lens
-catalogue is marked `q_map: new-ground` — no Q-number reaches it — so a gap check that walks
-Q1–Q9 and stops returns "no gap" over ground it never looked at. That is `L15` (a check that
-cannot fail) inside the verifier whose job is to catch it, and it is why the prompt below
-loads the map and iterates the lens axis explicitly.
+catalogue is out of the Q list's reach, so a gap check that walks Q1–Q9 and stops returns
+"no gap" over ground it never looked at. That is `L15` (a check that cannot fail) inside the
+verifier whose job is to catch it, and it is why the prompt below loads the map and iterates
+the lens axis explicitly.
+
+**The axis is "lenses no Q-number can discharge", not "lenses with no Q-number."** Two
+`q_map` values qualify, for opposite reasons. `new-ground` qualifies because no question
+reaches the lens at all. An **inverted refinement** — `refines-Q<N>-inverted` — qualifies
+because a question does reach it and asks the other direction: `lenses.md` records that a
+reviewer answering Q3 honestly can pass while the entire `L8` class walks through. Selecting
+on the absence of a Q-number aims this check at the lenses a Q-number was least likely to
+have missed and away from the largest class in the catalogue.
+
+Stating it as a rule rather than a lens list is the point: a lens filed `refines-Q<N>-inverted`
+in a later revision of the map lands on this axis by the rule, with no edit here. A lens list
+would have to be found and widened again, and the symptom of forgetting is silence.
+
+**This axis is the net for reviewer error, not reviewer silence.** The per-file cells already
+make silence expensive — a lens the reviewers say nothing about is `not-examined` and blocks
+approval. Nothing else re-reads a wrong `clean`, and the inverted lenses are exactly where a
+`clean` is cheapest to get wrong: the reviewer answered the question it was asked, correctly,
+and the class it was not asked about is untouched.
 
 ```
 Fetch the diff yourself. Cover EVERY category below and emit an entry for each. The
@@ -110,10 +128,23 @@ load `<SKILL_DIR>/references/schema-design-checks.md` and follow it. If false, o
 entirely; do not emit lines for them.
 
 ## The lens axis — the second half of this check
-Load `<SKILL_DIR>/references/lens-map.md` and read its `lens_index`. Every entry whose
-`q_map` is `new-ground` sits outside Q1-Q9 entirely: no question above can clear it, and
-clearing the Q list says nothing about it. Take that set and cover it over the same diff,
-one entry per lens, in `lens_index` order.
+Load `<SKILL_DIR>/references/lens-map.md` and read its `lens_index`. Select every entry
+whose `q_map` is `new-ground` **or** ends in `-inverted`, less `META`. Cover that set over
+the same diff, one entry per lens, in `lens_index` order.
+
+Select by that rule, not by a memorised list. The rule is **lenses no Q-number can
+discharge**, and the two values qualify for opposite reasons: `new-ground` because no
+question reaches the lens, `refines-Q<N>-inverted` because a question reaches it and asks
+the opposite direction — Q3 asks whether this diff duplicated something, `L8` asks whether
+a duplicate already existed that this diff failed to fix, and answering the first honestly
+clears none of the second. Clearing Q1-Q9 says nothing about either kind. Any `q_map` value
+added later that ends in `-inverted` is on this axis by the same rule.
+
+Skip the `META` entry, and skip it here rather than by dropping it later. It is an attention
+rule, not a defect class — it raises the tier of a silent finding rather than producing
+findings of its own — so apply it when you write `Severity:` and emit no entry for it. An
+entry for `META` could only ever read `no gap`, which is the vacuous verdict this whole
+check exists to refuse.
 
 Load `<SKILL_DIR>/references/lenses.md` for each one's trigger, its question, and its "not
 a finding" list before you judge it. The trigger is what keeps this axis cheap — most
@@ -121,15 +152,21 @@ lenses have no trigger present in a given diff, and a lens whose trigger is abse
 line. Do not answer from the lens NAME; the names are mnemonics and several of them read
 as broader or narrower than the lens actually is.
 
-Skip the `META` entry. It is an attention rule, not a defect class — it raises the tier of
-a silent finding rather than producing findings of its own — so apply it when you write
-`Severity:` and emit no entry for it.
+`L8` is the expensive entry and is worth its cost: it is the largest class in the corpus.
+Anchor it to the diff rather than sweeping the repo — take the predicates, formulas, key
+templates and guards this diff actually changed, and run `lenses.md`'s hops 2-5 from each
+one. Hop 1, re-reading a changed file's own post-image, belongs to the per-file cells and
+is not yours to repeat.
 
 You are checking the diff as a whole, not per-file cells. The map's `always_on`,
 `file_types` and `signals` sections decide which cells each file owes, and that ledger
-belongs to the Phase 2 reviewers: do not fill it, do not contradict it, do not report
-verdicts in its vocabulary. Your question is narrower — did anything of this lens's shape
-enter this diff that no reviewer reported?
+belongs to the Phase 2 reviewers: do not fill it and do not report verdicts in its
+vocabulary. Your question is narrower — did anything of this lens's shape enter this diff
+that no reviewer reported?
+
+A reviewer having called a cell `clean` is not a reason to withhold a finding on it. Raise
+it and let main reconcile: a finding's `Lens:` line flips that cell, the positive claim
+wins, and disagreeing with a `clean` is the one thing on this axis nothing else does.
 
 ## Output format
 SKILL_DIR: <SKILL_DIR>
@@ -145,23 +182,34 @@ raised off the Q axis, which no lens produced, writes `none — Q<N>`. That fiel
 links a finding to its ledger cell; a lens-axis finding that leaves it blank reports a gap
 the ledger cannot account for.
 
-Report ONE entry per Q category and ONE per `new-ground` lens, nothing else. Q entries
+Report ONE entry per Q category and ONE per selected lens, nothing else. Q entries
 first, then lens entries in `lens_index` order:
   Q<N>: no gap
   Q<N>: gap — followed by the full finding block in the shape above
   L<N>: no gap
   L<N>: gap — followed by the full finding block in the shape above
 
-A cleared entry is exactly one line. Every category and every `new-ground` lens in scope
-gets exactly one entry, and both counts are checkable against the lists you read them from
-— a short report is a dropped axis, not a clean one. "no gap" on all of them is a complete
-answer.
+A cleared entry is exactly one line. Every category and every selected lens gets exactly one
+entry, and both counts are checkable against the lists you read them from — a short report
+is a dropped axis, not a clean one. "no gap" on all of them is a complete answer.
 ```
 
 Main reconciles the returned entries against both lists before folding the findings in — Q
 entries against the full in-scope category list (Q1–Q6, plus Q7–Q9 when
-`INCLUDE_SCHEMA_CHECKS` is true), lens entries against `lens_index`'s `new-ground` set less
-`META`. **Not** against the already-reported-categories list it passed in: that list is the
+`INCLUDE_SCHEMA_CHECKS` is true), lens entries against the set the prompt's selection rule
+picks out: every `lens_index` entry whose `q_map` is `new-ground` or ends in `-inverted`,
+less `META`. **Re-derive that set from the map rather than reconciling against a count.**
+Against the map as it stands it is 13 entries — and 13 is also what the pre-widening
+`new-ground` count came to before `META` was excluded from it, so a count carried over from
+either earlier reading reconciles cleanly over a set with the wrong membership. Membership
+is the check; the number is a coincidence of this revision of the map.
+
+`SKILL.md` step 6 runs this same check inline whenever main holds the full diff, and it
+selects with this same rule, `META` excluded there too. One check with two executors has to
+walk one set; an inline path that includes `META` differs by one entry, and the entry it
+adds is the vacuous one.
+
+**Not** against the already-reported-categories list it passed in: that list is the
 complement of what a skip-the-covered-ones reading would return, so reconciling against it
 flags every entry V3 sends. A missing entry on either axis is re-run inline, never read as
 `no gap`:

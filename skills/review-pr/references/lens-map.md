@@ -4,7 +4,7 @@ The data that decides which lenses from `lenses.md` apply to a given changed fil
 
 Loaded by **main** in Phase 1, which evaluates the whole map once and writes `LENS_ASSIGNMENTS` — the ledger's cell set, fixed before any reviewing happens — by **Subagent 1** (Phase 2 reviewer) with `lenses.md`, which is handed its files' assignments and returns a verdict per cell, and by **V3**, which reads `lens_index` to build the gap check's lens axis. Main assembles the verdicts into the ledger in Phase 3; the object's shape and its counter partition are `finding-state-schema.md`'s.
 
-**`q_map` is read by V3's gap check**, which builds its lens axis from exactly the `new-ground` set (`verification-subagents.md`, "The lens axis"). The column is live, not documentation: a lens filed under a Q-number it does not really belong to is removed from the gap check, silently and with no other symptom.
+**`q_map` is read by V3's gap check**, which builds its lens axis from the `new-ground` entries **plus** every `refines-Q<N>-inverted` one, less `META` (`verification-subagents.md`, "The lens axis"). The column is live, not documentation: a lens filed under a Q-number it does not really belong to is removed from the gap check, silently and with no other symptom.
 
 It is a **separate file, and it is data rather than prose, so that adding a file type or a lens is a one-row edit here and not a change to any pipeline step.** The same reason `false-positive-rules.md` holds a YAML table instead of narrative: the iterator contract lives in `SKILL.md`, the rows live in the reference.
 

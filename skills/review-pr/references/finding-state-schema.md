@@ -162,14 +162,14 @@ ledger:
 | `findings[].rule_class` | string | yes | 2–3-word slug categorizing the issue (see vocabulary below) |
 | `findings[].lens_ids` | string[] | yes | Lens ids from `lens-map.md`'s `lens_index` that produced this finding, off the finding's `Lens:` line. Each `(file, lens)` it names is the cell the write-back sets to `finding`. `[]` for a finding no lens raised — one off the Q axis, or a gap-check finding raised on the Q axis rather than the lens axis — which answers no cell and is not counted as coverage. **Never carried in `rule_class`**: `rule_class` is the third component of the id hash, so a lens id inside it changes every finding id and breaks cross-round matching |
 | `findings[].severity` | enum | yes | `Critical \| Serious \| Moderate \| Minor` |
-| `findings[].label_history` | string[] | yes | Per-round label (e.g., `M3`) — useful for debugging label drift |
+| `findings[].label_history` | string[] | yes | Per-round label (e.g., `M3`), one element per round the finding was raised. Seeded with this round's label when the entry is first appended, not only extended on later rounds: `github-posting.md`'s "Unresolved from earlier rounds" line reads the last element to name a finding the current round assigned no id, and where the field is missing it omits the id entirely. That omission is a compatibility path for entries closed before labels were persisted — an entry appended today without a seed silently joins them, and every later round names it with no id at all |
 | `findings[].status` | enum | yes | `active \| resolved \| dismissed \| wontfix \| regression` |
 | `findings[].round_first_seen` | int | yes | Round number when the finding was first emitted |
 | `findings[].round_resolved` | int | nullable | Round when status flipped to `resolved` |
 | `findings[].commit_sha_resolved` | string | nullable | Head commit SHA when the resolving change landed |
 | `findings[].inverse_risk` | string | conditional | Failure mode the suggested fix trades into. Round N+1 checks this first — a fix landing on its own inverse is one of the two cascade feeders. **Required whenever the finding carries a `Suggested fix:`**; `"none — pure addition"` when the fix trades nothing away; null ONLY when the finding proposes no code change |
 | `findings[].caused_by` | string | nullable | ID of the finding whose *fix* created this one. This is what lets a later round see that a "new" finding is the previous round's remedy landing badly, instead of counting it as unrelated fresh work |
-| `findings[].depends_on` | string | nullable | For `dismissed`/`wontfix` only: the code condition the rationale rests on (e.g. `"the early-break at search.ts:88 keeps serial decrypt cheap"`). When a later commit voids it, the dismissal is void and the finding reopens as `active` |
+| `findings[].depends_on` | string | nullable | For `dismissed`/`wontfix` only: the code condition the rationale rests on (e.g. `"the early-break at search.ts:88 keeps serial decrypt cheap"`). When a later commit voids it, the dismissal is void and the finding reopens as `active`. Null on the deselect path, whose `dismissal_reason` is the `user-deselected` sentinel — that dismissal rests on no condition, so there is nothing to void; see Phase 4 write-back step 2 |
 | `findings[].class_sites` | list | conditional | Every site of this `rule_class` with a `handled` flag — item schema below. Resolution is gated on ALL sites handled, not just the cited one; this is what prevents a 3-of-4-sites fix from being marked resolved. **Required whenever the finding carries a `Suggested fix:`**; null ONLY when the finding proposes no code change |
 | `findings[].dismissal_reason` | string | nullable | Free-form note when status = `dismissed` or `wontfix` |
 | `findings[].last_message` | string | yes | Most-recent `Issue:` text — used in audit logs / human-readable diffs |
@@ -328,12 +328,14 @@ Phase 1 computes `$CACHE_FILE` and `CURRENT_HEAD`; everything below describes wh
   "last_posted_verdict": "request-changes",
   "last_posted_at": "2026-04-11T13:30:15Z",
   "posted_comments": [
-    { "finding_key": "(file.ts, 47, processrequest)", "finding_id": "<id-hash>",
+    { "finding_id": "<id-hash>",
       "github_comment_id": 12345, "github_thread_id": "PRRT_abc123",
       "finding_severity": "Serious" }
   ]
 }
 ```
+
+`posted_comments` entries carry no positional `(file, line, symbol)` key. That shape is what the id hash replaced, for the reason this file opens with — it breaks the moment lines shift — and `github-posting.md`'s Step 8a states the single-key rule the writer follows. A construction step for it was removed once; the field outlived it here for a while, which is the shape of the bug: a schema advertising a key nothing constructs invites a reader to look one up and get nothing back.
 
 ### Three replay branches
 
@@ -368,7 +370,9 @@ else
 fi
 ```
 
-**The empty `ledger` key in the seed is load-bearing.** Round 1 has no prior state file, and the Phase 3 coverage gate reads `ledger.cells_not_examined` before any write-back has run. Seed the key absent and that read resolves to nothing, nothing is not greater than zero, and the gate passes — silently, on the permissive side, on exactly the run where the reviewer has the least prior coverage to inherit. The seed is the prior round's ledger, not this round's; this round's is built in Phase 3 below and always overwrites it.
+**The empty `ledger` key in the seed feeds carry-forward, and nothing else.** The seed is the *prior* round's ledger. Its only reader is assembly step 4 below, which inherits verdicts for files outside this round's delta; the key is there so that step has one shape to read on round 1 and on round 6 alike, rather than a present-or-absent branch on the run that least needs one.
+
+It does **not** protect the coverage gate, and must not be relied on as if it did. The gate reads `cells_not_examined` off the object step 6.9 assembled in memory this round — never `PRIOR_STATE.ledger` — and what protects it is that assembly always runs before it, unconditionally, on every round including the first. Seeding the key absent would change nothing at the gate and nothing at assembly either, since an absent key and `rows: []` inherit identically. The reason to keep it is uniformity, not safety, and a seed defended by a safety claim that does not hold is worse than one defended by the modest claim that does: the false claim is what stops the next reader from noticing the gate has no seed-side guard at all.
 
 Pass `PRIOR_STATE.findings` (filtered to status in `{resolved, dismissed, wontfix}`) into Subagent 1's prompt as:
 
@@ -425,10 +429,10 @@ The result is `ledger` in memory, with `round` and `head_sha` set. The gate, the
 After successful posting (or after "Keep local"):
 
 1. For each finding currently posted/active in this round:
-   - If `id` not in `PRIOR_STATE.findings`: append new entry with `status: active`, `round_first_seen: <current_round>`, `lens_ids` off the finding's `Lens:` line, and the cascade fields taken straight off the printed finding: `inverse_risk` from its `Inverse risk:` line, `class_sites` from the site list in its `class_completeness:` audit as verified in Phase 3 (each site `handled: false` unless this PR's diff already covers it), `caused_by` from the regression sweep's lineage attribution (null when it attributed none), `depends_on: null`.
+   - If `id` not in `PRIOR_STATE.findings`: append new entry with `status: active`, `round_first_seen: <current_round>`, `label_history: [<this-round-label>]`, `lens_ids` off the finding's `Lens:` line, and the cascade fields taken straight off the printed finding: `inverse_risk` from its `Inverse risk:` line, `class_sites` from the site list in its `class_completeness:` audit as verified in Phase 3 (each site `handled: false` unless this PR's diff already covers it), `caused_by` from the regression sweep's lineage attribution (null when it attributed none), `depends_on: null`.
    - If `id` already exists with `status: active`: append `<this-round-label>` to `label_history`, update `last_message`. Status stays `active`. Also refresh `inverse_risk` when the suggested fix changed this round, and rewrite `class_sites` with this round's `handled` flags — including sites the current diff newly introduced.
    - If `id` already exists with `status: regression` (entered via Phase 3 step 4.95 because the resolving code was reverted): treat exactly like `active` — append to `label_history`, update `last_message`, refresh `class_sites`. Set `caused_by` when the sweep traced the reopen to another finding's fix. The finding stays in `regression` until the user resolves OR dismisses it (rules below). The history of `round_resolved` + `commit_sha_resolved` is **preserved** (do NOT clear them — they document the prior resolve that got reverted).
-2. For each finding the user explicitly dismissed via the post-review AskUserQuestion: write `status: dismissed` + `dismissal_reason: <user reason>` regardless of prior status (including `regression`). A regression that the user dismisses goes to `dismissed` (the prior `round_resolved` + `commit_sha_resolved` from before the regression are kept in the entry as historical context). Write `depends_on` at the same moment — the code condition the rationale rests on, in the user's own terms. It is required for `wontfix` and for any `dismissed` whose reason rests on how the code behaves today; a dismissal with `depends_on: null` can never be voided and will outlive the condition that justified it.
+2. For each finding the user explicitly dismissed via the post-review AskUserQuestion: write `status: dismissed` + `dismissal_reason: <user reason>` regardless of prior status (including `regression`). A regression that the user dismisses goes to `dismissed` (the prior `round_resolved` + `commit_sha_resolved` from before the regression are kept in the entry as historical context). Write `depends_on` at the same moment — the code condition the rationale rests on, in the user's own terms. It is required for `wontfix` and for any `dismissed` whose reason rests on how the code behaves today; a dismissal with `depends_on: null` can never be voided and will outlive the condition that justified it. **The deselect path is the one exception and writes `depends_on: null`.** `SKILL.md`'s findings-selection multiSelect writes `dismissal_reason: user-deselected` without asking the user anything, so there is no rationale to record and no condition a later commit could void — a deselection says "not this PR", not "this is fine because the code does X". Do not add a question to harvest one: that multiSelect exists to drop findings in bulk, and a prompt per deselection makes the cheapest action in the run the most expensive. `user-deselected` is the one `dismissal_reason` that is a sentinel rather than prose, and its entry stays closed for the life of the PR by design.
 3. For each finding whose fix has shipped (writer caveat below — this transition is currently made by hand): `status: resolved` + `commit_sha_resolved: <sha of the resolving commit>` regardless of prior status — but **only when every `class_sites` entry is `handled: true`**. If any site is still unhandled, keep the prior status (`active` / `regression`), write the updated `handled` flags, and leave `commit_sha_resolved` untouched: a fix covering part of the class is not a resolution. A regression that gets fully re-fixed goes back to `resolved` with the *new* commit SHA; the prior `commit_sha_resolved` is overwritten (only the latest resolving commit is kept — `label_history` retains the full timeline).
 4. For each closed finding the Phase 3 regression sweep reopened: an entry reopened because a `class_sites` site went unhandled or its `inverse_risk` failure mode materialized becomes `status: regression`; a `dismissed`/`wontfix` entry whose `depends_on` condition was voided becomes `status: active`, keeping `dismissal_reason` and `round_resolved` as history and naming the voiding commit in `last_message`.
 5. Persist the `ledger` object Phase 3 step 6.9 assembled, byte for byte. Phase 4 is not a second construction site: the gate has already ruled on these counters and both the terminal and the posted body have already printed them, so a ledger rebuilt here could contradict a verdict that has shipped. Re-assert the partition before writing; a violation means the object was mutated between the gate and the disk, and the round's coverage claim is void.
@@ -474,6 +478,12 @@ for f in .claude/review-state/*.yml; do
     fi
   fi
 done
+
+ls -t .claude/review-state/*.yml 2>/dev/null | tail -n +51 | while read -r stale; do
+  rm "$stale"
+done
 ```
 
-Cap at 50 files; oldest deleted first. Run lazily (skip if it would add > 1s to Phase 1).
+The age rule alone bounds nothing: it only reaps state for PRs GitHub reports closed, so a repo carrying fifty long-lived open PRs keeps fifty state files forever and grows a fifty-first with each new review. The cap is what makes the directory finite, and it sorts by mtime because the last round to touch a file is the only recency signal a state file carries — `last_round` counts rounds, not days.
+
+Run the age loop lazily (skip it if it would add > 1s to Phase 1); it costs one `gh pr view` per file. The cap pass never skips — it touches no network and is the half that actually bounds the directory.

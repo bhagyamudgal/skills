@@ -1,6 +1,7 @@
 # Finding output format
 
-The single shape every reviewer and verifier emits a finding in, and the single field list
+The single shape every reviewer and verifier emits a finding in, the single line shape a
+lens-assigned reviewer emits a coverage-ledger cell verdict in, and the single field list
 every surface renders a review header from. Loaded by **Subagent 1** (Phase 2 reviewer),
 **Subagent 2** (Phase 2 silent-failure reviewer), **Subagent 3** (Phase 2 cross-cutting
 reviewer), **V1** (Phase 3 class sweep) and **V3** (Phase 3 deep gap check) — all of them
@@ -135,7 +136,9 @@ as a finding that was fixed and a new one that appeared.
 `file`, `enclosing_symbol` and `rule_class`, and nothing else. It is what links a finding
 to its coverage-ledger cell: `lens-map.md` defines the `finding` verdict as a cell some
 finding's `Lens:` line names, and ledger assembly reads this line to set those cells and to
-persist `lens_ids`. A blank line is not an answer — it is a finding the ledger silently
+persist `lens_ids`. "Coverage-ledger cell verdicts" below defines the line the reviewer
+emits for that same cell; the two must name each other, and this line is the authority
+where they disagree. A blank line is not an answer — it is a finding the ledger silently
 fails to account for, and a cell reading `finding` with nothing pointing back at it cannot
 be audited.
 
@@ -206,6 +209,88 @@ They are per-round labels. `M3` in round 2 need not be `M3` in round 3; cross-ro
 identity is the `sha1(file::enclosing_symbol::rule_class)` hash defined in
 `finding-state-schema.md`.
 
+## Coverage-ledger cell verdicts
+
+The second shape defined here, and by volume the larger one. **Subagent 1 and its chunk
+instances** owe a verdict on each `(file, lens)` pair in the `LENS_ASSIGNMENTS` block they
+were handed, and on a real PR those cells outnumber the findings by an order of magnitude —
+one per lens per file per chunk reviewer. Nobody else emits them: Subagent 2 and Subagent 3
+receive no assignments and V3 is forbidden the cell vocabulary outright, so a cell block
+from any of them is a shape they invented. Main parses the cells into `ledger.rows[].lenses[]`
+(`finding-state-schema.md`, "Coverage ledger"), so the shape has to survive being emitted
+dozens of times in a row under context pressure. The per-finding block's field-per-line
+verbosity is the wrong instrument at that volume; a cell is one line.
+
+Left to prose, each reviewer phrases its verdicts differently, main reads some of them, and
+every cell it cannot read is `not-examined`. That direction is safe but not free: format
+drift between chunk reviewers becomes a coverage line that is permanently red for reasons
+that have nothing to do with coverage, and `lens-map.md` records what a permanently red line
+teaches its readers.
+
+Emit the cells after the findings, one line each, in the order the assignments were given:
+
+```cells
+<path> | <lens id> | <verdict> | <note>
+```
+
+- `<path>` — repo-relative, byte-identical to the assignments block. A cell keyed on a
+  display name or a shortened path matches no row.
+- `<lens id>` — `META`, `L1`…`L19`, exactly as spelled in `lens-map.md`'s `lens_index`.
+- `<verdict>` — one of `clean`, `finding`, `not-applicable`, `cannot-assess`, spelled
+  exactly. These tokens are copied verbatim into the ledger's enum, so a synonym
+  (`n/a`, `ok`, `pass`, `N/A`) needs a mapping table that nobody has written. `not-examined`
+  is main's alone: it means "this reviewer said nothing", which no reviewer can say of
+  itself.
+- `<note>` — everything after the third `|`, one line, no pipes needed inside it since the
+  parse takes the remainder. **Required** for `not-applicable` (why the assigned lens's
+  trigger is absent here) and for `cannot-assess` (which artifact would answer it). For
+  `finding`, the `Rule-class` slug of the finding raised on this cell. A `clean` line ends
+  after the verdict, with no trailing pipe.
+
+The fence's `cells` info string is an aid, not the contract: each line stands alone and is
+recognised by its own shape, so one mangled line costs one cell. That is why this is a flat
+list and not a per-file grouping — grouping is cheaper in tokens and orphans an entire
+file's cells when its one header line garbles, which converts a formatting slip into a
+whole file of `not-examined`.
+
+`finding` carries a `Rule-class` slug rather than a finding id because reviewers never
+assign ids (see "Finding IDs"), and because the authoritative link runs the other way: main
+sets `finding` cells from the surviving findings' `Lens:` lines during ledger assembly, not
+from this block. The slug makes the reviewer's claim checkable against its own findings — a
+`finding` cell with no finding pointing back at it is a dropped `Lens:` line, and it should
+read as that rather than as a cell that quietly set itself. A reviewer `finding` cell whose
+finding did not survive dedupe or filtering resolves to `clean`: the lens ran and nothing
+stands. It is never `not-examined` — the reviewer did the work.
+
+These are the cells behind the ledger example in `finding-state-schema.md`, so the two can
+be read against each other. One finding covering two cells writes its slug on both; main
+resolves them to one `finding_id`.
+
+```cells
+src/handlers/import-pdf.ts | L1 | finding | silent-failure
+src/handlers/import-pdf.ts | L8 | finding | silent-failure
+src/services/upsert-bundle.helper.ts | L7 | clean
+drizzle/0042_bundle_index.sql | L17 | not-applicable | index-only DDL — no table gains a column needing a companion
+drizzle/0042_bundle_index.sql | L13 | cannot-assess | needs a row-count and null-share query against the target table
+```
+
+### What main does with a malformed cell
+
+A line main cannot parse — an unknown verdict token, a missing or unrecognised lens id, a
+path outside the assignments, or a `not-applicable` / `cannot-assess` carrying no note — is
+treated as **absent**. The cell it was meant to fill is `not-examined`, with the reason
+recorded as an unparseable verdict. This is deliberately the same outcome as silence: a
+verdict main cannot read is a verdict main does not have, and the ledger has exactly one
+safe direction of failure. Never repair a malformed line by inferring what the reviewer
+probably meant, and never let one settle to `clean`.
+
+A cell block whose closing fence never arrives was truncated rather than withheld. Cells
+before the break stand; the rest are `not-examined` with truncation as their reason, which
+is a distinct and more actionable note than "the reviewer said nothing about the pair".
+
+A cell naming a `(file, lens)` pair the assignments do not contain is recorded, not dropped —
+the map is a floor and not a ceiling — and flagged as a map row that is missing.
+
 ## Run-level header — canonical field list
 
 One header, rendered by several surfaces. This list is the source: a surface carries a
@@ -226,7 +311,7 @@ declared subset of these fields and invents none of its own.
 | `Convergence` | main, Phase 3 step 7.5 | new / caused-by-earlier-fixes / regressions-reopened / carried, plus the one trend sentence. Printed, never recomputed per surface. |
 | `Mode` | main | the run's non-default modes (see `Mode` below); omitted when the run is a plain in-repo full review |
 | `Follow-ups` | Phase 4's "File the follow-up issue" step | the round-cap backlog's fate — the issue URL when `filed`, and otherwise the stated reason there is none (`incomplete` / `failed` / `declined`). Omitted below round 3 and whenever no finding is still active. The wording of the three non-`filed` renderings is fixed in `github-posting.md` and must not be softened: the round cap releases findings from blocking on the promise that they are tracked, so a surface that implies a backlog which does not exist re-tells exactly the lie the step exists to prevent |
-| `Coverage` | ledger in the state file | `cells_examined` / `cells_total` across `files_changed`, plus `cells_cannot_assess` and `cells_not_examined` each when non-zero. `cells_examined` covers `{clean, finding, not-applicable}`; the three counters partition `cells_total`, so a surface renders them and never derives one by subtracting the others. The five-value verdict vocabulary and the partition are fixed in `finding-state-schema.md` |
+| `Coverage` | the ledger Phase 3 step 6.9 assembled — **not** the state file, which Step 8c has not written when the body is composed; in batch mode, the ledger the per-PR subagent transported back | `cells_examined` / `cells_total` across `files_changed`, plus `cells_cannot_assess` and `cells_not_examined` each when non-zero. `cells_examined` covers `{clean, finding, not-applicable}`; the three counters partition `cells_total`, so a surface renders them and never derives one by subtracting the others. The five-value verdict vocabulary and the partition are fixed in `finding-state-schema.md` |
 
 ### `Reviewers` — degraded runs
 
@@ -274,14 +359,15 @@ Verdict: approve | comment | request-changes
 it is the reason half of the `Senior engineer approval` field, and rendering surfaces join
 the two.
 
-Chunk reviewers, Subagent 3 and V3 report findings only — their scope is partial, so main
-composes the run-level verdict in Phase 3.
+Chunk reviewers, Subagent 3 and V3 emit no header fields — their scope is partial, so main
+composes the run-level verdict in Phase 3. A chunk reviewer still owes its cell block; that
+is coverage over the files it held, not a claim about the run.
 
 ## Projections of this schema
 
 Each surface below renders a declared SUBSET of the per-finding block, the header field
-list, or the `class_completeness:` audit. Each one's own spec names what it carries and
-why what it drops is safe to drop there.
+list, the cell-verdict line, or the `class_completeness:` audit. Each one's own spec names
+what it carries and why what it drops is safe to drop there.
 
 **A projection that restates the schema is the defect.** Two copies of one shape drift, and
 the drift is invisible until a downstream parser meets the older copy. A projection cites
@@ -296,6 +382,7 @@ this file and names its subset.
 | `/fix-pr-review` handoff file | SKILL.md, Phase 4 | per-finding block |
 | Follow-up issue body | SKILL.md, Phase 4 | per-finding block, minus `Lens` (the issue outlives the ledger cell it answered); `Rule-class` and `Enclosing-symbol` ride in the HTML marker that the read-back greps and a later round's lookup reads |
 | V1 class-sweep report | `verification-subagents.md` | `class_completeness:` audit |
+| Coverage ledger (`ledger.rows[].lenses[]`) | `finding-state-schema.md`, "Coverage ledger" | the cell-verdict line — verdict and note per cell, with `finding_id` resolved by main from the finding's `Lens:` line rather than carried on the line itself |
 
 When a surface needs a field this file does not define, the field is added HERE first and
 the surface then projects it. Adding it to the surface alone recreates the drift.
