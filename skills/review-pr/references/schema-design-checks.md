@@ -15,7 +15,7 @@ The main SKILL.md keeps a 5-line conditional that loads this file. Inline-loadin
 For each new `pgTable()` (or equivalent) definition in the diff:
 
 a. Extract domain keywords from the table name (e.g., `app_OrderItems` → `order`, `item`).
-b. Add FK target roots as additional keywords (e.g., FKs `recipeId`, `articleId` → keywords `recipe`, `article`).
+b. Add FK target roots as additional keywords (e.g., FKs `orderId`, `productId` → keywords `order`, `product`).
 c. Search `$SCHEMA_DIR` for tables with matching keywords:
    ```
    Grep("<keyword>", "$SCHEMA_DIR", type: "ts")
