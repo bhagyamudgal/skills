@@ -26,6 +26,14 @@ file lists them and points at each one's spec.
 
 Emit the fields verbatim, one per line, in the order below.
 
+**Verbatim means the label is bare and starts the line** — `Issue: ...`, never `**Issue**:`,
+never `` `Issue:` ``, never folded into a heading with the value alongside. Every consumer
+matches a bare label at line start, so one wrapper character makes the whole block
+unreadable to all of them at once, and the run reports zero findings rather than a
+formatting complaint. This is the most expensive mistake available in this file: it has
+cost three complete live reviews, each of them good. Emphasis belongs in the values and in
+the surrounding prose, never on a label.
+
 ## Line number convention
 
 `File: <path:line>` must use the **post-image line number** — the line as it appears in
@@ -403,9 +411,19 @@ what it carries and why what it drops is safe to drop there.
 the drift is invisible until a downstream parser meets the older copy. A projection cites
 this file and names its subset.
 
+**A surface that lists findings either emits the per-finding block, or declares precisely
+which subset it emits and why the omission is safe there.** There is no third option, and
+in particular silence is not one. A heading whose spec says what goes under it but not what
+it looks like gets rendered however reads best in the moment — a compact table, a bullet
+list, a sentence apiece — and every entry under it goes unreadable to every consumer at
+once while the heading still looks populated. Declaring "one line per entry, these fields,
+because nothing downstream parses this one" is a complete answer; leaving the shape to
+inference is the failure. This holds inside a surface as well as between them: one surface
+can carry several finding lists under separate headings, and each owes its own declaration.
+
 | Surface | Spec | Projects |
 |---|---|---|
-| Terminal block | SKILL.md, Phase 4 | header + per-finding block |
+| Terminal block | SKILL.md, Phase 4 | header + the per-finding block under both `Findings` and `Follow-ups (non-blocking)`; declared one-line subsets under `Filtered out` and `Multi-round status` |
 | Posted review body | `github-posting.md` Step 1 | header |
 | Posted per-finding comment | `github-posting.md` Step 2 | per-finding block |
 | Batch consolidated report | `batch-mode.md` | header, one row per PR |

@@ -1303,7 +1303,8 @@ on top of the rules above:
    Serious, the verdict is `approve` even when Moderate and Minor findings remain — where
    rounds 1–2 would have landed on `comment`.
 2. **They report separately.** Print them in the Phase 4 body under the
-   `Follow-ups (non-blocking)` heading instead of under their own severity headings.
+   `Follow-ups (non-blocking)` heading instead of under their own severity headings. Only
+   the heading changes — the per-finding block does not, and Phase 4 states it there.
    Phase 4's **File the follow-up issue** step then offers to file every finding still
    active — this released tail included — as one issue. That step is what makes "tracked
    instead of blocking" true, and it runs ahead of the post decision because the review
@@ -1441,7 +1442,24 @@ clear the gate.
 <each entry is the full per-finding block from references/finding-output-format.md,
  headed by its canonical id — C1 / S1 / M1 / m1. The same id labels this finding in the
  posted review, the ledger and the handoff file; without it the author cannot tell which
- terminal entry became which thread on the PR.>
+ terminal entry became which thread on the PR.
+
+ Emit the field labels EXACTLY as that file writes them: bare, at the start of the line,
+ one field per line, `Label: value`. Not `**Issue**:`, not `` `Rule-class:` ``, and never
+ folded into a heading — a run that renders `Severity` and `Confidence` inside a bold
+ header line has not emitted those fields at all.
+
+ This is a terminal block, so prettifying it is the natural instinct and it is wrong here.
+ The block is read by `/fix-pr-review` and by the replay harness, both of which match a
+ bare label at line start; markdown emphasis makes every field invisible to them at once.
+ Three consecutive live runs were lost this way — the review was excellent each time and
+ no consumer could read a single finding. Readability is what the severity headings and
+ the summary table are for; these entries are the machine-readable copy.
+
+ `<count>` is every finding this round emits, `Follow-ups (non-blocking)` included — the
+ severity ratchet moves findings between headings and changes no total. From round 3, omit
+ a severity sub-heading whose findings all moved; an empty `### Moderate` reads as a tier
+ that came back clean.>
 
 ### Critical
 <entries>
@@ -1457,7 +1475,15 @@ clear the gate.
 
 ## Follow-ups (non-blocking)
 <round >= 3 only: Moderate/Minor findings the severity ratchet released from blocking.
- Omit this heading entirely at rounds 1-2, where they appear under their own severity.>
+ Omit this heading entirely at rounds 1-2, where they appear under their own severity.
+
+ Shape: identical to `## Findings` above — the full per-finding block per entry, headed by
+ its canonical id, labels bare and at line start. The ratchet moves these findings out of
+ the blocking set, not out of the machine-readable one: `/fix-pr-review`, the replay
+ harness and the follow-up-issue body composed further down this phase all read the
+ per-finding block, so a compact table here — the natural rendering for a heading of
+ non-blocking items, and the one this spec previously left open — deletes every entry
+ under it from all three consumers at once while the heading still looks populated.>
 <plus the one tracking line from "File the follow-up issue" — the issue URL, or the
  statement that nothing tracks these findings. It is appended once that step has run: the
  answer does not exist when this block is first rendered, and a heading that lists
@@ -1466,10 +1492,26 @@ clear the gate.
  entries — the issue carries every finding still active at the cap.>
 
 ## Filtered out (<count>)
-<dropped findings with reasons — for auditability>
+<one line per dropped finding, NOT the per-finding block:
+ `<id or path:line> · <Severity> · <Issue, trimmed> — <the drop reason logged by the step
+ that dropped it, verbatim>`. `<count>` is the number of lines.
+
+ A one-line subset is declared here rather than the full block because nothing downstream
+ acts on a dropped finding: the handoff file carries only survivors, the posted body
+ excludes this section outright, and the single question a reader brings — did the critic
+ over-filter — is answered by the severity, the sentence and the reason. Keep the reason
+ wording the dropping step logged; rephrasing it breaks the match back to the rule that
+ fired.>
 
 ## Multi-round status
-<for each finding in PRIOR_STATE: id, file, status, round_resolved/dismissed, dismissal_reason. Useful for "did I really ship M3 in round 5?" scanning.>
+<one line per finding in PRIOR_STATE, NOT the per-finding block:
+ `<id> · <last entry in label_history> · <file> · <status> · round <round_resolved, or "—"
+ while still active> — <dismissal_reason, dropped when null>`. Useful for "did I really
+ ship M3 in round 5?" scanning, which is what the label buys over the id hash.
+
+ A one-line subset is declared here because every entry is a prior round's finding in a
+ closed state: `references/finding-state-schema.md` is their authority and the only thing
+ that reads them, and any of them still active this round already printed in full above.>
 ```
 
 ### Verdict and approval emoji mapping
