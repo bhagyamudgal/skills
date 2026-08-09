@@ -391,6 +391,7 @@ allowlist exists to withhold. The cost is one command per read and a line in
 | 2 | the CLI failed, timed out, or is misconfigured (`error` carries its stderr tail) |
 | 3 | nothing parsed **and** a tool call the harness meant to allow was refused |
 | 4 | **a review arrived and no part of it parsed** — see "A format failure is not a clean PR" |
+| 5 | **the number parsed is not the number the review says it wrote** — see "The review declares its own count" |
 
 The timeout is enforced by a watchdog that kills the child at the deadline, not by a
 clock check inside the read loop: `for line in proc.stdout` blocks until a line arrives,
@@ -462,9 +463,87 @@ cheaper error. Calling a genuinely clean run a format failure teaches the operat
 disbelieve the signal, which is how the next real one gets waved through.
 
 Exit 4 says outright not to score the run: an empty findings list there means the harness
-failed, not that the PR was clean. `score.py` does not read `format.failure` — it would
-report the same "the run produced no findings at all" it reports for a clean PR, so the
-run's own exit code is the gate.
+failed, not that the PR was clean. `score.py` reads neither `format.failure` nor
+`count.shortfall` — it would report the same "the run produced no findings at all" it
+reports for a clean PR, so the run's own exit code is the gate.
+
+**Both gates describe a review that failed to parse *entirely*.** A review that arrives in
+two shapes, only one of which parses, trips neither — see "The review declares its own
+count" below, which is what catches that.
+
+### The review declares its own count
+
+`format.failure` was calibrated on a review where **nothing** parsed, and it does not
+generalise to one where some of it did. Two consecutive live runs proved it:
+
+| run | declared | parsed | `format.failure` | `unparsed` | exit |
+| --- | --- | --- | --- | --- | --- |
+| A | 15 | 3 | `false` | `{blocks: 0, orphan_fields: 0}` | 0 |
+| B | 22 | 4 | `false` | `{blocks: 0, orphan_fields: 0}` | 0 |
+
+Both exited 0 with a clean bill of health while 80–82% of the review went nowhere. Nothing
+was malformed: the findings that survived were emitted as proper blocks and parsed, and
+the rest were rows of a markdown summary table under `## Follow-ups (non-blocking)` — a
+shape with no field lines in it to be dropped as a block or counted as an orphan. Every
+instrument built to make silent loss loud was built for *total* loss, so a partial one
+walked past all of them.
+
+The signal was in the output the whole time. The review states its own total, and
+comparing that against the parse needs no heuristic, no threshold and no marker
+vocabulary. `count` carries it:
+
+```json
+"count": {"declared": 22, "parsed": 4, "heading": 22, "heading_occurrences": 1,
+          "convergence": 22, "undeclared_heading": false, "sources_disagree": false,
+          "shortfall": 18, "surplus": 0}
+```
+
+**Two sources, neither inferred.** `## Findings (N)` is the contractual declaration —
+`finding-output-format.md` fixes N as every finding the round emits, `Follow-ups` included.
+The header's `Convergence` field partitions the same set (`<N> new · <C> caused by earlier
+fixes · <R> regressions reopened · <F> carried`), so its four numbers are the same total
+written by a different step. In runs A and B and the run before them the two agreed
+exactly — 15/15, 15/15, 22/22.
+
+**Where they disagree the larger wins, and the disagreement prints.** Both are the review's
+own arithmetic; when a review cannot agree with itself the declaration is already
+unreliable, and the smaller number is the one that lets real loss through. Repeated
+`## Findings` headings resolve the same way, and `heading_occurrences` says there were two
+— a re-printed review block both declares two totals and parses the same finding twice, so
+an operator reading a shortfall needs to know one existed before concluding anything.
+
+**Two headings that are deliberately not sources.** `## Filtered out (N)` carries a count
+of its own, and it is a different set by contract — findings the review dropped, which
+nothing downstream acts on. Adding it would invent a shortfall on every run that filtered
+anything. `## Follow-ups (non-blocking)` carries no count and its entries are already
+inside N; counting its rows would double them. The `Severity counts` badge line is a
+GitHub-body field, and this harness forbids posting, so it appears in no transcript — a
+parser written against a shape never observed is a way to disagree, not a way to
+cross-check.
+
+**A surplus is fatal too.** `parsed > declared` cannot mean loss, but it means the finding
+list and the review's own count describe different sets — which is what a double-counted
+result event looks like, a defect this harness has already shipped once. Scoring a run
+whose findings appear twice measures the duplication: the matcher can only report the
+copy as unmatched, which shows up as a drop in the measured match rate.
+
+**Where it stays silent.** A clean PR with no `## Findings` heading leaves `declared` at
+`null` and the detector inert — the comparison exists only where the review made a claim.
+`## Findings (0)` with nothing parsed is `0 == 0` and passes. An absent declaration prints
+`declared=-` in the status line rather than `declared=0`, because "the review said nothing"
+and "the review said none" are different facts.
+
+**Except in one shape.** A `## Findings` heading that arrives *without* its `(N)` is a
+review that plainly exists with nothing declaring its size — the only way this detector
+goes quiet while there is something to have lost. `undeclared_heading` names it and prints
+`NO DECLARED COUNT`. It warns rather than failing: a missing `(N)` is a formatting
+deviation, and nothing here knows whether anything went behind it.
+
+Exit **5** is the point of all of it. Both live runs returned 0, and an operator reading
+`findings=4` next to a green exit had no reason to open the JSON. A shortfall or a surplus
+never returns a code that means success. It is ordered after exit 4, which names the same
+class of defect more precisely when both fire, and before the emptiness codes, which would
+otherwise file a run that lost every finding it declared as a clean PR.
 
 ### The review survives the parser
 

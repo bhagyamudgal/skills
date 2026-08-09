@@ -23,11 +23,14 @@ Four properties this harness must have, in order:
 4. **It cannot lose a review it obtained.** The parser reads one grammar; the reviewer is
    free to emit another. A review that arrives in an unparseable shape is reported as a
    format failure with its own exit code, and the text is persisted verbatim so the
-   findings survive the parser that could not read them.
+   findings survive the parser that could not read them. A review that arrives in *two*
+   shapes, only one of which parses, is caught by the count the review declares of
+   itself — the failure the total-failure gate was never built to see.
 
 Exit codes: 0 findings parsed, 1 none parsed, 2 the CLI failed or timed out or is
 misconfigured, 3 nothing parsed and a tool call the harness meant to allow was refused,
-4 a review arrived and no part of it parsed.
+4 a review arrived and no part of it parsed, 5 the number parsed is not the number the
+review says it wrote.
 
 Usage:
     python3 tools/replay/run.py --pr https://github.com/o/r/pull/123 --out run.json
@@ -179,6 +182,7 @@ EXIT_NO_FINDINGS = 1
 EXIT_CLI_ERROR = 2
 EXIT_PERMISSION_REFUSED = 3
 EXIT_FORMAT_FAILURE = 4
+EXIT_COUNT_MISMATCH = 5
 
 # `claude -p` appends its own directive to the system prompt: "Do not call the AgentTool
 # unless the user requested it", alongside the same sentence for workflows. It is a
@@ -352,6 +356,103 @@ def diagnose_format(text, findings, dropped):
                and len(text) >= MIN_REVIEW_CHARS
                and markers >= MIN_FORMAT_MARKERS)
     return {"failure": failure, "markers": markers, "decorated": decoration(text)}
+
+
+# The review states its own total in `## Findings (N)`, and the format reference fixes
+# what N covers: every finding the round emits, `Follow-ups (non-blocking)` included. That
+# makes it the one number in the output that can be held against the parse with no
+# heuristic, no threshold and no marker vocabulary behind it.
+#
+# Anchored to heading syntax and to the word `Findings`. `## Filtered out (N)` carries a
+# count of its own and is a different set by contract — findings the review dropped, which
+# nothing downstream acts on — so reading it here would invent a shortfall on every run
+# that filtered anything. `## Follow-ups (non-blocking)` carries no count and its entries
+# are a subset of N, so it is not a source either.
+_FINDINGS_HEADING_RE = re.compile(r"^[ \t]*#{1,6}[ \t]+Findings\b[^\n(]*\((\d+)\)",
+                                  re.MULTILINE)
+
+# The same heading with the count dropped. It is the one way this detector goes quiet
+# while a review plainly exists, so it is recognised separately and said out loud rather
+# than left to look like a review that declared nothing.
+_UNCOUNTED_HEADING_RE = re.compile(r"^[ \t]*#{1,6}[ \t]+Findings\b", re.MULTILINE)
+
+# The header's `Convergence` field partitions the same set the heading totals, so its four
+# numbers are a second statement of N written by a different step of the skill. Each part
+# is matched against the word that names it rather than by position, so the trend sentence
+# the posted-body rendering appends to the same line cannot contribute a number.
+_CONVERGENCE_LINE_RE = re.compile(r"^.*\bConvergence\b.*$", re.MULTILINE)
+_CONVERGENCE_PARTS = (r"(\d+)[ \t]+new\b", r"(\d+)[ \t]+caused\b",
+                      r"(\d+)[ \t]+regressions?\b", r"(\d+)[ \t]+carried\b")
+
+
+def _convergence_total(text):
+    """The `Convergence` header field's four counts, summed — or None if it is not there.
+
+    All four parts or nothing: a line missing one of them is a rendering this code does
+    not recognise, and summing what it could find would declare a total lower than the
+    review meant, which is the direction that hides loss.
+    """
+    for line in _CONVERGENCE_LINE_RE.findall(text):
+        found = [re.search(part, line, re.IGNORECASE) for part in _CONVERGENCE_PARTS]
+        if all(found):
+            return sum(int(m.group(1)) for m in found)
+    return None
+
+
+def diagnose_count(text, findings):
+    """Does the number of findings parsed match the number the review says it wrote?
+
+    `format.failure` was calibrated on a review where *nothing* parsed, and it does not
+    generalise to one where some of it did. Two live runs declared 15 and 22 findings,
+    parsed 3 and 4, and tripped no counter at all: `unparsed.blocks` and
+    `unparsed.orphan_fields` were zero because the lost findings were not malformed
+    blocks — they were rows of a markdown summary table, a shape with no field lines in
+    it to be dropped or orphaned. Every instrument here was built for total failure, so
+    a partial one passed as clean.
+
+    This one needs none of that machinery, because the review declares the answer. Two
+    sources state it and neither is inferred:
+
+    - `## Findings (N)` — the contractual declaration.
+    - the `Convergence` header field, whose four counts partition the same set.
+
+    Where they disagree the larger is taken and the disagreement is reported. Both are the
+    review's own arithmetic; when a review cannot agree with itself the declaration is
+    already unreliable, and the smaller number is the one that would let real loss through.
+
+    Repeated `## Findings` headings are likewise resolved by taking the largest and
+    reporting how many there were. A re-printed review block is the shape that produces
+    them, and it is also the shape that duplicates findings — so an operator reading a
+    shortfall needs to know a second heading existed before concluding anything.
+
+    A surplus is reported too, and just as fatally. It cannot mean loss, but it means the
+    finding list and the review's own count describe different sets — which is what a
+    double-counted result event looks like, a defect this harness has already shipped
+    once, and scoring a run whose findings appear twice measures the duplication.
+
+    Silent when the review declares nothing. A clean PR with no `## Findings` heading, or
+    any review that emits none, leaves `declared` at None and this detector inert: the
+    comparison exists only where the review made a claim to compare against. A heading
+    that arrives *without* its count is the one shape where that silence is wrong — there
+    is a review and no declaration of it — so `undeclared_heading` names it. It warns
+    rather than fails: a missing `(N)` is a formatting deviation, and nothing here knows
+    whether anything was lost behind it.
+    """
+    headings = [int(n) for n in _FINDINGS_HEADING_RE.findall(text)]
+    heading = max(headings) if headings else None
+    convergence = _convergence_total(text)
+    stated = [n for n in (heading, convergence) if n is not None]
+    declared = max(stated) if stated else None
+    parsed = len(findings)
+    return {
+        "declared": declared, "parsed": parsed,
+        "heading": heading, "heading_occurrences": len(headings),
+        "convergence": convergence,
+        "undeclared_heading": bool(_UNCOUNTED_HEADING_RE.search(text)) and declared is None,
+        "sources_disagree": len(set(stated)) > 1,
+        "shortfall": max(declared - parsed, 0) if declared is not None else 0,
+        "surplus": max(parsed - declared, 0) if declared is not None else 0,
+    }
 
 
 def raw_review(text):
@@ -632,6 +733,7 @@ def main():
     text, run = stream(cmd, repo, args.timeout)
     findings, dropped = parse_findings(text, pr_number)
     fmt = diagnose_format(text, findings, dropped)
+    count = diagnose_count(text, findings)
     blocked, refused = classify_denials(run["denials"])
     err = run["error"]
     payload = {
@@ -640,7 +742,7 @@ def main():
         "cost_usd": round(run["cost_usd"], 4), "seconds": round(run["seconds"], 1),
         "error": err, "subagent_dispatches": run["dispatches"],
         "permissions": {"blocked_by_policy": blocked, "refused": refused},
-        "unparsed": dropped, "format": fmt,
+        "unparsed": dropped, "format": fmt, "count": count,
         "raw_review": raw_review(text),
         "subagent_output": raw_review(run["subagent_text"]),
         "findings": findings,
@@ -650,6 +752,7 @@ def main():
         pathlib.Path(args.transcript).write_text(text)
 
     print(f"pr={pr_number} findings={len(findings)} "
+          f"declared={count['declared'] if count['declared'] is not None else '-'} "
           f"subagents={run['dispatches']} "
           f"unparsed_blocks={dropped['blocks']} "
           f"orphan_fields={dropped['orphan_fields']} "
@@ -679,6 +782,35 @@ def main():
               f"finding-output-format asks for a bare label at line start. Fix the skill "
               f"rather than widening the parser again — the next wrapper may not be one "
               f"it knows.")
+    if count["shortfall"]:
+        print(f"FINDINGS LOST — the review declares {count['declared']} finding(s) and "
+              f"{count['parsed']} parsed. The missing {count['shortfall']} exist in this "
+              f"run only as `raw_review` text in {args.out}; nothing downstream will ever "
+              f"see them. Read that text against the finding-output-format reference: the "
+              f"shapes that produce this are a summary table or a heading-and-prose "
+              f"rendering under a heading the parser cannot enter. Do not score this run "
+              f"— its findings are a minority of the review it came from.")
+    if count["surplus"]:
+        print(f"FINDINGS DUPLICATED — {count['parsed']} findings parsed against "
+              f"{count['declared']} declared. Nothing was lost, but the finding list and "
+              f"the review's own count describe different sets, and a list carrying the "
+              f"same finding twice scores the duplicate as an unmatched miss. Do not "
+              f"score this run until the extra {count['surplus']} are accounted for.")
+    if count["sources_disagree"]:
+        print(f"COUNT DISAGREEMENT — the `## Findings` heading says {count['heading']} "
+              f"and the Convergence field sums to {count['convergence']}. The review is "
+              f"inconsistent with itself, so the larger was used above; whichever number "
+              f"is wrong, one of the skill's two counting steps is.")
+    if count["undeclared_heading"]:
+        print("NO DECLARED COUNT — the review has a `## Findings` heading with no `(N)` "
+              "after it and no `Convergence` field, so nothing states how many findings "
+              "it meant to emit and the shortfall check has nothing to compare against. "
+              "This run cannot say whether it lost any. Fix the emitter: the count is "
+              "what makes that question answerable at all.")
+    if count["heading_occurrences"] > 1:
+        print(f"REPEATED HEADING — {count['heading_occurrences']} `## Findings` headings "
+              f"in one review. The block was emitted more than once, which is both a way "
+              f"to declare two different totals and a way to parse the same finding twice.")
     # Diagnosed in order of what the evidence supports. A review that arrived and did not
     # parse is the strongest claim available — it names the defect outright — so it is
     # tested before the weaker inference that a refusal is what emptied the run.
@@ -691,6 +823,12 @@ def main():
               f"this run — an empty findings list here means the harness failed, not the "
               f"PR was clean.")
         return EXIT_FORMAT_FAILURE
+    # After the format failure, which names the same defect more precisely when both fire,
+    # and before the emptiness codes, which would otherwise file a run that lost every
+    # finding it declared as a clean PR. Exit 0 is what let two live runs report a clean
+    # bill of health while 82% of the review went nowhere, so a mismatch never returns it.
+    if count["shortfall"] or count["surplus"]:
+        return EXIT_COUNT_MISMATCH
     if not findings:
         # Refusal gets its own code because the alternative is the failure this harness
         # exists to catch: a run never allowed to read the PR reporting the same empty

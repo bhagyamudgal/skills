@@ -1573,5 +1573,281 @@ class TestOrphanFields(unittest.TestCase):
         self.assertEqual(dropped["orphan_fields"], 2)
 
 
+class TestDeclaredCount(unittest.TestCase):
+    """Two live runs declared 15 and 22 findings, parsed 3 and 4, and exited 0. Every
+    counter agreed nothing was lost: `format.failure` was false because part of the review
+    *did* parse, and both `unparsed` counters were zero because the lost findings were
+    rows of a summary table — a shape with no field lines in it to drop or orphan. The
+    review had stated its own total in the heading the whole time."""
+
+    # The shape that lost them: a declared total, one finding rendered as a parseable
+    # block, and the rest as rows of a table under a heading the grammar cannot enter.
+    # `Filtered out` carries a count of its own and is deliberately part of the fixture —
+    # a detector that summed every parenthesised heading would declare 8 here.
+    TABLE_REVIEW = (
+        "# PR Review: widget cache consolidation (#7)\n\n"
+        "**Convergence**: 3 new · 1 caused by earlier fixes · "
+        "0 regressions reopened · 1 carried\n"
+        "**Trend**: `cascade_share` 0.20 — 2 of 10 findings were fix-induced.\n\n"
+        "## Findings (5)\n\n"
+        "### Serious\n\n"
+        "Severity: Serious\n"
+        "Confidence: high\n"
+        "File: src/alpha/cache.ts:42\n"
+        "Rule-class: stale-read\n"
+        "Issue: the cache entry is dropped outside the write transaction\n"
+        "Why it matters: a second reader sees the pre-write value\n"
+        "Suggested fix: drop the entry inside the same transaction\n\n"
+        "## Follow-ups (non-blocking)\n\n"
+        "| id | Sev | File | Issue |\n|---|---|---|---|\n"
+        "| M1 | yellow | `src/alpha/parser.ts:118` | parseWidget returns an empty list "
+        "on a malformed payload |\n"
+        "| M2 | yellow | `src/beta/store.ts:64` | storeWidget writes before the units "
+        "check |\n"
+        "| M3 | yellow | `src/beta/units.ts:12` | the conversion table is duplicated "
+        "three files over |\n"
+        "| m1 | blue | `src/alpha/cache.ts:9` | the TTL constant is unread by any "
+        "caller |\n\n"
+        "## Filtered out (3)\n\n"
+        "- `src/beta/store.ts:200` · Minor · reported in a prior round\n"
+        "- `src/alpha/parser.ts:12` · Minor · dropped as noise in round 1\n"
+        "- \"no tests added\" · advice that fits any PR in this repo\n")
+
+    ONE_BLOCK = ("Severity: Serious\nFile: src/alpha/parser.ts:118\n"
+                 "Issue: parseWidget swallows a malformed payload\n")
+
+    def _count(self, text):
+        findings, _ = runner.parse_findings(text, 7)
+        return runner.diagnose_count(text, findings)
+
+    def test_a_partly_parsed_review_reports_the_findings_it_lost(self):
+        count = self._count(self.TABLE_REVIEW)
+        self.assertEqual(count["declared"], 5)
+        self.assertEqual(count["parsed"], 1)
+        self.assertEqual(count["shortfall"], 4)
+
+    def test_the_counters_built_for_total_failure_still_see_nothing(self):
+        """The reason this detector had to exist: on the same text every older instrument
+        reports a clean run."""
+        findings, dropped = runner.parse_findings(self.TABLE_REVIEW, 7)
+        self.assertEqual(dropped, {"blocks": 0, "orphan_fields": 0})
+        self.assertFalse(runner.diagnose_format(self.TABLE_REVIEW, findings,
+                                                dropped)["failure"])
+
+    def test_a_review_where_nothing_parsed_under_a_declared_heading_is_caught(self):
+        text = self.TABLE_REVIEW.replace("Severity: Serious", "**Severity** is serious")
+        count = self._count(text)
+        self.assertEqual(count["parsed"], 0)
+        self.assertEqual(count["shortfall"], 5)
+
+    def test_a_matching_count_reports_no_shortfall_and_no_surplus(self):
+        text = "## Findings (1)\n\n" + self.ONE_BLOCK
+        count = self._count(text)
+        self.assertEqual((count["declared"], count["parsed"]), (1, 1))
+        self.assertEqual((count["shortfall"], count["surplus"]), (0, 0))
+
+    def test_more_parsed_than_declared_is_reported_as_a_surplus(self):
+        """Not loss, but the finding list and the review's own count describe different
+        sets — which is what a double-counted result event looks like."""
+        text = "## Findings (1)\n\n" + self.ONE_BLOCK * 2
+        count = self._count(text)
+        self.assertEqual(count["parsed"], 2)
+        self.assertEqual(count["surplus"], 1)
+        self.assertEqual(count["shortfall"], 0)
+
+    def test_a_clean_review_that_declares_nothing_leaves_the_detector_inert(self):
+        """The misfire that would matter most: a clean PR has no heading to compare
+        against, and a detector that read the absence as zero would call every clean run
+        a surplus the moment one finding parsed."""
+        count = self._count(TestFormatFailure.CLEAN_REVIEW)
+        self.assertIsNone(count["declared"])
+        self.assertEqual((count["shortfall"], count["surplus"]), (0, 0))
+
+    def test_findings_with_no_heading_are_not_a_surplus(self):
+        count = self._count(self.ONE_BLOCK)
+        self.assertIsNone(count["declared"])
+        self.assertEqual(count["surplus"], 0)
+
+    def test_a_declared_zero_on_a_clean_pr_is_not_a_mismatch(self):
+        count = self._count("## Findings (0)\n\nNothing blocking this round.\n")
+        self.assertEqual((count["declared"], count["parsed"]), (0, 0))
+        self.assertEqual((count["shortfall"], count["surplus"]), (0, 0))
+
+    def test_the_filtered_out_count_is_not_a_declaration_of_findings(self):
+        """A different set by contract — findings the review dropped, which nothing
+        downstream acts on. Reading it here would invent a shortfall on every run that
+        filtered anything."""
+        text = "## Findings (1)\n\n" + self.ONE_BLOCK + \
+               "\n## Filtered out (4)\n\n- `src/beta/store.ts:12` · Minor · noise\n"
+        self.assertEqual(self._count(text)["declared"], 1)
+
+    def test_a_count_in_prose_is_not_a_declaration(self):
+        """Only heading syntax declares. A sentence about findings is not the review
+        stating its total, and reading one would put the detector at the mercy of any
+        number a reviewer writes."""
+        text = "The last review closed Findings (9) of the twelve raised.\n" + self.ONE_BLOCK
+        self.assertIsNone(self._count(text)["declared"])
+
+    def test_the_convergence_field_declares_the_same_total_on_its_own(self):
+        text = ("**Convergence**: 2 new · 1 caused by earlier fixes · "
+                "0 regressions reopened · 1 carried\n\n" + self.ONE_BLOCK)
+        count = self._count(text)
+        self.assertIsNone(count["heading"])
+        self.assertEqual(count["convergence"], 4)
+        self.assertEqual(count["shortfall"], 3)
+
+    def test_the_trend_sentence_on_the_convergence_line_contributes_no_number(self):
+        text = ("**Convergence**: 2 new · 0 caused by earlier fixes · "
+                "0 regressions reopened · 0 carried — cascade_share 0.50, "
+                "4 of 8 rounds\n\n" + self.ONE_BLOCK)
+        self.assertEqual(self._count(text)["convergence"], 2)
+
+    def test_a_convergence_line_missing_a_part_declares_nothing(self):
+        """Summing what a half-recognised rendering happens to carry would declare a total
+        below what the review meant, which is the direction that hides loss."""
+        text = "**Convergence**: 2 new · 1 carried\n\n" + self.ONE_BLOCK
+        self.assertIsNone(self._count(text)["convergence"])
+
+    def test_two_disagreeing_sources_take_the_larger_and_say_they_disagreed(self):
+        text = ("**Convergence**: 1 new · 0 caused by earlier fixes · "
+                "0 regressions reopened · 0 carried\n\n"
+                "## Findings (4)\n\n" + self.ONE_BLOCK)
+        count = self._count(text)
+        self.assertTrue(count["sources_disagree"])
+        self.assertEqual(count["declared"], 4)
+        self.assertEqual(count["shortfall"], 3)
+
+    def test_agreeing_sources_are_not_reported_as_a_disagreement(self):
+        self.assertFalse(self._count(self.TABLE_REVIEW)["sources_disagree"])
+
+    def test_a_repeated_heading_takes_the_larger_and_counts_the_headings(self):
+        """A re-printed review block declares two totals and can parse the same finding
+        twice; an operator reading either number needs to know there were two."""
+        text = "## Findings (2)\n\n" + self.ONE_BLOCK + "\n## Findings (6)\n"
+        count = self._count(text)
+        self.assertEqual(count["heading_occurrences"], 2)
+        self.assertEqual(count["declared"], 6)
+
+    def test_a_heading_that_dropped_its_count_says_so_rather_than_going_quiet(self):
+        """The one shape where an inert detector is wrong: a review plainly exists and
+        nothing declares its size."""
+        count = self._count("## Findings\n\n" + self.ONE_BLOCK)
+        self.assertIsNone(count["declared"])
+        self.assertTrue(count["undeclared_heading"])
+
+    def test_a_counted_heading_is_not_reported_as_undeclared(self):
+        self.assertFalse(self._count(self.TABLE_REVIEW)["undeclared_heading"])
+
+    def test_a_review_with_no_findings_heading_at_all_is_not_reported_as_undeclared(self):
+        """A clean PR emits no heading, and calling that a missing declaration would fire
+        the warning on every clean run there is."""
+        self.assertFalse(
+            self._count(TestFormatFailure.CLEAN_REVIEW)["undeclared_heading"])
+
+    def test_an_uncounted_heading_backed_by_convergence_still_declares(self):
+        text = ("**Convergence**: 1 new · 0 caused by earlier fixes · "
+                "0 regressions reopened · 0 carried\n\n"
+                "## Findings\n\n" + self.ONE_BLOCK)
+        count = self._count(text)
+        self.assertEqual(count["declared"], 1)
+        self.assertFalse(count["undeclared_heading"])
+
+    def test_a_heading_with_a_suffix_after_the_count_still_declares(self):
+        """Missing a heading costs the detector entirely and silently, so the tail is read
+        leniently — the failure direction that matters is not seeing a declaration."""
+        self.assertEqual(self._count("### Findings (3) — after the ratchet\n")["declared"], 3)
+
+
+class TestCountMismatchExitCode(unittest.TestCase):
+    """Run 5 exited 0 while 82% of its review went nowhere, so the operator had no reason
+    to look. A shortfall must not be able to return a code that means success."""
+
+    def _run(self, text, **kw):
+        # Borrowed unbound: `_run_main` reads nothing off its instance, and a second copy
+        # of how `main` is driven under test is a second thing to keep in sync.
+        return TestRunExitCodes._run_main(None, text, [], **kw)
+
+    def test_a_shortfall_gets_its_own_code_and_names_the_numbers(self):
+        status, payload, out = self._run(TestDeclaredCount.TABLE_REVIEW)
+        self.assertEqual(status, runner.EXIT_COUNT_MISMATCH)
+        self.assertIn("FINDINGS LOST", out)
+        self.assertIn("declares 5 finding(s) and 1 parsed", out)
+        self.assertEqual(payload["count"]["shortfall"], 4)
+
+    def test_the_status_line_carries_the_declared_count_next_to_the_parsed_one(self):
+        _, _, out = self._run(TestDeclaredCount.TABLE_REVIEW)
+        self.assertIn("findings=1 declared=5", out)
+
+    def test_a_run_that_declares_nothing_prints_a_dash_rather_than_a_zero(self):
+        """An absent declaration and a declared zero are different facts and must not
+        print alike."""
+        _, _, out = self._run(TestDeclaredCount.ONE_BLOCK)
+        self.assertIn("declared=-", out)
+
+    def test_a_surplus_is_fatal_too_and_says_what_it_means(self):
+        status, payload, out = self._run("## Findings (1)\n\n"
+                                         + TestDeclaredCount.ONE_BLOCK * 2)
+        self.assertEqual(status, runner.EXIT_COUNT_MISMATCH)
+        self.assertIn("FINDINGS DUPLICATED", out)
+        self.assertEqual(payload["count"]["surplus"], 1)
+
+    def test_a_matching_count_still_exits_zero_and_says_nothing(self):
+        status, _, out = self._run("## Findings (1)\n\n" + TestDeclaredCount.ONE_BLOCK)
+        self.assertEqual(status, runner.EXIT_OK)
+        self.assertNotIn("FINDINGS LOST", out)
+        self.assertNotIn("FINDINGS DUPLICATED", out)
+
+    def test_a_clean_run_keeps_its_own_code(self):
+        """The false direction that matters: a clean PR declares nothing, and calling it a
+        count mismatch teaches the operator to disbelieve the code."""
+        status, payload, out = self._run(TestFormatFailure.CLEAN_REVIEW)
+        self.assertEqual(status, runner.EXIT_NO_FINDINGS)
+        self.assertNotIn("FINDINGS LOST", out)
+        self.assertIsNone(payload["count"]["declared"])
+
+    def test_a_clean_run_that_declares_zero_keeps_its_own_code(self):
+        status, _, out = self._run("## Findings (0)\n\nNothing blocking this round.\n")
+        self.assertEqual(status, runner.EXIT_NO_FINDINGS)
+        self.assertNotIn("FINDINGS LOST", out)
+
+    def test_a_total_format_failure_keeps_the_code_that_names_it_precisely(self):
+        """Both trip when an unreadable review sits under a declared heading. Exit 4 names
+        the mechanism; the shortfall only counts the damage, and it still prints."""
+        text = "## Findings (2)\n\n" + TestFormatFailure.MARKDOWN_REVIEW
+        status, payload, out = self._run(text)
+        self.assertEqual(status, runner.EXIT_FORMAT_FAILURE)
+        self.assertIn("FINDINGS LOST", out)
+        self.assertIn("FORMAT FAILURE", out)
+        self.assertEqual(payload["count"]["shortfall"], 2)
+
+    def test_disagreeing_sources_are_printed_not_only_recorded(self):
+        text = ("**Convergence**: 1 new · 0 caused by earlier fixes · "
+                "0 regressions reopened · 0 carried\n\n"
+                "## Findings (4)\n\n" + TestDeclaredCount.ONE_BLOCK)
+        _, _, out = self._run(text)
+        self.assertIn("COUNT DISAGREEMENT", out)
+
+    def test_a_repeated_heading_is_printed_so_a_shortfall_can_be_explained(self):
+        text = ("## Findings (2)\n\n" + TestDeclaredCount.ONE_BLOCK
+                + "\n## Findings (6)\n")
+        _, _, out = self._run(text)
+        self.assertIn("REPEATED HEADING", out)
+
+    def test_a_heading_with_no_count_warns_without_failing_the_run(self):
+        """A missing `(N)` is a formatting deviation, and nothing here knows whether
+        anything was lost behind it — so it is said out loud and the run still scores."""
+        status, _, out = self._run("## Findings\n\n" + TestDeclaredCount.ONE_BLOCK)
+        self.assertEqual(status, runner.EXIT_OK)
+        self.assertIn("NO DECLARED COUNT", out)
+
+    def test_a_clean_run_is_not_told_it_dropped_a_count(self):
+        _, _, out = self._run(TestFormatFailure.CLEAN_REVIEW)
+        self.assertNotIn("NO DECLARED COUNT", out)
+
+    def test_a_single_heading_says_nothing_about_repetition(self):
+        _, _, out = self._run("## Findings (1)\n\n" + TestDeclaredCount.ONE_BLOCK)
+        self.assertNotIn("REPEATED HEADING", out)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
