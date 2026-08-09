@@ -14,14 +14,14 @@ The main SKILL.md keeps a 5-line conditional that loads this file. Inline-loadin
 
 For each new `pgTable()` (or equivalent) definition in the diff:
 
-a. Extract domain keywords from the table name (e.g., `gs_KioskItems` → `kiosk`, `item`).
+a. Extract domain keywords from the table name (e.g., `app_OrderItems` → `order`, `item`).
 b. Add FK target roots as additional keywords (e.g., FKs `recipeId`, `articleId` → keywords `recipe`, `article`).
 c. Search `$SCHEMA_DIR` for tables with matching keywords:
    ```
    Grep("<keyword>", "$SCHEMA_DIR", type: "ts")
    ```
 d. For each hit, read the file and compare FK targets and field names.
-e. **Flag ONLY** if an existing table has **3+ matching FK targets** AND a similar domain purpose (both tables serve the same feature area — e.g., both handle ordering, both handle menu planning).
+e. **Flag ONLY** if an existing table has **3+ matching FK targets** AND a similar domain purpose (both tables serve the same feature area — e.g., both handle ordering, both handle inventory).
 
 Substring matches alone (e.g., `item` matching many unrelated tables) are NOT sufficient — verify by FK comparison AND domain overlap.
 
@@ -60,17 +60,17 @@ d. **Flag ONLY** if a candidate settings/config table EXISTS. Do NOT suggest "cr
 
 **Question**: Are entity reference columns complete?
 
-When a new table has entity reference FKs (to `recipeTable`, `articleTable`, `foodItemTable`, `dishTable`, etc.):
+When a new table has entity reference FKs (to `orderTable`, `productTable`, `invoiceTable`, `customerTable`, etc.):
 
 a. Identify the "entity reference set" — which entity types does it reference?
 b. Search for related tables in the same domain (tables sharing the same parent FK or domain name keywords).
 c. Compare entity reference sets between the new table and related tables.
-d. **Flag ONLY** when a related table in the SAME domain has MORE entity types. Do NOT flag cross-domain differences (e.g., procurement items vs shop items may intentionally support different entity types).
+d. **Flag ONLY** when a related table in the SAME domain has MORE entity types. Do NOT flag cross-domain differences (e.g., billing items vs inventory items may intentionally support different entity types).
 
 **Severity**: Moderate. **Category**: Architecture.
 
 **Format**:
-> New table references [recipe, article] but related `<table>` in `<path>` also references [foodItem, dish] — are these intentionally omitted?
+> New table references [order, product] but related `<table>` in `<path>` also references [invoice, customer] — are these intentionally omitted?
 
 ---
 

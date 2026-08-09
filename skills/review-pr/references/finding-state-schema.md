@@ -2,7 +2,7 @@
 
 This document defines both of `/review-pr`'s per-PR persistence files — the state file `.claude/review-state/<pr-number>.yml` and the run-over-run cache — plus the stable finding-ID strategy that survives rewordings + line shifts across review rounds.
 
-**Why this exists**: in real production usage, `/review-pr` ran 6 rounds on PR #4785; round 5 resolved finding M3, but round 6 still listed M3 as "deferred" — confusing the user about whether they'd shipped the fix. Root cause: dedup keyed on `(file, line, symbol)` breaks when lines shift, and there was no persistent `resolved` marker. This schema fixes both problems.
+**Why this exists**: in real production usage, `/review-pr` ran 6 rounds on a production PR; round 5 resolved finding M3, but round 6 still listed M3 as "deferred" — confusing the user about whether they'd shipped the fix. Root cause: dedup keyed on `(file, line, symbol)` breaks when lines shift, and there was no persistent `resolved` marker. This schema fixes both problems.
 
 ---
 
@@ -167,7 +167,7 @@ One id, not a list — the single *nearest* cause. When several closed findings 
 
 - **`resolved`**: subagent saw the fix in the diff between `commit_sha_resolved` and the prior round's HEAD, **and** every `class_sites` entry is `handled: true`. A fix that lands on the cited site while a sibling site stays unhandled leaves the finding `active`. No automated writer sets this today — see the writer caveat at the end of "Phase 4 — write back".
 - **`dismissed`**: user explicitly dropped the finding via the post-review AskUserQuestion. `dismissal_reason` is required.
-- **`wontfix`**: user rejected the finding as wrong / out-of-scope. `dismissal_reason` is required (e.g., "intentional design — see issue #4001").
+- **`wontfix`**: user rejected the finding as wrong / out-of-scope. `dismissal_reason` is required (e.g., "intentional design — see the linked design issue").
 - **`regression`**: subagent emits a finding whose `id` matches an existing `resolved` entry, AND the diff shows the resolving code was reverted/edited. Treat as a fresh active finding but keep the history.
 - **`dismissed`/`wontfix` → `active`**: the code condition recorded in `depends_on` no longer holds at the current head, so the rationale that closed the finding no longer applies. Reopen as `active`; keep `dismissal_reason` and the original `round_resolved` as history, and note which commit voided the condition. There is no separate "voided" status — a void dismissal is just an open finding again.
 
