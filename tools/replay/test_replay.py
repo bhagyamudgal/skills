@@ -320,6 +320,105 @@ Some closing prose: not a finding.
         self.assertEqual(loaded[1]["tier"], "low")
 
 
+class TestDecoratedFieldLabels(unittest.TestCase):
+    """Three consecutive live runs produced a full review and parsed nothing, because the
+    emitter bolded its labels. The grammar tolerates the wrapper now; what it must not
+    tolerate is the label leaving the start of the line, which is the only thing telling a
+    field emission apart from the same word in a sentence."""
+
+    # The shape run 3 actually emitted: bold labels, a backtick-wrapped rule-class, and a
+    # bullet in front of one of them.
+    DECORATED = ("**Severity**: Serious\n"
+                 "**Confidence**: high\n"
+                 "`File`: src/services/quota-resolver.ts:305\n"
+                 "__Category__: Security\n"
+                 "`Rule-class: default-value-source-divergence`\n"
+                 "**Issue**: the all-users quota endpoint resolves the wrong default\n"
+                 "- **Suggested fix**: read the default from the same source as the write\n")
+
+    def _one(self, line):
+        m = runner._FIELD_RE.match(line)
+        return None if not m else (m.group("label").lower(), runner.field_value(m))
+
+    def test_every_accepted_wrapper_yields_a_bare_label(self):
+        for line in ("Issue: v", "**Issue**: v", "`Issue`: v", "__Issue__: v",
+                     "- **Issue**: v", "* Issue: v", "  **Issue** : v"):
+            with self.subTest(line=line):
+                self.assertEqual(self._one(line), ("issue", "v"))
+
+    def test_a_wrapper_spanning_the_colon_keeps_its_value(self):
+        """`**Issue:** text` is the most ordinary way to bold a label. Read as a wrapper
+        around the whole field it yields an empty value, which `parse_findings` drops
+        without counting — the silent loss this change exists to remove."""
+        self.assertEqual(self._one("**Issue:** the cache is stale"),
+                         ("issue", "the cache is stale"))
+        self.assertEqual(self._one("- `File:` src/a.ts:9"), ("file", "src/a.ts:9"))
+
+    def test_a_wrapper_that_opens_before_the_label_closes_the_value(self):
+        """`` `Rule-class: stale-read` `` delimits its own value. What follows the closing
+        backtick is left unread rather than split on a separator nobody declared."""
+        self.assertEqual(
+            self._one("`Rule-class: stale-read` - `Lens: L8` - and so on"),
+            ("rule-class", "stale-read"))
+
+    def test_a_label_inside_a_sentence_is_still_prose(self):
+        self.assertIsNone(self._one("the **Issue**: here is that the cache is stale"))
+        self.assertIsNone(self._one("One more issue: the cache is stale"))
+
+    def test_section_syntax_is_not_field_syntax(self):
+        """A heading or an ordinal introduces a section. Reading them as fields would let
+        a contents line open a finding."""
+        for line in ("### Issue: v", "## Severity: how we grade", "1. Issue: v",
+                     "> Issue: v"):
+            with self.subTest(line=line):
+                self.assertIsNone(self._one(line))
+
+    def test_a_wrapper_must_be_closed_by_the_one_that_opened_it(self):
+        for line in ("**Issue`: v", "Issue**: v", "`Issue__: v"):
+            with self.subTest(line=line):
+                self.assertIsNone(self._one(line))
+
+    def test_a_folded_heading_is_not_read_as_a_severity(self):
+        """The line run 3 led each finding with. It carries a severity and a confidence in
+        prose, and guessing them out of it would invent a field the reviewer never wrote —
+        so the block stays unparsed and the run reports that, which is the honest answer."""
+        header = "**C1 - `src/services/quota-resolver.ts:305`** - Security - high confidence\n"
+        findings, dropped = runner.parse_findings(header, 7)
+        self.assertEqual(findings, [])
+        self.assertEqual(dropped, {"blocks": 0, "orphan_fields": 0})
+
+    def test_a_fully_decorated_block_becomes_a_finding(self):
+        findings, dropped = runner.parse_findings(self.DECORATED, 7)
+        self.assertEqual(dropped, {"blocks": 0, "orphan_fields": 0})
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["path"], "src/services/quota-resolver.ts")
+        self.assertEqual(findings[0]["line"], 305)
+        self.assertEqual(findings[0]["rule_class"], "default-value-source-divergence")
+        self.assertEqual(findings[0]["severity"], "Serious")
+
+    def test_a_decorated_finding_is_scoreable(self):
+        findings, _ = runner.parse_findings(self.DECORATED, 7)
+        tmp = pathlib.Path(__file__).with_name("_test_decorated.json")
+        tmp.write_text(json.dumps(findings))
+        try:
+            loaded = score.load_findings(tmp)
+        finally:
+            tmp.unlink()
+        self.assertEqual(loaded[0]["tier"], "high")
+
+    def test_the_deviation_is_counted_not_swallowed(self):
+        """Parsing the wrapper and saying nothing would trade a loud failure for a quiet
+        one: the run scores while the emitter drifts and no output ever mentions it."""
+        seen = runner.decoration(self.DECORATED)
+        self.assertEqual(seen["fields"], 7)
+        self.assertIn("rule_class", seen["labels"])
+        self.assertIn("fix", seen["labels"])
+
+    def test_a_bare_emission_reports_no_drift(self):
+        self.assertEqual(runner.decoration(TestTranscriptParsing.TRANSCRIPT),
+                         {"fields": 0, "labels": []})
+
+
 class TestRecall(unittest.TestCase):
     DEFECTS = [
         {"id": "d1", "diff_visible": "yes", "defect_class": "swallowed-error",
@@ -979,7 +1078,7 @@ class TestPermissionPolicy(unittest.TestCase):
     posts to somebody's PR, so it is asserted rather than read."""
 
     def test_the_command_grants_phase_ones_reads_and_never_prompts(self):
-        cmd = runner.build_command("https://github.com/o/r/pull/7", 8.0, None)
+        cmd = runner.build_command("https://github.com/o/r/pull/7", None)
         self.assertIn("--permission-mode", cmd)
         self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "dontAsk")
         self.assertIn("--allowedTools", cmd)
@@ -993,12 +1092,49 @@ class TestPermissionPolicy(unittest.TestCase):
         for name in ("Agent", "Task"):
             self.assertIn(name, runner.ALLOW)
 
+    def test_the_run_asks_for_the_dispatches_the_print_entrypoint_withholds(self):
+        """`claude -p` appends "Do not call the AgentTool unless the user requested it" to
+        the system prompt, and a run that leaves it unanswered reviews inline in main and
+        produces none of the output a subagent writes. The rule is conditional on a user
+        request, so the harness makes one — and must not go further and describe the
+        review, which is the thing being measured."""
+        cmd = runner.build_command("https://github.com/o/r/pull/7", None)
+        appended = cmd[cmd.index("--append-system-prompt") + 1]
+        self.assertIn("Agent tool", appended)
+        self.assertIn("explicitly requested", appended)
+        self.assertIn("the skill decides how many", appended)
+
+    def test_the_child_loads_the_reviewed_repos_conventions_and_not_the_operators(self):
+        """User scope carries personal standing rules, an output style and plugins — one
+        of which is a second skill by the same name. Project scope carries the CLAUDE.md a
+        review has to read to judge the repo it is reviewing."""
+        cmd = runner.build_command("https://github.com/o/r/pull/7", None)
+        self.assertEqual(cmd[cmd.index("--setting-sources") + 1], "project,local")
+        self.assertNotIn("--bare", cmd)
+
     def test_the_posting_path_stays_denied(self):
-        cmd = runner.build_command("https://github.com/o/r/pull/7", 8.0, "opus")
+        cmd = runner.build_command("https://github.com/o/r/pull/7", "opus")
         self.assertIn("--disallowed-tools", cmd)
         for rule in ("Bash(gh pr review:*)", "Bash(gh pr comment:*)", "Bash(git push:*)"):
             self.assertIn(rule, cmd)
         self.assertEqual(cmd[cmd.index("--model") + 1], "opus")
+
+    def test_the_guard_warns_off_output_redirection(self):
+        """Redirection reads as a write to the CLI matcher whatever precedes it, so an
+        allowed command becomes a refusal the moment its output is stashed. One run spent
+        ten refusals on it, four of them the same command retried."""
+        self.assertIn("Do not redirect command output", runner.GUARD)
+        for token in (">", "tee"):
+            self.assertIn(token, runner.GUARD)
+
+    def test_the_run_carries_no_cost_cap(self):
+        """A dollar cap is enforced whatever the billing mode, so on a subscription it
+        kills runs without saving anything. One run died at "$15.17 of $15" partway
+        through Phase 2 and answered none of the questions it was launched to ask.
+        --timeout is the only bound now, which is why this asserts both halves."""
+        cmd = runner.build_command("https://github.com/o/r/pull/7", None)
+        self.assertNotIn("--max-budget-usd", cmd)
+        self.assertFalse([a for a in cmd if "budget" in a.lower()])
 
     def test_nothing_that_writes_is_granted(self):
         """A replay reads. A write rule reaching ALLOW would let the benchmark modify the
@@ -1080,11 +1216,13 @@ class TestRunExitCodes(unittest.TestCase):
     TRANSCRIPT = ("Severity: Serious\nFile: src/alpha/parser.ts:10\n"
                   "Issue: parseWidget swallows a malformed payload\n")
 
-    def _run_main(self, text, denials, error=None, dispatches=4, argv=()):
+    def _run_main(self, text, denials, error=None, dispatches=4, argv=(),
+                  subagent_text=""):
         buffer = io.StringIO()
         original_argv, original_stream = sys.argv, runner.stream
         telemetry = {"cost_usd": 0.5, "seconds": 1.0, "denials": denials,
-                     "dispatches": dispatches, "error": error}
+                     "dispatches": dispatches, "error": error,
+                     "subagent_text": subagent_text}
         with tempfile.TemporaryDirectory() as d:
             out = pathlib.Path(d) / "run.json"
             sys.argv = ["run.py", "--pr", "https://github.com/o/r/pull/7",
@@ -1099,6 +1237,18 @@ class TestRunExitCodes(unittest.TestCase):
             finally:
                 sys.argv, runner.stream = original_argv, original_stream
         return status, payload, buffer.getvalue()
+
+    def test_a_reviewers_own_output_is_kept_without_being_counted_twice(self):
+        """The reviewer restates in its return what main then emits once. Kept apart, the
+        Q lines and coverage cells survive for a reader to check the phases ran in shape;
+        merged, the same finding parses from both halves and the run reports a duplicate
+        nobody wrote."""
+        status, payload, _ = self._run_main(
+            self.TRANSCRIPT, [], subagent_text=self.TRANSCRIPT + "Q1: no-issues | ran\n")
+        self.assertEqual(status, runner.EXIT_OK)
+        self.assertEqual(len(payload["findings"]), 1)
+        self.assertIn("Q1: no-issues", payload["subagent_output"]["text"])
+        self.assertNotIn("Q1: no-issues", payload["raw_review"]["text"])
 
     def test_findings_and_no_denials_pass(self):
         status, payload, _ = self._run_main(self.TRANSCRIPT, [])
@@ -1121,6 +1271,22 @@ class TestRunExitCodes(unittest.TestCase):
         self.assertEqual(status, runner.EXIT_OK)
         self.assertIn("PERMISSION REFUSED", text)
         self.assertEqual(len(payload["permissions"]["refused"]), 1)
+
+    def test_a_decorated_run_scores_and_says_it_deviated(self):
+        """The parse succeeded, so the run is worth scoring — but the emitter is off a
+        contract, and normalising that away silently is how the next drift goes unnoticed
+        until it is one the parser does not happen to know."""
+        status, payload, text = self._run_main(
+            TestDecoratedFieldLabels.DECORATED, [])
+        self.assertEqual(status, runner.EXIT_OK)
+        self.assertEqual(len(payload["findings"]), 1)
+        self.assertIn("FORMAT DRIFT", text)
+        self.assertEqual(payload["format"]["decorated"]["fields"], 7)
+
+    def test_a_bare_run_says_nothing_about_drift(self):
+        _, payload, text = self._run_main(self.TRANSCRIPT, [])
+        self.assertNotIn("FORMAT DRIFT", text)
+        self.assertEqual(payload["format"]["decorated"]["fields"], 0)
 
     def test_a_genuinely_empty_review_keeps_its_own_code(self):
         status, _, text = self._run_main("no findings here", [])
@@ -1197,17 +1363,21 @@ class TestFormatFailure(unittest.TestCase):
     no unparsed blocks, no orphan fields — every number agreeing nothing was lost."""
 
     # A real review in a shape the field grammar cannot see: headings instead of
-    # `Severity:` lines, and the field labels bolded so the `^\s*field\s*:` anchor misses.
+    # `Severity:` lines, and every field folded into the sentence around it, so no line
+    # anywhere puts a label where the anchor looks for one. Markdown *decoration* is no
+    # longer this case — `**Issue**:` parses — so the fixture that stands for "the format
+    # moved" has to be output where the labels stopped being labels at all.
     MARKDOWN_REVIEW = ("# Review of the widget cache\n\n"
                        "### Critical - the cache is never invalidated after a write\n\n"
-                       "`src/alpha/cache.ts:42` - Rule-class `stale-read`\n\n"
-                       "**Why it matters**: a second reader sees the pre-write value.\n"
-                       "**Suggested fix**: drop the entry inside the same transaction.\n"
-                       "**Inverse risk**: dropping it outside re-opens the window.\n\n"
+                       "In `src/alpha/cache.ts:42` the rule-class is `stale-read`, and "
+                       "why it matters is that a second reader sees the pre-write value. "
+                       "My suggested fix is to drop the entry inside the same "
+                       "transaction; the inverse risk of dropping it outside is that it "
+                       "re-opens the window.\n\n"
                        "### Serious - parseWidget swallows a malformed payload\n\n"
-                       "`src/alpha/parser.ts:118` - Rule-class `swallowed-error`\n\n"
-                       "**Suggested fix**: raise instead of returning an empty list.\n"
-                       "**Class-sites**: 2 of 3 parsers.\n") + "prose. " * 300
+                       "In `src/alpha/parser.ts:118` the rule-class is `swallowed-error`. "
+                       "A suggested fix is to raise instead of returning an empty list; "
+                       "the class-sites here are 2 of 3 parsers.\n") + "prose. " * 300
 
     CLEAN_REVIEW = ("# Review of the widget cache\n\nNothing blocking. "
                     "Verified clean: the invalidation runs inside the transaction, the "

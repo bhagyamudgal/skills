@@ -387,7 +387,7 @@ allowlist exists to withhold. The cost is one command per read and a line in
 | code | meaning |
 | --- | --- |
 | 0 | findings parsed |
-| 1 | none parsed, and nothing suggests a review was lost — a clean PR or a budget cut-off |
+| 1 | none parsed, and nothing suggests a review was lost — a clean PR, or a run cut short by --timeout |
 | 2 | the CLI failed, timed out, or is misconfigured (`error` carries its stderr tail) |
 | 3 | nothing parsed **and** a tool call the harness meant to allow was refused |
 | 4 | **a review arrived and no part of it parsed** — see "A format failure is not a clean PR" |
@@ -404,11 +404,43 @@ lost: `blocks` (a block with no severity, or with neither a file nor an issue) a
 `orphan_fields` (field lines arriving before any `Severity:` opened a block — a finding
 whose severity line the transcript dropped).
 
+### A decorated label is still a label
+
+The label may arrive wearing markdown and still parse: `**Issue**:`, `**Issue:**`,
+`__Issue__:`, `` `Issue`: ``, `` `Issue: value` ``, and a `- ` or `* ` bullet in front of
+any of them.
+Three consecutive live runs produced a full review and parsed **zero** findings because
+the emitter bolded every label; a parser that loses a whole review to one wrapper
+character is brittle whether or not the emitter behaves this week.
+
+What decoration may **not** do is move the label off the start of the line. The anchor is
+the only thing separating a field emission from the same word inside a sentence, so an
+opening wrapper is allowed before the label and nothing else is — `the **Issue**: here is`
+stays prose. A closing wrapper must be the one that opened it. Headings (`### Issue:`) and
+ordinals (`1. Issue:`) stay rejected: they are section syntax, and reading them as fields
+would let a contents line (`## Severity: how we grade`) open a finding. A severity or
+confidence folded into a heading with other content — `**C1 · quota-resolver.ts:305** · Security
+· high confidence` — is **not** parsed either. It is not a field emission, and guessing one
+out of it would invent a value the reviewer never wrote.
+
+A wrapper that opens before the label and does not close before the colon closes later,
+and where it closes says which shape was written. Immediately after the colon it wrapped
+the label and its punctuation (`**Issue:** text` → `text`); anywhere later it wrapped the
+whole field (`` `Rule-class: stale-read` `` → `stale-read`). Anything after that closing
+delimiter is left unread rather than split on a separator nobody declared.
+
+**The tolerance does not make the deviation invisible.** `format.decorated` counts the
+wrapped lines and names the labels, and a run that parsed them prints `FORMAT DRIFT`
+without changing its exit code. Normalising silently would trade a loud failure for a
+quiet one: the run scores, the emitter drifts further from
+`finding-output-format.md` every week, and nothing in the output ever mentions it. The
+run is still worth scoring — the findings are real — so drift is reported, never fatal.
+
 ### A format failure is not a clean PR
 
 Both `unparsed` counters only catch output that **almost** parsed. A reviewer that emits
-its findings in a wholly different shape — headings instead of `Severity:` lines, field
-labels in bold so the `^\s*field\s*:` anchor misses them — trips neither. The run then
+its findings in a wholly different shape — headings instead of `Severity:` lines, every
+label folded into the sentence around it — trips neither. The run then
 reports `findings=0 unparsed_blocks=0 orphan_fields=0`: every counter built to make silent
 loss loud agreeing that nothing was lost.
 
@@ -459,6 +491,56 @@ warning, because the two runs are otherwise indistinguishable in the JSON. Grant
 tool under both names does not guarantee a build exposes it; this is the instrument that
 says whether it did.
 
+### Granting the tool is not enough — the print entrypoint has to be answered
+
+The first live run against a real PR dispatched **zero** subagents while `Agent` and `Task`
+were both allowlisted, and reviewed 1,478 changed lines inline in main. It was not a
+permission denial. `claude -p` appends its own line to the system prompt — *"Do not call
+the AgentTool unless the user requested it"*, with the same sentence for workflows — and
+that line is a property of the print entrypoint, not of the machine. It survives every
+value of `--setting-sources`, and it survives scrubbing `CLAUDECODE`,
+`CLAUDE_CODE_CHILD_SESSION` and the rest of the nesting markers out of the child's
+environment. Asked directly under each, the child answers `NOT_PERMITTED` and quotes it.
+
+The rule is conditional, and the condition is a user request. The harness is the user, so
+`GUARD` makes the request rather than trying to suppress the rule; the appended block lands
+after the directive and satisfies it on its own terms. Asked the same question with the
+block appended, the child answers `PERMITTED` and cites it as the override.
+
+What that block must not do is describe the review. How many subagents there are, what each
+one reads, and whether a small PR skips dispatch under `SIZE_MODE = solo-main` are the
+skill's decisions and are part of what is being measured. It grants the tool and refuses the
+substitute; it does not design the run.
+
+### The child's context: project scope, not the operator's
+
+`--setting-sources project,local`. The two scopes hold different things and only one of
+them belongs in a measurement. User scope carries the operator's personal standing rules,
+their output style, and their enabled plugins — including, on the machine this was built
+on, a **second skill also named `review-pr`**, which makes the scored artifact a coin flip.
+Project scope carries the reviewed repo's own `CLAUDE.md`, which a reviewer has to read to
+judge that repo's conventions; isolating it away would measure a worse reviewer than the one
+in question. The choice is recorded as `setting_sources` in the output.
+
+Not `--bare`. It drops the ambient configuration too, but it also drops CLAUDE.md discovery
+outright, and its auth is strictly `ANTHROPIC_API_KEY` — under an OAuth login it exits
+`Not logged in` before the review starts.
+
+### What the subagents said, kept apart from what main said
+
+Counting dispatches says the phases ran; it does not say they produced their declared
+shapes. Subagent turns reach the stream only under `--forward-subagent-text`, and the run
+returns them under `subagent_output`, separate from `raw_review`. Reviewer output is where
+the `Q<n>:` answer lines and the `<path> | <lens id> | <verdict> | <note>` coverage cells
+live — the evidence the ledger is assembled from, which main never restates. It is held
+apart rather than concatenated because a reviewer also restates findings main then emits
+once: folded together, each of those parses twice and the run reports duplicates nobody
+wrote. `findings` is parsed from main's text alone.
+
+A subagent emits its own `result` event carrying its own spend, so `cost_usd` is read only
+from events without a `parent_tool_use_id` — read blind, the last subagent to finish sets
+the number and the run reports its cost instead of the review's.
+
 The final `result` event restates the last assistant message verbatim, so it is appended
 only when the text is not already present. Appended blind it doubled the review — and with
 it every finding parsed out of it, which the matcher can only report as unmatched
@@ -484,7 +566,7 @@ Resolution mirrors the CLI's own order — project `.claude/skills/<name>` befor
 `--skill-dir` is a claim to verify, not an install. When it names a directory the CLI will
 not load, the run prints `SKILL MISMATCH` and exits 2 **before launching the CLI**: the run
 as configured would measure a different artifact than the one named, and finding that out
-after the fact costs a full review's budget. To actually pin it, link the directory into
+after the fact costs a full review. To actually pin it, link the directory into
 `<repo>/.claude/skills/<name>` yourself — the harness will not write to the checkout it is
 measuring.
 
@@ -504,7 +586,8 @@ It has now been executed **once** end-to-end against a live PR. What that run se
 - The read allowlist covers the review. One refusal in the whole run, and it was shell
   control flow (see above) — a batch of line reads the reviewer re-issued one at a time.
 - The cost and timeout defaults are the right order of magnitude: roughly $5 and eleven
-  minutes for one large PR, inside the $8 budget and well inside the hour.
+  minutes for one large PR, well inside the default hour. There is no cost cap:
+  `--timeout` is the only bound, so leave it set.
 - The three blind spots the run exposed are the four sections above. The review parsed to
   **zero** findings while all three "nothing was lost" counters read zero, the text existed
   only in a `--transcript` file with no specified shape, no subagent was dispatched at all,

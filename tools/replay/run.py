@@ -31,10 +31,11 @@ misconfigured, 3 nothing parsed and a tool call the harness meant to allow was r
 
 Usage:
     python3 tools/replay/run.py --pr https://github.com/o/r/pull/123 --out run.json
-    python3 tools/replay/run.py --pr <url> --sha <merge-sha> --budget 8.0 --out run.json
+    python3 tools/replay/run.py --pr <url> --sha <merge-sha> --timeout 3600 --out run.json
     python3 tools/replay/run.py --pr <url> --skill-dir skills/review-pr --out run.json
 """
 import argparse
+import collections
 import hashlib
 import json
 import pathlib
@@ -91,8 +92,23 @@ FIELDS = {
     "why it matters": "why", "suggested fix": "fix", "inverse risk": "inverse_risk",
     "class-sites": "class_sites",
 }
-_FIELD_RE = re.compile(r"^\s*(" + "|".join(re.escape(k) for k in FIELDS) + r")\s*:\s*(.*)$",
-                       re.IGNORECASE)
+# The label may arrive wearing markdown. `**Issue**:`, `__Issue__:`, `` `Issue`: ``,
+# `` `Issue: value` `` and a `- ` or `* ` bullet in front of any of them all name the same
+# field, and three consecutive live runs lost an entire review to that wrapper. What the
+# decoration may NOT do is move the label off the start of the line: the anchor is the only
+# thing separating a field emission from the same word inside a sentence, so an opening
+# wrapper is allowed before the label and nothing else is. A closing wrapper must be the
+# one that opened — `**Issue`:` is a typo, not a dialect, and admitting it buys nothing.
+#
+# Deliberately still rejected: markdown headings (`### Issue:`) and ordinals (`1. Issue:`).
+# Both are section syntax rather than field syntax, and accepting them would let an
+# ordinary contents line ("## Severity: how we grade") open a finding.
+_WRAPPER = r"\*\*|__|`"
+_FIELD_RE = re.compile(
+    r"^[ \t]*(?P<bullet>[-*][ \t]+)?(?P<open>" + _WRAPPER + r")?[ \t]*"
+    r"(?P<label>" + "|".join(re.escape(k) for k in FIELDS) + r")[ \t]*"
+    r"(?P<close>(?P=open))?[ \t]*:[ \t]*(?P<value>.*)$",
+    re.IGNORECASE)
 
 # Phase 4's posting path runs through `gh pr review` / `gh pr comment` and raw `gh api`
 # calls. Denying `gh api` wholesale costs the skill a few GraphQL reads; that is the
@@ -164,12 +180,104 @@ EXIT_CLI_ERROR = 2
 EXIT_PERMISSION_REFUSED = 3
 EXIT_FORMAT_FAILURE = 4
 
+# `claude -p` appends its own directive to the system prompt: "Do not call the AgentTool
+# unless the user requested it", alongside the same sentence for workflows. It is a
+# property of the print entrypoint, not of this machine's configuration — it survives
+# `--setting-sources project` and every value of it, and survives scrubbing `CLAUDECODE`,
+# `CLAUDE_CODE_CHILD_SESSION` and the rest of the nesting markers from the child's
+# environment. A run that leaves it unanswered reviews the whole PR inline in main and
+# says so in a footnote, which is a different experiment wearing this one's output shape.
+#
+# The directive is conditional, and the condition is a user request. The harness is the
+# user here, so it makes the request rather than trying to suppress the rule — an
+# `--append-system-prompt` block lands after the directive and satisfies it on its own
+# terms. What it must NOT do is describe the review: how many subagents there are, what
+# each one reads, and whether a small PR skips dispatch entirely are the skill's decisions
+# and are part of what is being measured. This grants the tool and refuses the substitute;
+# it does not design the run.
+DISPATCH = (
+    " The user has explicitly requested that you dispatch subagents with the Agent tool "
+    "wherever the skill's instructions call for one, and has opted in to multi-agent "
+    "orchestration for this run. Treat that as the request any standing "
+    "use-the-Agent-tool-only-when-asked instruction is waiting for. Do not substitute an "
+    "inline single-pass run for a dispatch the skill specifies; the skill decides how many "
+    "subagents there are and what goes in them, not this instruction."
+)
+
+# Output redirection reads as a write to the CLI's own matcher, whatever the command in
+# front of it: `gh pr diff … > /tmp/x.diff` is refused even though `Bash(gh pr diff:*)` is
+# allowed. Telling the reviewer up front is cheaper than letting it discover this the way
+# the last run did — ten refusals, four of them the same command retried, and the diff it
+# was trying to stash never read at all.
+NO_REDIRECT = (
+    " Do not redirect command output to a file (`>`, `>>`, `tee`) or write scratch files: "
+    "redirection is refused here regardless of the command producing it. Read command "
+    "output directly from the tool result, and re-run the command if you need it again."
+)
+
 GUARD = (
     "You are running inside a non-interactive benchmark harness. Do NOT post, comment, "
     "review, or otherwise write anything to GitHub or to any remote — produce findings "
     "only. There is no human to answer AskUserQuestion: when the skill offers a choice, "
     "take the option that continues the review without posting, and state which you took."
-)
+) + NO_REDIRECT + DISPATCH
+
+# Which settings scopes the child loads. User scope is dropped and project scope kept,
+# because the two hold different things and only one of them belongs in a measurement.
+# User scope carries the operator's personal standing rules, their output style and their
+# enabled plugins — including, on this machine, a second skill also named `review-pr`,
+# which is a coin-flip over which artifact the benchmark scores. Project scope carries the
+# reviewed repo's own CLAUDE.md, which a review has to read to judge the repo's
+# conventions; a benchmark that isolated that away would be measuring a worse reviewer
+# than the one it means to.
+#
+# Not `--bare`. It would drop the ambient configuration too, but it also drops CLAUDE.md
+# discovery outright, and its auth is strictly ANTHROPIC_API_KEY — under an OAuth login it
+# exits "Not logged in" before the review starts.
+SETTING_SOURCES = "project,local"
+
+
+def field_value(match):
+    """The value a decorated field line meant, without the decoration around it.
+
+    A wrapper opened before the label and not closed before the colon closes somewhere
+    after it, and where it closes says which of two shapes was written. Immediately after
+    the colon, it wrapped the label and its punctuation — `**Issue:** text` — and the
+    value is what follows. Anywhere later, it wrapped the whole field —
+    `` `Rule-class: stale-read` `` — and the value ends there.
+
+    `**Issue:**` matters more than it looks: it is the most ordinary way to bold a label,
+    and reading it the other way returns an empty value, which `parse_findings` discards
+    without counting. That is the silent loss this whole change exists to remove, so the
+    two cases are told apart rather than collapsed.
+
+    Whatever follows the closing delimiter is left unread rather than guessed at: a second
+    field sharing a line is not a shape the format emits, and inventing a separator to
+    split on would be the parser deciding what the reviewer meant.
+    """
+    value = match.group("value")
+    opened = match.group("open")
+    if opened and not match.group("close"):
+        before, closed, after = value.partition(opened)
+        value = after if closed and not before.strip() else before
+    return value.strip()
+
+
+def decoration(text):
+    """Which labels arrived dressed in markdown, and how many times.
+
+    Parsing a decorated label and saying nothing would trade one silent failure for
+    another: the run scores, the emitter drifts further from the contract every week, and
+    nothing in the output ever mentions it. So the tolerance is real and the deviation is
+    reported — counted here, printed by `main`, never fatal. Losing a whole review over a
+    wrapper character is the worse outcome, and a drift that is visible gets fixed.
+    """
+    labels = collections.Counter()
+    for line in text.splitlines():
+        m = _FIELD_RE.match(line)
+        if m and (m.group("bullet") or m.group("open") or m.group("close")):
+            labels[FIELDS[m.group("label").lower()]] += 1
+    return {"fields": sum(labels.values()), "labels": sorted(labels)}
 
 
 def parse_findings(text, pr):
@@ -188,8 +296,8 @@ def parse_findings(text, pr):
         m = _FIELD_RE.match(line)
         if not m:
             continue
-        key = FIELDS[m.group(1).lower()]
-        value = m.group(2).strip()
+        key = FIELDS[m.group("label").lower()]
+        value = field_value(m)
         if key == "severity":
             if current:
                 findings.append(current)
@@ -221,9 +329,9 @@ def diagnose_format(text, findings, dropped):
 
     `unparsed.blocks` and `unparsed.orphan_fields` only catch output that *almost*
     parsed — a block missing its file, a field line before its severity. Output in a
-    wholly different shape trips neither, so a reviewer that emitted its findings as
-    markdown headings and `**Suggested fix**:` in bold reports zero findings, zero
-    unparsed blocks and zero orphans: every counter agreeing that nothing was lost.
+    wholly different shape trips neither, so a reviewer that folded its findings into
+    prose and headings reports zero findings, zero unparsed blocks and zero orphans:
+    every counter agreeing that nothing was lost.
 
     That case is separated from a genuinely clean PR by two gates, both of which must
     trip. Nothing parsed *at all* — one recognised field line anywhere means the grammar
@@ -243,7 +351,7 @@ def diagnose_format(text, findings, dropped):
     failure = (not parsed_anything
                and len(text) >= MIN_REVIEW_CHARS
                and markers >= MIN_FORMAT_MARKERS)
-    return {"failure": failure, "markers": markers}
+    return {"failure": failure, "markers": markers, "decorated": decoration(text)}
 
 
 def raw_review(text):
@@ -354,7 +462,13 @@ def classify_denials(denials, deny=DENY):
     return expected, unexpected
 
 
-def build_command(pr_url, budget, model):
+def build_command(pr_url, model):
+    # No `--max-budget-usd`. It is enforced whatever the billing mode, so on a
+    # subscription it is a kill switch with no corresponding saving: run 2 died at
+    # "$15.17 of $15" partway through Phase 2 and answered none of the questions it was
+    # launched to answer. `--timeout` is now the ONLY bound on a run, which is why it
+    # must always be set — the failure being fixed here was a bound in the wrong
+    # currency, not one bound too many.
     """The full invocation, in one place so a test can assert what the run may do.
 
     Whether a benchmark run can write to the repo it is reviewing should be readable and
@@ -362,9 +476,10 @@ def build_command(pr_url, budget, model):
     """
     cmd = ["claude", "-p", f"/review-pr {pr_url}",
            "--output-format", "stream-json", "--verbose",
-           "--max-budget-usd", str(budget),
            "--append-system-prompt", GUARD,
+           "--setting-sources", SETTING_SOURCES,
            "--permission-mode", PERMISSION_MODE,
+           "--forward-subagent-text",
            "--allowedTools", *ALLOW,
            "--disallowed-tools", *DENY]
     if model:
@@ -389,11 +504,18 @@ def stream(cmd, cwd, timeout):
     whole review single-pass in main — a different experiment, producing none of the
     output only a subagent writes, and otherwise indistinguishable in the JSON.
 
+    Counting them is not enough to see what they said. Subagent turns reach the stream
+    only under `--forward-subagent-text`, and they are returned separately from main's
+    text rather than concatenated with it: the reviewer's Q lines and coverage cells are
+    the evidence that the phases ran in their declared shapes, but they also restate
+    findings main has already emitted, and folding them into the parsed text would count
+    every such finding twice and read as a reviewer that repeats itself.
+
     stderr is captured rather than discarded: when the CLI dies before emitting a single
     event, stderr holds the only statement of why, and a harness that throws it away
     reports an auth failure or a bad flag as "this PR had no findings".
     """
-    chunks, denials, cost, started = [], [], 0.0, time.time()
+    chunks, sub_chunks, denials, cost, started = [], [], [], 0.0, time.time()
     dispatches = 0
     timed_out = threading.Event()
     with tempfile.TemporaryFile(mode="w+") as errfile:
@@ -418,14 +540,25 @@ def stream(cmd, cwd, timeout):
                     event = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                # `parent_tool_use_id` is the CLI's marker for a forwarded subagent turn.
+                # It is the whole basis of the split: a reviewer subagent's Q lines and
+                # coverage cells are the output the ledger is assembled from, and main
+                # never restates them, so a run that keeps only main's text cannot say
+                # whether they were ever emitted.
+                inside_subagent = bool(event.get("parent_tool_use_id"))
+                target = sub_chunks if inside_subagent else chunks
                 if event.get("type") == "assistant":
                     for c in event.get("message", {}).get("content", []):
                         if c.get("type") == "text":
-                            chunks.append(c.get("text", ""))
+                            target.append(c.get("text", ""))
                         elif c.get("type") == "tool_use" and c.get("name") in DISPATCH_TOOLS:
                             dispatches += 1
                 elif event.get("type") == "result":
-                    cost = event.get("total_cost_usd", 0.0)
+                    # A subagent emits its own result event carrying its own spend. Read
+                    # blind, the last one to arrive wins and the run reports whatever the
+                    # final subagent cost instead of what the review cost.
+                    if not inside_subagent:
+                        cost = event.get("total_cost_usd", 0.0)
                     # Every result event, not just the last: a subagent's refusals arrive
                     # in its own result event and the parent's final one lists none. The
                     # skill runs most of the review inside subagents, so reading only the
@@ -437,8 +570,8 @@ def stream(cmd, cwd, timeout):
                     # the matcher can only report as unmatched, which drags the match rate
                     # down and reads as a worse reviewer.
                     result_text = event.get("result") or ""
-                    if result_text and result_text not in "\n".join(chunks):
-                        chunks.append(result_text)
+                    if result_text and result_text not in "\n".join(target):
+                        target.append(result_text)
         finally:
             watchdog.cancel()
             if proc.poll() is None:
@@ -458,7 +591,7 @@ def stream(cmd, cwd, timeout):
     # timeout silently changes how the parser sees block boundaries.
     return "\n".join(chunks), {"cost_usd": cost, "seconds": time.time() - started,
                                "denials": denials, "dispatches": dispatches,
-                               "error": error}
+                               "error": error, "subagent_text": "\n".join(sub_chunks)}
 
 
 def main():
@@ -469,11 +602,8 @@ def main():
                                   "the output; not enforced against the live PR head")
     ap.add_argument("--repo", default=".", help="local checkout the skill runs in")
     ap.add_argument("--out", required=True, help="findings JSON, input to score.py")
-    ap.add_argument("--budget", type=float, default=8.0,
-                    help="per-run USD cap. A full /review-pr run dispatches several "
-                         "subagents over a whole diff; the trigger eval's 0.60 cuts it "
-                         "off during Phase 1 and reads as 'found nothing'.")
-    ap.add_argument("--timeout", type=int, default=3600, help="seconds")
+    ap.add_argument("--timeout", type=int, default=3600,
+                    help="seconds. The only bound on a run — there is no cost cap.")
     ap.add_argument("--model", help="pin the model so runs are comparable over time")
     ap.add_argument("--skill-dir", help="the skill directory this run is meant to "
                                         "measure. Verified against the one the CLI will "
@@ -498,7 +628,7 @@ def main():
               f"directory into {repo}/.claude/skills/{skill['name']} and rerun.")
         return EXIT_CLI_ERROR
 
-    cmd = build_command(args.pr, args.budget, args.model)
+    cmd = build_command(args.pr, args.model)
     text, run = stream(cmd, repo, args.timeout)
     findings, dropped = parse_findings(text, pr_number)
     fmt = diagnose_format(text, findings, dropped)
@@ -506,12 +636,14 @@ def main():
     err = run["error"]
     payload = {
         "pr": pr_number, "pr_url": args.pr, "sha": args.sha, "model": args.model,
-        "skill": skill,
+        "skill": skill, "setting_sources": SETTING_SOURCES,
         "cost_usd": round(run["cost_usd"], 4), "seconds": round(run["seconds"], 1),
         "error": err, "subagent_dispatches": run["dispatches"],
         "permissions": {"blocked_by_policy": blocked, "refused": refused},
         "unparsed": dropped, "format": fmt,
-        "raw_review": raw_review(text), "findings": findings,
+        "raw_review": raw_review(text),
+        "subagent_output": raw_review(run["subagent_text"]),
+        "findings": findings,
     }
     pathlib.Path(args.out).write_text(json.dumps(payload, indent=2))
     if args.transcript:
@@ -521,6 +653,7 @@ def main():
           f"subagents={run['dispatches']} "
           f"unparsed_blocks={dropped['blocks']} "
           f"orphan_fields={dropped['orphan_fields']} "
+          f"decorated_fields={fmt['decorated']['fields']} "
           f"blocked_by_policy={len(blocked)} refused={len(refused)} "
           f"skill={skill['fingerprint'] or 'unresolved'} "
           f"cost=${run['cost_usd']:.2f} {run['seconds']:.0f}s {err or ''}")
@@ -539,6 +672,13 @@ def main():
               f"allow were denied, so this run saw less of the PR than it should have. "
               f"Whether that is why anything below is empty is a separate question. "
               f"First: {refused[0]}")
+    if fmt["decorated"]["fields"]:
+        print(f"FORMAT DRIFT — {fmt['decorated']['fields']} field line(s) arrived wrapped "
+              f"in markdown ({', '.join(fmt['decorated']['labels'])}). The parser read "
+              f"them and this run still counts, but the emitter is off the contract: "
+              f"finding-output-format asks for a bare label at line start. Fix the skill "
+              f"rather than widening the parser again — the next wrapper may not be one "
+              f"it knows.")
     # Diagnosed in order of what the evidence supports. A review that arrived and did not
     # parse is the strongest claim available — it names the defect outright — so it is
     # tested before the weaker inference that a refusal is what emptied the run.
