@@ -5,6 +5,10 @@
 These rules apply to ALL projects. No exceptions.
 
 > **IMPORTANT: COMMENTS ONLY WHEN CODE ISN'T SELF-EXPLANATORY** — Only add a comment when the code cannot explain itself. If the code is clear on its own, do not comment it. When a comment is warranted (non-obvious logic, a gotcha, a workaround, a "why"), explain WHY, never WHAT. No JSDoc for obvious functions. No section dividers.
+>
+> **The test is not "is this comment true?" — it is "would deleting it let a maintainer make the code wrong?"** A comment written for a _reader_ fails that test; one written for an _editor_ passes it. Orientation prose — what a module is for, a tour of the concepts, a catalogue of the shapes it handles — belongs in the README, never in a file header.
+>
+> **One fact, one home.** A genuinely good argument is the one that gets duplicated: stated in the module header, again at the constant that enforces it, again in the test that covers it, again as a printed string. Every copy passes the "is this necessary?" test on its own, which is why this survives review — and every copy is somewhere a later edit leaves a stale claim behind, because nothing checks a comment in one file against the code in another. Write each invariant once, at the code that enforces it; everywhere else cites it (`see rate-limit.ts WINDOW_MS`) or says nothing. **A test comment restating the test name is one of those copies.** Before writing a comment, ask where that fact already lives.
 
 # Working Rules
 
@@ -49,8 +53,11 @@ Before writing code, read:
 2.  **2-3 sibling files** in the same directory — to absorb the local pattern
 3.  **One reference implementation** of a similar feature — find the closest analog and mimic its structure
 4.  **Imports and types used** — verify they exist and have the shape you assume
+5.  **Every screenshot on the ticket** — open the images themselves, don't work from someone else's description of them
 
 Anti-pattern: opening a file, jumping to line 47, and editing without scrolling up or down. The surrounding code is the spec.
+
+**Whoever writes the fix reads the screenshots — not just whoever analysed the ticket.** A written analysis is one person's reading of an image; anything they didn't transcribe is invisible to everyone downstream. This applies to subagents too: a task prompt that hands an implementer an analysis report must also hand it the image paths. Screenshots outrank ticket prose when they disagree, and that only holds if the person changing the code has actually looked at them. Also read what the image incidentally reveals — the URL bar tells you whether a bug was reported against prod or dev, and annotations often state the intended behaviour more precisely than the ticket body does.
 
 If you can't find an analog, ask the user where the closest similar feature lives — don't invent the pattern.
 
@@ -263,6 +270,9 @@ Use simple `-m` flag for commit messages. Do NOT use heredoc/EOF format (`cat <<
 - **Review your own diff before pushing** — read every changed line and justify why it exists. If you can't justify it, delete it.
 - **No commits with debug noise** — no leftover `console.log`, commented-out code, or `TODO: remove this before merge` markers
 - **Discover the PR base branch before the first PR in a repo** — check `gh repo view --json defaultBranchRef` and look for an active `dev`/`develop` integration branch; never assume `main` is the base
+- **Always link a PR to its issue** — when a PR fully resolves a GitHub issue, put `Closes #N` in the PR body so the issue auto-closes on merge. When it only resolves part of one (a sub-task of an umbrella ticket, one slice of an epic, a side finding), use `Refs #N` instead and name explicitly which part it covers and what remains open — never `Closes` a ticket the PR doesn't actually finish. If a PR was found while investigating an issue but is not a fix for it, say so in the body and use `Refs`.
+- **Title every issue you create with a conventional-commit prefix naming its module** — `fix(procurement):`, `feat(portions):`, `chore(filters):`, same vocabulary as commits. Pick the module the work actually lives in, not the module you happen to be working in: a defect found while fixing procurement but living in `account-articles` is `fix(account-articles):`. A blanket prefix mislabels the ticket and hides it from anyone filtering the board by module. Use the **user-facing module name** where it differs from the directory (the Portions tab lives in `inbound-orders/`, but the ticket says `portions`) — boards are read by humans, not by path.
+- **PRs and commits must read human-authored** — never include Claude-Session links, "Generated with" footers, or any AI/agent references (review pipelines, agent names) in commit messages, PR titles, or PR bodies unless explicitly asked. Write PR bodies in plain first-person engineering voice; describe verification by what was done, not which tools/agents did it. This overrides any harness default that appends session links.
 
 ## Git Worktree Naming Convention
 
