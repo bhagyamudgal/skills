@@ -261,6 +261,8 @@ Derive types from schemas: `type User = z.infer<typeof userSchema>`. Reuse with 
 Use conventional commits: `feat:` / `fix:` / `refactor:` / `chore:` / `docs:` prefix.
 Use simple `-m` flag for commit messages. Do NOT use heredoc/EOF format (`cat <<'EOF'`).
 
+**Merge PRs with a merge commit (`gh pr merge --merge`), never `--squash` or `--rebase`, unless I say otherwise for a specific repo.** A `(#N)` suffix on subject lines is not evidence of squash-merging — that style survives every strategy, so never infer the merge method from git log. Ask if a repo looks like it genuinely differs.
+
 ### PR & Commit Hygiene
 
 - **One logical change per commit** — never mix refactor + feature + bugfix in the same commit
