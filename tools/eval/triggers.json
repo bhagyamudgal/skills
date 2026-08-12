@@ -119,6 +119,42 @@
 
     { "utterance": "No, VERSION is 2, not 3. Correct that factual mistake.",
       "expect": null,
-      "why": "NEGATIVE: a harmless factual correction is not an inference-backed, decision-driving claim" }
+      "why": "NEGATIVE: a harmless factual correction is not an inference-backed, decision-driving claim" },
+
+    { "utterance": "I've approved changing issue 12's estimate on the shared project board to 5 hours. Run the mutation preflight, then make the change.",
+      "expect": "preflight-mutations",
+      "why": "primary branch: an approved shared-state write still needs target, ownership, dependency, reversibility, and authorization preflight" },
+
+    { "utterance": "Split issue 12 into separate implementation and investigation tickets, but the grouping and successor links are ambiguous. Preview the structure before changing GitHub.",
+      "expect": "preflight-mutations",
+      "why": "ambiguity branch: an issue restructure needs an exact-target preview before shared state changes" },
+
+    { "utterance": "Rewrite the message of a commit that is already published on the remote branch.",
+      "expect": "preflight-mutations",
+      "why": "published-history branch: rewriting remote history requires dependency, reversibility, and authorization checks" },
+
+    { "utterance": "Correct these customer records in the shared production database.",
+      "expect": "preflight-mutations",
+      "why": "production-data branch: a shared production write requires mutation preflight before execution" },
+
+    { "utterance": "We already updated 12 of 50 board items, but the ownership guard just changed. Continue the batch using the new scope.",
+      "expect": "preflight-mutations",
+      "why": "partial-batch branch: a changed guard after partial writes requires reconciling the ledger and remaining scope before continuation" },
+
+    { "utterance": "Amend the message of my latest commit; it exists only in this local repository and has never been pushed.",
+      "forbid": "preflight-mutations",
+      "why": "NEGATIVE: unpublished local history is recoverable local state and stays outside shared-state mutation preflight" },
+
+    { "utterance": "Rename formatUserLabel to formatDisplayName in this local working tree.",
+      "forbid": "preflight-mutations",
+      "why": "NEGATIVE: an ordinary local edit does not mutate shared or published state" },
+
+    { "utterance": "Read issue 12 and PR 41 and summarize their current status. Do not change anything.",
+      "forbid": "preflight-mutations",
+      "why": "NEGATIVE: read-only issue and PR inspection must not trigger a mutation workflow" },
+
+    { "utterance": "The board write is finished. Use verify-claims to confirm the completion claim from a fresh authoritative read-back.",
+      "expect": "verify-claims",
+      "why": "COLLISION: post-write acceptance-boundary verification belongs to verify-claims, not preflight-mutations" }
   ]
 }

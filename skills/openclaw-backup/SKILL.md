@@ -69,6 +69,11 @@ the databases are the only part that cannot tolerate a live copy.
 | Zero-downtime (default) | Files rewritten mid-tar may be torn in the raw archive. Databases are covered separately. |
 | Brief stop | Minutes of downtime, messages in that window missed. Every artifact quiescent. |
 
+Immediately before stopping a live gateway, invoke `preflight-mutations` with the exact
+host, service manager and name, stop/restart actions, expected downtime, current process
+and health state, recovery command, and the user's brief-stop approval. Apply its result
+contract before stopping the service. Zero-downtime runs do not use this gate.
+
 If stopping: confirm the process is gone with `pgrep -af openclaw` before archiving, and
 confirm it returned healthy afterwards.
 
@@ -160,6 +165,11 @@ the rendered `RESTORE.md` contains no remaining `<PLACEHOLDER>` tokens.
 
 A backup on the same disk as the thing it protects survives config mistakes, not disk loss.
 If the user wants a copy elsewhere:
+
+Immediately before `rsync`, invoke `preflight-mutations` with the exact source and
+destination host/path, included artifact inventory and credential sensitivity, recipient,
+retention/deletion path, current destination state, checksum read-back, and the user's
+off-box-copy approval. Apply its result contract before copying.
 
 ```bash
 rsync -avh --partial -e ssh <source> <destination>

@@ -72,7 +72,20 @@ def run_case(utterance, budget, timeout, tools=None, skill_path=None):
                 if content.get("type") == "tool_use" and content.get("name") == "Skill":
                     return "skill", (content.get("input") or {}).get("skill")
         if event.get("type") == "result":
-            error = event.get("subtype", "result-error") if event.get("is_error") else None
+            error = None
+            if event.get("is_error"):
+                status = event.get("api_error_status")
+                terminal_reason = event.get("terminal_reason")
+                detail = str(event.get("result", "")).strip().replace("\n", " ")[:160]
+                error = ": ".join(
+                    part
+                    for part in [
+                        f"api error {status}" if status else None,
+                        terminal_reason if terminal_reason != "completed" else None,
+                        detail or None,
+                    ]
+                    if part
+                ) or "result-error"
             return "result", (event.get("total_cost_usd", 0.0), error)
         return None
 

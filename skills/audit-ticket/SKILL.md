@@ -178,6 +178,8 @@ When every requirement is done or obsolete, reorder: "Sunset (close)" goes first
 
 Phase 5 runs on the Phase 4 fate choice, and only on it — the report is always safe to print, but every `gh` write waits for that explicit choice. Read `${CLAUDE_SKILL_DIR}/references/execute.md` for the chosen fate's recipe.
 
+Immediately before that recipe's first `gh` write, invoke `preflight-mutations` for the approved fate batch. Pass the exact issue URL and number; its current state, author, assignees, and audit SHA; the ordered comment/edit/close/create actions and their targets; the Phase 4 approval; and, for a split, the proposed successor title, body, assignee, and predecessor link. Apply its result contract before continuing.
+
 ---
 
 ## Error handling

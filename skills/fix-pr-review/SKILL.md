@@ -654,6 +654,8 @@ On "Fix it": use a follow-up AskUserQuestion to collect guidance:
 
    On "Use reviewer's suggestion": apply the fix using the original comment's recommendation (same as Phase 5 per-fix loop) and post a FIX reply. On "I'll describe" or "Other": use the user's freeform text as the fix plan, apply inline, and post a FIX reply.
 
+Immediately before any chosen Fix, Defer, or Dismiss reply mutates GitHub, invoke `preflight-mutations` for that item's reply/resolve batch with the exact PR and current head SHA, target thread ID, final reply text, classification, and the per-item choice above. Apply its result contract before continuing.
+
 On "Defer": post a DEFER reply and resolve (skip GitHub ops for local file inputs — record classification in report only). On "Dismiss": post a DISMISS reply and resolve (same local file guard).
 
 On "Skip for now": continue to next actions.
@@ -710,7 +712,7 @@ After printing the final report (and optional NEEDS-INPUT triage), use AskUserQu
        - label: "Done"
          description: "Exit — I'll handle the rest manually"
 
-On "Commit changes": stage relevant files and commit with the suggested detailed commit message. On "Push to remote": commit first (same as above), then `git push`. On "Re-run on remaining": if the original input was a local file, invoke `/fix-pr-review <original-file-path>` scoped to skipped/needs-input items; otherwise invoke `/fix-pr-review <url>` scoped to remaining items. On "Done": exit.
+On "Commit changes": stage relevant files and commit with the suggested detailed commit message. On "Push to remote": commit first (same as above). Immediately before `git push`, invoke `preflight-mutations` with the exact remote and branch, local and upstream SHAs, commit range, PR base/head and dependent refs, and the user's "Push to remote" choice; apply its result contract before pushing. On "Re-run on remaining": if the original input was a local file, invoke `/fix-pr-review <original-file-path>` scoped to skipped/needs-input items; otherwise invoke `/fix-pr-review <url>` scoped to remaining items. On "Done": exit.
 
 ### 5. Exit
 

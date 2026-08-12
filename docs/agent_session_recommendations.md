@@ -5,12 +5,12 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R02 — External-state mutation preflight`
-- **NEXT ACTION:** Inventory R02's overlap with existing mutation workflows, record the open design frontier, and begin its `grill-me` questions.
-- **Progress:** 1 of 18 recommendations complete; 1 researching; 16 pending.
+- **Current item:** `R03 — Calibrated project-board mutation`
+- **NEXT ACTION:** Resolve R03 decision 1: whether board calibration is a focused specialization of `preflight-mutations` or an independent workflow.
+- **Progress:** 2 of 18 recommendations complete; 1 grilling; 15 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
-- **Last updated:** 12 August 2026
+- **Last updated:** 13 August 2026
 
 ### Working contract
 
@@ -22,6 +22,7 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 6. Write agent-consumed artifacts with `writing-for-agents`; for skills, also apply its skill mechanics and validate the final invocation surface.
 7. Change an item's status only when its exit criterion is met. Record decisions, artifact paths, and verification evidence in that item's detail section.
 8. Update `NEXT ACTION`, counts, the status table, item detail, and change log together after every material transition.
+9. Keep delivery proportional: use the repository's existing verifier and focused examples; add a bespoke evaluator only when a safety-critical behavior cannot be checked otherwise. Stop after one implementation review and one affected-area recheck unless new evidence changes the artifact.
 
 ### Status vocabulary
 
@@ -42,8 +43,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | ID | Priority | Source recommendation | Proposed destination | Status | Final artifact | Next gate |
 |---|---|---|---|---|---|---|
 | R01 | P0 | Evidence-backed claim gate | Skill | `complete` | `skills/verify-claims/` | Complete |
-| R02 | P0 | External-state mutation preflight | Skill | `researching` | TBD | Resolve overlap and open grill |
-| R03 | P0 | Calibrated project-board mutation | Skill | `pending` | TBD | Start after R02 closes |
+| R02 | P0 | External-state mutation preflight | Skill | `complete` | `skills/preflight-mutations/` | Complete |
+| R03 | P0 | Calibrated project-board mutation | Skill | `grilling` | TBD | Resolve architecture |
 | R04 | P0 | Review-ledger convergence | Skill | `pending` | TBD | Start after R03 closes |
 | R05 | P0 | Surface-aware done | Skill | `pending` | TBD | Start after R04 closes |
 | R06 | P1 | Bounded unattended orchestrator | Skill | `pending` | TBD | Start after R05 closes |
@@ -231,18 +232,81 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P0
 - **Proposed destination:** Skill
-- **Status:** `researching`
+- **Status:** `complete`
 - **Rationale:** Low-frequency Git, board, and issue mistakes had outsized cost because they changed shared state.
 - **Source specification:** Resolve target and ownership; inspect base, head, and dependencies; check published-history status; preview ambiguous splits or grouping; record reversibility and approval.
-- **Decisions / final artifact / verification:** Pending.
+- **Reuse scan:**
+  - `audit-ticket` already requires an exact issue and explicit fate choice, but it lacks ownership checks, dependency inspection, successor preview, reversibility classification, and authoritative read-back.
+  - `review-pr` pins a PR URL and head SHA and asks before posting, but it can infer rolling-review restructuring, resolve threads before the new post, and lacks one approval/recovery record across sub-mutations.
+  - `fix-pr-review` checks repo and branch and separately asks before checkout, stash, commit, and push, but it does not revalidate thread/head/upstream state immediately before mutation or inspect stacked dependencies.
+  - `executing-tickets-with-subagents` locks user decisions and reads back checklist writes, but pushes, PR-body edits, ready-state changes, follow-up grouping, and issue creation do not share a per-mutation preflight contract.
+  - `git-commit` is append-only and stages inspected files, while `resolving-merge-conflicts` accounts for both parent intents; neither checks whether history is already published or consumed by dependent branches and PRs.
+  - `browser-qa` can mutate shared UI data without a universal environment, ownership, snapshot, restoration, or destructive-submit gate.
+  - No project-board mutation or publication/deployment skill exists. `verify-claims` owns the evidence/read-back boundary after a write, not permission to perform it.
+- **Architecture hypothesis:** One model-invoked preflight authority plus narrow invocation pointers at existing mutation call sites. A shared reference alone cannot fire for ad-hoc surfaces; targeted amendments alone would duplicate the protocol and leave future tools uncovered.
+- **Open design tree:**
+  1. Which state classes are in scope: remote/shared state only, published local history, live services, production-like UI data, and off-box copies?
+  2. Does the preflight run per task, per mutation category, per approved batch, or per individual write; what invalidates it?
+  3. What user language constitutes approval, how narrow is it, and which action classes always require specific confirmation?
+  4. Is requester ownership mandatory, policy-specific, or replaceable by verified authority plus an explicit request?
+  5. How deeply must bases, heads, stacked PRs, linked issues, release consumers, workflows, and umbrella records be traversed?
+  6. What establishes published or consumed history, and when must an append-only correction replace rewrite or deletion?
+  7. Which mutations require a user-visible preview, and what must that preview show?
+  8. What reversibility vocabulary and recovery evidence gate execution?
+  9. When is the preflight record inline versus persisted in an existing ledger?
+  10. How do changed guards and partial execution stop or reauthorize the remaining batch?
+  11. What extra contract applies to browser-driven shared data, production operations, and service downtime?
+  12. Where are the boundaries with R01 claim verification, R03 board calibration, and R05 surface-aware completion?
+- **Decisions:**
+  1. **Scope:** Cover shared or remote state, published Git history, production-like data, live services, and off-box copies. Exclude isolated worktree changes and unpublished local commits.
+  2. **Trigger and invalidation:** Run once immediately before an approved mutation batch. Invalidate the preflight when the target, action, ownership, dependencies, head, publication status, or approval changes. Stop and re-preflight any unexecuted remainder.
+  3. **Approval:** Treat a specific task request as approval for ordinary reversible writes within its stated target. Require fresh explicit confirmation for restructuring, compensating-only or irreversible actions, production data, published-history rewrites, and resources outside the normal ownership policy.
+  4. **Ownership:** Apply the governing surface's ownership policy. Verified technical write authority alone does not broaden the requested target or override an assignee, author, environment, or resource-owner boundary.
+  5. **Dependency and publication depth:** Inspect direct dependencies for ordinary writes and transitive consumers before deletion, closure, base changes, or history rewrites. Prefer append-only corrections whenever state is already published or consumed.
+  6. **Preview:** Require a user-visible preview for ambiguous restructuring, high-volume mutations, production operations, ownership expansion, and compensating-only or irreversible changes. Show targets, delta, exclusions, dependencies, blast radius, and recovery path.
+  7. **Reversibility:** Use the closed classes `reversible`, `compensating-only`, and `irreversible`. Recovery evidence must match the class before execution.
+  8. **Persistence:** Keep a simple preflight inline. Persist multi-step or multi-batch preflights in an existing authorized ledger; do not create or mutate an external artifact merely to store the preflight.
+  9. **Partial execution:** A changed guard invalidates approval for the unexecuted remainder. Preserve the landed subset and observed external state before re-preflighting; never restart the whole batch from an assumed zero state.
+  10. **Operational lane:** Production-like UI data, production operations, service downtime, and off-box copies require an environment or recipient check, ownership, snapshot or backup where possible, restoration or compensation plan, and distinct confirmation.
+  11. **Workflow boundaries:** R02 determines whether an already-authorized batch is ready for execution; it never grants authority. R01 verifies decision-driving claims and post-write read-back, R03 owns board calibration and representative high-volume previews, and R05 owns final surface-aware completion verification.
+  12. **Architecture:** Create one model-invoked preflight authority with narrow invocation pointers at existing mutating call sites, rather than duplicating the protocol inside each workflow.
+- **Round-one confirmation:** All recommended positions accepted by the user on 12 August 2026.
+- **Round-two decisions:**
+  13. **Skill name and responsibility:** Name the skill `preflight-mutations`. It prepares or blocks a mutation but never performs the write itself.
+  14. **Mutation card:** Emit one card containing the surface and environment, exact action and targets, governing ownership policy, authorization source, current guards, dependencies or consumers, preview and exclusions, reversibility class, recovery plan, invalidators, and post-write read-back plan.
+  15. **Preflight verdict:** Use the closed verdicts `ready`, `confirmation-required`, and `blocked`. Any changed guard invalidates `ready`.
+  16. **Batch execution record:** Track each item as `pending`, `landed`, `failed`, or `skipped`. On interruption or invalidation, preserve and authoritatively re-read the landed subset before re-preflighting only the remainder.
+  17. **Integration pointers:** Add narrow invocation pointers to `audit-ticket`, `review-pr`, `fix-pr-review`, `executing-tickets-with-subagents`, published-history conflict handling, production-like `browser-qa`, and live or off-box backup operations. Leave local-only `git-commit` unchanged.
+  18. **Acceptance bar:** Require repository structural checks, positive and negative fresh-session routing cases, and behavioral scenarios for issue splitting, published-history rewrite, production UI data, and partial-batch invalidation. Each scenario must prove exact target resolution, correct confirmation behavior, appropriate dependency and recovery evidence, and a post-write read-back plan.
+- **Round-two confirmation:** All recommended positions accepted by the user on 12 August 2026. The design frontier is empty; shared-understanding confirmation remains before implementation.
+- **Shared-understanding confirmation:** Confirmed by the user on 12 August 2026. Grill complete.
+- **Final artifact:** `skills/preflight-mutations/`
+- **Verification evidence:**
+  - The repository structural verifier passed across 20 skills and 52 Markdown files; the only warning is the pre-existing ignored `license` key in `git-commit` frontmatter.
+  - Four fresh read-only Codex examples covered issue split-and-close, published-history rewrite, production UI data, and partial-batch invalidation. They were used as sampled design evidence; the temporary bespoke evaluator and fixture tree were removed after the user corrected the run for over-testing and over-engineering.
+  - The issue lane resolved exact predecessor and successor IDs, another assignee's ownership boundary, direct and transitive consumers, a complete successor preview, compensating recovery, fresh confirmation, and authoritative read-back.
+  - The history lane chose `confirmation-required`, classified a consumed rewrite as `compensating-only`, preserved exact-SHA and backup guards, surfaced the append-only correction, traversed direct and transitive consumers, and required lease-guarded recovery and read-back.
+  - The production lane required recorded resource-owner authority plus distinct confirmation, preserved the exact account/version/prior plan, classified persistent downstream effects as `compensating-only`, and named restoration, reconciliation, and authoritative read-back.
+  - The partial-batch lane retained authoritative `landed` state for `GSM3-301` and `GSM3-302`, limited **Targets** to pending `GSM3-303` and `GSM3-304`, invalidated the old approval after the guard changed, and required fresh confirmation.
+  - Nine native Claude routing cases are recorded in `tools/eval/triggers.json`. A live routing attempt was correctly reported as an evaluator error because the provider returned HTTP 429; it was not counted as a routing miss. In fallback Codex behavior-routing probes, all three local/read-only negatives stayed outside the mutation-card workflow and all five shared-state positives stopped before mutation, but the positives did not consistently emit the full card without fixture evidence, so they are not represented as native invocation passes.
+  - Independent documentation and specification re-reviews reported zero Critical or Serious findings. The only remaining Moderate was the unavailable native routing run; the provider returned HTTP 429, which the shared trigger runner now reports as an evaluator error rather than a false routing result.
 
 ### R03 — Calibrated project-board mutation
 
 - **Priority:** P0
 - **Proposed destination:** Skill
-- **Status:** `pending`
+- **Status:** `grilling`
 - **Rationale:** Prevents the archive's most expensive correction and is reusable across project boards.
 - **Source specification:** Resolve ownership before writes; ask for estimate unit and 3–5 anchors; preview a representative sample; handle umbrella tickets explicitly; re-fetch and total from the final write ledger.
+- **Reuse scan:**
+  - `preflight-mutations` already owns exact targets, ownership, authorization, previews, guard invalidation, partial batches, recovery, and authoritative read-back for shared-state writes.
+  - No existing skill owns estimate units, representative anchors, umbrella-ticket treatment, or ledger-derived board totals.
+  - No board-provider-specific workflow exists in this repository, so provider commands and field schemas should remain outside a reusable core.
+- **Architecture hypothesis:** Add a focused calibration skill that prepares a board-write ledger and then hands the exact approved batch to `preflight-mutations`. This keeps numerical calibration separate from shared-state authority without duplicating the mutation gate.
+- **Open design tree:**
+  1. Should R03 be a focused specialization that hands off to `preflight-mutations`, an expansion of R02, or a standalone end-to-end board workflow?
+  2. When may an existing durable estimate policy replace asking for a unit and 3–5 anchors?
+  3. What sample, umbrella-ticket, aggregation, and final-total evidence is required before and after writes?
 - **Decisions / final artifact / verification:** Pending.
 
 ### R04 — Review-ledger convergence
@@ -404,3 +468,14 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Implemented `skills/verify-claims/`, documented it in `README.md`, added ten trigger cases, enabled isolated source-skill trigger tests, and added four behavioral fixture lanes. Moved R01 to `verifying` after every behavioral lane produced the intended claim state and action boundary.
 - Hardened R01 through three finish-review rounds: aligned unavailable-evidence states, restricted persistence to authorized artifacts, made blind reversal inputs source-exact, separated evaluator errors from routing outcomes, and replaced prose-only checks with structured card, tool-result, state, action, and leakage assertions.
 - Closed R01 after the final evaluator replay passed all four fresh-session lanes and three independent reviewers reported zero Critical, Serious, or Moderate findings. Recorded the provider-429 rerun limitation explicitly. Advanced R02 to `researching`.
+- Completed R02's repository overlap scan. Existing workflows contain useful local guards but no cross-surface preflight authority; advanced R02 to `grilling` with a twelve-branch design tree.
+- Recorded the user's acceptance of all recommended R02 round-one positions: scope, batch invalidation, approval, ownership, dependency depth, publication policy, preview, reversibility, persistence, partial execution, operational safeguards, workflow boundaries, and the central-skill architecture.
+- Recorded the user's acceptance of all recommended R02 round-two positions: `preflight-mutations`, the mutation-card schema, three verdicts, batch-item states, seven integration surfaces, exclusion of local-only commits, and the layered acceptance suite. The design frontier is now empty pending explicit shared-understanding confirmation.
+- User confirmed the complete R02 decision record. Marked the grill complete and moved R02 to `implementing` without reopening settled design choices.
+
+### 13 August 2026 — R02 implementation and verification
+
+- Implemented `skills/preflight-mutations/`, registered it in the README, and added narrow pre-write handoffs to the seven confirmed mutation-owning workflows while leaving local-only `git-commit` unchanged.
+- Added nine routing cases and exercised four read-only behavior examples. Hardened the contract around consumed-history recovery, exact-SHA leases, captured production prior values, self-contained next actions, and partial-batch provenance.
+- The user corrected the run for over-testing and over-engineering. Removed the per-skill evaluator and fixture tree, retained the reusable structural verifier and trigger catalog, and added the proportional-delivery rule to this ledger.
+- Closed R02 after proportional structural, syntax, JSON, diff, and sampled behavior checks. Advanced R03 to `grilling` after confirming that calibration is the missing behavior and shared-state authority already belongs to `preflight-mutations`.

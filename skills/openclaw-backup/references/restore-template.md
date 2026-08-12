@@ -54,6 +54,11 @@ the file tree, then overwrite the databases from `sqlite/`**.
 
 Steps 1-3 are reversible. Step 4 is the commit point.
 
+Immediately before Step 1 mutates the live install, invoke `preflight-mutations`. Pass the
+exact host, service manager/name and current health, state directory and move-aside target,
+raw archive and snapshot paths, database overwrite targets, dependent channels, rollback
+commands, and explicit restore approval. Apply its result contract before continuing.
+
 ### 1. Stop the service
 
 ```

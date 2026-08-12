@@ -23,7 +23,7 @@ The main conversation is an **orchestrator only**. Every edit, review, and QA pa
 4. **Instrument tracking** before task 1:
    - **Ledger** (e.g. `docs/<ticket>-progress.md`) — THE recovery map, see contract below
    - `tasks/todo.md` checklist
-   - **One editable GitHub checklist comment** on the issue (status + root cause per item; save its comment id in the ledger; update via `gh api ... -X PATCH -F body=@file`). Read back after every mutating command; retry only when the read-back shows no effect — empty stdout is not failure.
+   - **One editable GitHub checklist comment** on the issue (status + root cause per item; save its comment id in the ledger; update via `gh api ... -X PATCH -F body=@file`). Immediately before creating it, invoke `preflight-mutations` with the exact issue URL, comment body, issue state/assignees, locked tracking decision, and planned read-back. Apply its result contract before continuing. Read back after every mutating command; retry only when the read-back shows no effect — empty stdout is not failure.
    - The harness todo list (`TodoWrite`)
 
 ## Ledger contract
@@ -33,7 +33,7 @@ Written for a reader with **zero context** — assume the next writer remembers 
 ## Phase 2 — The wave (one per task)
 
 1. **Brief to scratchpad**; if HEAD moved since planning, run an Explore **drift-check** and write an addendum (addendum wins).
-2. **Fresh implementer agent** — the orchestrator dispatches, the agent edits. Bug fixes are TDD (failing test first, watch it fail). Formatter before commit; type-check loop until green; single conventional commit; push. Dispatch prompts are self-contained: paths, env, locked decisions, verification commands, commit format, report format, environment-quirk fallbacks — the agent has no other context.
+2. **Fresh implementer agent** — the orchestrator dispatches, the agent edits. Bug fixes are TDD (failing test first, watch it fail). Formatter before commit; type-check loop until green; single conventional commit. Immediately before the wave's first push, the implementer invokes `preflight-mutations` with the exact remote branch, local/upstream SHAs and commit range, PR base/head and dependencies, and the locked push permission. Apply its result contract before pushing. Dispatch prompts are self-contained: paths, env, locked decisions, verification commands, commit format, report format, environment-quirk fallbacks — the agent has no other context.
 3. **Two-stage review, separate subagents** — one combined reviewer anchors on whichever lens it starts with; two fresh ones don't. A review is two reports, one per stage:
    - **Stage 1 — spec compliance**: reviewer gets the task brief + diff, and the named risks to verify. Its inputs are exactly those two. Verdicts against the ticket requirements: **Missing / Extra / Misunderstood**, with file:line evidence.
    - **Stage 2 — code quality**: independent reviewer for correctness, error handling, tests that assert real behavior, and structure; findings ranked Critical / Serious / Moderate / Minor. `parallel-review` runs alongside and covers style and convention; Stage 1 is what catches spec violations.
@@ -41,7 +41,7 @@ Written for a reader with **zero context** — assume the next writer remembers 
 
    Reports arrive **unverified** — SHAs, counts, file:lines, and ran-vs-inspected are the evidence that clears them.
 5. **`browser-qa`** for UI tasks: records original data, restores it, proves restoration; artifacts to scratchpad only. Run it between waves, with no implementer active — hot reload contaminates the session mid-test.
-6. **Bookkeeping**: tick `tasks/todo.md`, PATCH the checklist comment, update the harness todo list, write the ledger — then next task.
+6. **Bookkeeping**: tick `tasks/todo.md`; immediately before each wave's checklist PATCH, invoke `preflight-mutations` with the exact issue and comment IDs, replacement body, current comment version/body, locked tracking permission, and read-back, then apply its result contract; update the harness todo list and ledger before the next task.
 
 A **wedged** agent gets replaced, not re-nudged: dispatch a fresh one.
 
@@ -49,9 +49,9 @@ A **wedged** agent gets replaced, not re-nudged: dispatch a fresh one.
 
 1. **Final whole-branch review** from the *recomputed* merge-base (it moves; exclude generated files). Report every cross-task interaction found, or state explicitly that none were. Triage **all** ledger minors FIX-NOW / FOLLOW-UP / DROP.
 2. Fix pass → `fix-pr-review` to reply-and-resolve every external review thread citing commit SHAs or rationale.
-3. Update PR body to final state. Mark ready only with user approval; **watch CI on the final head** — drafts and merge conflicts silently skip `pull_request` workflows, so "no failures" may mean "never ran". Confirm the workflow ran on the final head, then confirm it passed.
+3. Immediately before updating the PR body or marking it ready, invoke `preflight-mutations` for that external-metadata batch with the exact PR URL, current base/head SHA and draft state, final body delta, update/ready actions, dependent PRs/workflows, and the user's ready approval. Apply its result contract before updating the body or ready state. **Watch CI on the final head** — drafts and merge conflicts silently skip `pull_request` workflows, so "no failures" may mean "never ran". Confirm the workflow ran on the final head, then confirm it passed.
 4. **Manual-QA handoff doc** — standard closing artifact for bundled bug-fix tickets. Per fixed item: link to the originating issue comment, what was wrong before vs what changed (plain language), and step-by-step testing instructions so the user can validate each fix.
-5. **Every stray finding leaves as its own ticket**: small ones → ONE consolidated follow-up ticket; major findings → a dedicated issue each. Assign all of them to the user.
+5. **Every stray finding leaves as its own ticket**: small ones → ONE consolidated follow-up ticket; major findings → a dedicated issue each. Immediately before the first issue creation in the approved follow-up batch, invoke `preflight-mutations` with the exact repository, proposed titles/bodies/assignee and predecessor links, source finding IDs, and the authorization covering that batch. Apply its result contract before creating or assigning them.
 
 ## Hard rules
 

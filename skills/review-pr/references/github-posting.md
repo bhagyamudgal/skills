@@ -92,6 +92,8 @@ If this is a re-review AND `posted_comments` cache exists:
 
 1. **Identify resolved findings**: compare current findings against `posted_comments` via dedupe key. A cached finding NOT in current findings AND whose `id` is now `status: resolved` in `PRIOR_STATE` is "resolved this round."
 
+   Immediately before the first `resolveReviewThread` mutation in this batch, invoke `preflight-mutations`. Pass the exact PR URL and current head SHA, the cached review and identified thread IDs to resolve, each finding's prior and current status, and the user's approved selected-finding set and posting choice. Apply its result contract before continuing.
+
 2. **Resolve their threads** on GitHub:
 
    ```bash
@@ -207,6 +209,8 @@ Parse each `patch`: each `@@ -<oldStart>,<oldLen> +<newStart>,<newLen> @@` heade
 
 For each line-level finding: is `line` present on `path`'s post-image counter? If yes → keep. If no → demote to file-level + log the demotion.
 
+With routing now exact, invoke `preflight-mutations` immediately before Step 4 or Step 4-rolling performs the posting batch's first mutation. Pass the exact PR URL, base and current head SHA, selected finding IDs, verdict, line/file targets, prior review ID or new-review action, subsequent add/submit/resolve targets, and the user's `Post now` or post-edit approval. Apply its result contract before continuing.
+
 ---
 
 ## Step 4 — Phase A: create PENDING review with line-level comments (REST)
@@ -275,7 +279,7 @@ fi
 
 If the rolling path succeeds, the prior review's body is replaced with the new summary. Existing threads on that review are preserved (they belong to the same review entry). New threads will be added in Phase B.
 
-If `ROLLING_FALLBACK=true`, fall through to Step 4 (Phase A: create a fresh review).
+If `ROLLING_FALLBACK=true`, treat the fresh-review fallback as a new batch: invoke `preflight-mutations` with the failed update result and exact fresh-review actions immediately before falling through to Step 4. Apply its result contract before continuing.
 
 ---
 
@@ -374,6 +378,8 @@ Question:
     - label: "Show payload & keep draft"
       description: "Print the failing request body/mutation and leave the pending review as a draft on GitHub for manual submit"
 ```
+
+Immediately before the chosen recovery's first delete or fallback-post mutation, invoke `preflight-mutations` with the exact PR and head SHA, pending review ID, observed attached-comment/thread counts, selected recovery action, and the user's Step 7 choice. Apply its result contract before continuing.
 
 **Cleanup helper** (used by "Post as monolithic" + "Abort"):
 

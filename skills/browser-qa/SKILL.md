@@ -43,6 +43,8 @@ Playwright MCP is the only driver. If Playwright MCP is unavailable, fall back t
 > **Test steps:**
 > {numbered steps from user's flow description}
 >
+> If {URL} is production-like or any step mutates shared data, invoke `preflight-mutations` immediately before the first state-changing interaction. Pass the exact environment URL, authenticated account/workspace, action and record IDs, ownership, pre-test record snapshot, restoration/compensation steps, and user authorization. Apply its result contract before continuing. Local flows that touch only disposable data do not use this gate.
+>
 > For EACH step:
 > - `browser_snapshot` first — refs go stale the instant the page changes, so re-snapshot before EVERY interaction
 > - Execute the interaction via Playwright MCP

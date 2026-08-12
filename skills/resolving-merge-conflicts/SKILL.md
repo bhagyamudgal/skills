@@ -17,4 +17,6 @@ description: "Resolve an in-progress git conflict without a silent drop. Use whe
 
 4. **Run the project's checks** — `/done` steps 1-4 own this pipeline. Stop before its commit step: committing mid-merge concludes the merge with a generated conventional subject instead of the merge message. Fix anything the merge broke.
 
-5. **Finish the merge/rebase.** Stage everything and commit. If rebasing, continue until all commits are replayed — the same conflict often resurfaces at each replayed commit, and your resolution must stay consistent across them.
+5. **Finish the merge/rebase.** If the operation rewrites commits or refs already published or consumed, invoke `preflight-mutations` immediately before continuing that published-history operation or updating its shared ref. Pass the exact operation, local/upstream/base/head SHAs, affected remote refs, dependent branches/PRs, recovery ref, and explicit rewrite authorization. Apply its result contract before continuing. Unpublished local conflict resolution does not use this gate.
+
+   Stage everything and commit. If rebasing, continue until all commits are replayed — the same conflict often resurfaces at each replayed commit, and your resolution must stay consistent across them.
