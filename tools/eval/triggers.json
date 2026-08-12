@@ -79,6 +79,46 @@
 
     { "utterance": "add a comment to the top of user.ts",
       "expect": null,
-      "why": "NEGATIVE: a trivial edit. `done` claims to fire after every task — this checks it does not pre-empt the work" }
+      "why": "NEGATIVE: a trivial edit. `done` claims to fire after every task — this checks it does not pre-empt the work" },
+
+    { "utterance": "Before we act on this recommendation, verify that the evidence supports it and test the strongest alternative explanation.",
+      "expect": "verify-claims",
+      "why": "primary branch: an inference-backed recommendation is about to drive action" },
+
+    { "utterance": "The manifest parser found verify-claims. Can I announce that the migration is complete?",
+      "expect": "verify-claims",
+      "why": "autonomous branch: an internal proxy is being promoted to a user-facing completion claim without saying verify" },
+
+    { "utterance": "You concluded that formatUserLabel is safe, but src/user.ts declares nickname optional while the function calls toUpperCase on it. Verify that challenged conclusion before advising me.",
+      "expect": "verify-claims",
+      "why": "challenge branch: the user disputes a decision-driving claim" },
+
+    { "utterance": "I don't think your conclusion is right. Verify it before advising me.",
+      "expect": "verify-claims",
+      "why": "bare challenge branch: user disputes a conclusion without supplying counter-evidence" },
+
+    { "utterance": "New evidence reverses the conclusion we were going to rely on. Independently recheck the replacement conclusion first.",
+      "expect": "verify-claims",
+      "why": "reversal branch: changed evidence requires an independent claim recheck" },
+
+    { "utterance": "What value is VERSION exported as in src/user.ts?",
+      "expect": null,
+      "why": "NEGATIVE: a directly observable fact with no decision consequence stays outside the gate" },
+
+    { "utterance": "Change the exported VERSION from 2 to 3.",
+      "expect": null,
+      "why": "NEGATIVE: a direct reversible edit carries no inference-backed claim" },
+
+    { "utterance": "formatUserLabel crashes when nickname is missing. Diagnose the bug.",
+      "forbid": "verify-claims",
+      "why": "COLLISION: claim verification must not divert a direct bug-diagnosis request" },
+
+    { "utterance": "I changed VERSION from 2 to 3. Run the completion checks.",
+      "forbid": "verify-claims",
+      "why": "COLLISION: claim verification must not divert an explicit finish-pipeline request" },
+
+    { "utterance": "No, VERSION is 2, not 3. Correct that factual mistake.",
+      "expect": null,
+      "why": "NEGATIVE: a harmless factual correction is not an inference-backed, decision-driving claim" }
   ]
 }

@@ -17,14 +17,14 @@ Usage:
     python3 tools/eval/run_triggers.py --case 7       # one case by index
     python3 tools/eval/run_triggers.py --budget 0.15  # per-case USD cap
 """
-import argparse, json, pathlib, shutil, subprocess, sys, tempfile, time
+import argparse, json, pathlib, selectors, shutil, subprocess, sys, tempfile, time
 
 HERE = pathlib.Path(__file__).resolve().parent
 CASES = HERE / "triggers.json"
 FIXTURE = HERE / "fixture"
 
 
-def make_sandbox():
+def make_sandbox(skill_path=None):
     """Copy the fixture to a throwaway git repo.
 
     The committed fixture lives inside this repo, so an agent with write access and a
@@ -35,6 +35,10 @@ def make_sandbox():
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="trigger-eval-"))
     shutil.copytree(FIXTURE, tmp / "repo")
     repo = tmp / "repo"
+    if skill_path:
+        project_skills = repo / ".claude" / "skills"
+        project_skills.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(skill_path, project_skills / skill_path.name, dirs_exist_ok=True)
     q = {"cwd": str(repo), "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
     subprocess.run(["git", "init", "-q"], **q)
     subprocess.run(["git", "add", "-A"], **q)
@@ -46,9 +50,9 @@ def make_sandbox():
     return tmp, repo
 
 
-def run_case(utterance, budget, timeout, tools=None):
+def run_case(utterance, budget, timeout, tools=None, skill_path=None):
     """Return (skill_or_None, cost, seconds, error_or_None)."""
-    tmp, repo = make_sandbox()
+    tmp, repo = make_sandbox(skill_path)
     cmd = ["claude", "-p", utterance,
            "--output-format", "stream-json", "--verbose",
            "--max-budget-usd", str(budget)]
@@ -56,32 +60,63 @@ def run_case(utterance, budget, timeout, tools=None):
         cmd += ["--tools", tools]
     proc = subprocess.Popen(
         cmd, cwd=str(repo), stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL, text=True)
+        stderr=subprocess.PIPE, text=True)
+
+    def parse_event(line):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+        if event.get("type") == "assistant":
+            for content in event.get("message", {}).get("content", []):
+                if content.get("type") == "tool_use" and content.get("name") == "Skill":
+                    return "skill", (content.get("input") or {}).get("skill")
+        if event.get("type") == "result":
+            error = event.get("subtype", "result-error") if event.get("is_error") else None
+            return "result", (event.get("total_cost_usd", 0.0), error)
+        return None
 
     fired, cost, started = None, 0.0, time.time()
     try:
-        for line in proc.stdout:
-            if time.time() - started > timeout:
-                proc.kill()
-                return None, cost, time.time() - started, "timeout"
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                d = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+        with selectors.DefaultSelector() as selector:
+            selector.register(proc.stdout, selectors.EVENT_READ)
+            while proc.poll() is None:
+                remaining = timeout - (time.time() - started)
+                if remaining <= 0:
+                    proc.kill()
+                    return None, cost, time.time() - started, "timeout"
+                events = selector.select(timeout=min(remaining, 1.0))
+                if not events:
+                    continue
+                line = proc.stdout.readline()
+                if not line:
+                    break
+                parsed = parse_event(line)
+                if not parsed:
+                    continue
+                kind, value = parsed
+                if kind == "skill":
+                    proc.kill()
+                    return value, cost, time.time() - started, None
+                cost, error = value
+                return None, cost, time.time() - started, error
 
-            if d.get("type") == "assistant":
-                for c in d.get("message", {}).get("content", []):
-                    if c.get("type") == "tool_use" and c.get("name") == "Skill":
-                        fired = (c.get("input") or {}).get("skill")
-                        proc.kill()
-                        return fired, cost, time.time() - started, None
-            elif d.get("type") == "result":
-                # Ran to completion with no Skill call — a legitimate "fired nothing".
-                cost = d.get("total_cost_usd", 0.0)
-                break
+            for line in proc.stdout:
+                parsed = parse_event(line)
+                if not parsed:
+                    continue
+                kind, value = parsed
+                if kind == "skill":
+                    return value, cost, time.time() - started, None
+                cost, error = value
+                return None, cost, time.time() - started, error
+
+            stderr = proc.stderr.read().strip()
+            returncode = proc.wait()
+            detail = f": {stderr}" if stderr else ""
+            if returncode != 0:
+                return None, cost, time.time() - started, f"claude exited {returncode}{detail}"
+            return None, cost, time.time() - started, f"missing result event{detail}"
     finally:
         if proc.poll() is None:
             proc.kill()
@@ -107,10 +142,17 @@ def main():
     ap.add_argument("--repeat", type=int, default=1,
                     help="runs per case. Invocation is non-deterministic — a single run "
                          "reports a coin flip as a fact. Use 3+ for anything you act on.")
+    ap.add_argument("--skill-path", type=pathlib.Path,
+                    help="copy a source skill into each sandbox for pre-install testing")
     args = ap.parse_args()
 
     if not FIXTURE.is_dir():
         print(f"missing fixture: {FIXTURE}", file=sys.stderr)
+        return 2
+
+    skill_path = args.skill_path.resolve() if args.skill_path else None
+    if skill_path and not (skill_path / "SKILL.md").is_file():
+        print(f"invalid skill path: {skill_path}", file=sys.stderr)
         return 2
 
     cases = json.loads(CASES.read_text())["cases"]
@@ -119,40 +161,58 @@ def main():
     elif args.limit:
         cases = cases[:args.limit]
 
-    results, total_cost = [], 0.0
+    results = []
     for i, c in enumerate(cases):
-        want = c["expect"]
+        has_expected_skill = "expect" in c
+        expected_skill = c.get("expect")
+        forbidden_skill = c.get("forbid")
         print(f"[{i+1}/{len(cases)}] {c['utterance'][:56]:<56} ", end="", flush=True)
-        fires = []
+        fires, errors = [], []
         for _ in range(args.repeat):
-            got, cost, secs, err = run_case(c["utterance"], args.budget, args.timeout, args.tools)
-            total_cost += cost
+            got, cost, secs, err = run_case(
+                c["utterance"], args.budget, args.timeout, args.tools, skill_path)
             fires.append(got)
-        hits = sum(f == want for f in fires)
+            errors.append(err)
+        hits = sum(
+            err is None
+            and (not has_expected_skill or fired == expected_skill)
+            and (forbidden_skill is None or fired != forbidden_skill)
+            for fired, err in zip(fires, errors)
+        )
         rate = hits / len(fires)
-        # Anything short of unanimous is a variance finding in its own right.
-        verdict = "PASS" if hits == len(fires) else ("FLAKY" if hits else "FAIL")
+        verdict = ("ERROR" if any(errors) else "PASS" if hits == len(fires)
+                   else "FLAKY" if hits else "FAIL")
         seen = {}
-        for f in fires:
-            seen[f or "none"] = seen.get(f or "none", 0) + 1
+        for fired, error in zip(fires, errors):
+            outcome = f"error:{error}" if error else fired or "none"
+            seen[outcome] = seen.get(outcome, 0) + 1
         summary = ", ".join(f"{k}x{v}" for k, v in sorted(seen.items(), key=lambda kv: -kv[1]))
         print(f"{verdict:<5} {hits}/{len(fires)}  {summary}")
-        results.append({**c, "fires": fires, "hits": hits, "n": len(fires),
+        results.append({**c, "fires": fires, "errors": errors,
+                        "hits": hits, "n": len(fires),
                         "rate": rate, "verdict": verdict})
 
     clean = sum(r["verdict"] == "PASS" for r in results)
-    print(f"\n{clean}/{len(results)} unanimous   ~${total_cost:.2f}\n")
+    print(f"\n{clean}/{len(results)} unanimous\n")
 
     misses = [r for r in results if r["verdict"] != "PASS"]
     if misses:
         print("Findings — each is about the description, not the eval:\n")
         for r in misses:
-            want = r["expect"] or "nothing"
+            has_expected_skill = "expect" in r
+            expected_skill = r.get("expect")
+            forbidden_skill = r.get("forbid")
+            want = (expected_skill or "nothing") if has_expected_skill else f"anything except {forbidden_skill}"
             kinds = set()
-            for f in r["fires"]:
-                if f == r["expect"]:
+            for f, error in zip(r["fires"], r["errors"]):
+                if error:
+                    kinds.add("EVAL ERROR")
                     continue
-                kinds.add("OVER-TRIGGER" if r["expect"] is None else
+                if has_expected_skill and f == expected_skill:
+                    continue
+                if not has_expected_skill and f != forbidden_skill:
+                    continue
+                kinds.add("OVER-TRIGGER" if forbidden_skill or expected_skill is None else
                           "SILENT" if f is None else "WRONG SKILL")
             print(f"  {'/'.join(sorted(kinds))}: \"{r['utterance']}\"")
             print(f"      expected {want} — fired it {r['hits']}/{r['n']} runs")

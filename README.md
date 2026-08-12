@@ -60,6 +60,7 @@ npx skills add bhagyamudgal/skills
 | `reuse-first` | Search-first discipline before writing any new utility, type, schema, component, hook, or constant — 3-layer search you must print, reuse ladder, fork smells |
 | `backend-perf` | Performance checklist for backend endpoints and DB queries — walk every check and name a verdict on each; a check you did not name is a check you did not run |
 | `systematic-debugging` | Four-phase root-cause loop for mid-debugging discipline — no fix without an understood cause, every phase ends on a checkable bar, bandaid budget zero |
+| `verify-claims` | Gate inference-backed, decision-driving claims with a counter-hypothesis and paired evidence from their basis and user-facing acceptance boundary |
 | `executing-tickets-with-subagents` | Execute a multi-sub-task GitHub ticket via subagents — one wave per task, ledger-tracked so a compaction can resume, follow-up triage, manual-QA handoff doc |
 | `resolving-merge-conflicts` | Resolve an in-progress git conflict without a **silent drop** — every hunk from both sides placed as kept, superseded, or dropped before you commit |
 | `git-commit` | Conventional commits from diff analysis — every file classified into exactly one commit; append-only, with a message-only mode |
@@ -72,7 +73,8 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 | Folder | Purpose |
 |---|---|
 | `skills/coderabbit-config/` | `.coderabbit.yaml` template + persistent-learnings sidecar. Copy into a repo so CodeRabbit absorbs style + convention findings before `/review-pr` runs. See [`skills/coderabbit-config/README.md`](skills/coderabbit-config/README.md) for bootstrap instructions. |
-| `tools/verify_skills.py` | Structural verifier across all 18 skills — frontmatter, code fences, pointer form, severity-ladder consistency, dangling and orphan references, cross-skill duplication. Plus produce → validate → consume dataflow checks scoped to `review-pr` and `fix-pr-review`. Run `python3 tools/verify_skills.py ./skills`; exits non-zero on failure. |
+| `tools/verify_skills.py` | Structural verifier across all skills — frontmatter, code fences, pointer form, severity-ladder consistency, dangling and orphan references, cross-skill duplication. Plus produce → validate → consume dataflow checks scoped to `review-pr` and `fix-pr-review`. Run `python3 tools/verify_skills.py ./skills`; exits non-zero on failure. |
+| `tools/eval/run_verify_claims.py` | Fresh-session behavioral evaluator for `verify-claims` across code, external mutation, configuration, data, missing evidence, contradiction, and material reversal. Raw streams and final cards are saved under `.eval-results/`. |
 
 ## Usage
 
@@ -91,6 +93,7 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 /reuse-first         # Search-first check before writing new utilities/types/components
 /backend-perf        # Perf checklist for backend services and DB queries
 /systematic-debugging  # Root-cause loop once you're inside a debugging session
+/verify-claims         # Verify a consequential inference before relying on it
 /executing-tickets-with-subagents  # Run a bundled ticket end-to-end via subagents
 /resolving-merge-conflicts         # Resolve merge/rebase conflicts safely
 /git-commit          # Conventional commit (or message-only)
