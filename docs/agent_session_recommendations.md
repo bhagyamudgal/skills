@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R03 — Calibrated project-board mutation`
-- **NEXT ACTION:** Resolve R03 decision 1: whether board calibration is a focused specialization of `preflight-mutations` or an independent workflow.
-- **Progress:** 2 of 18 recommendations complete; 1 grilling; 15 pending.
+- **Current item:** `R04 — Review-ledger convergence`
+- **NEXT ACTION:** Complete the R04 overlap scan, then grill whether convergence belongs in `review-pr`, `parallel-review`, or shared review infrastructure.
+- **Progress:** 3 of 18 recommendations complete; 1 researching; 14 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 13 August 2026
@@ -44,8 +44,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 |---|---|---|---|---|---|---|
 | R01 | P0 | Evidence-backed claim gate | Skill | `complete` | `skills/verify-claims/` | Complete |
 | R02 | P0 | External-state mutation preflight | Skill | `complete` | `skills/preflight-mutations/` | Complete |
-| R03 | P0 | Calibrated project-board mutation | Skill | `grilling` | TBD | Resolve architecture |
-| R04 | P0 | Review-ledger convergence | Skill | `pending` | TBD | Start after R03 closes |
+| R03 | P0 | Calibrated project-board mutation | Skill | `complete` | `skills/calibrate-board-mutations/` | Complete |
+| R04 | P0 | Review-ledger convergence | Skill | `researching` | TBD | Resolve overlap |
 | R05 | P0 | Surface-aware done | Skill | `pending` | TBD | Start after R04 closes |
 | R06 | P1 | Bounded unattended orchestrator | Skill | `pending` | TBD | Start after R05 closes |
 | R07 | P1 | Claude ↔ Codex setup sync | Skill | `pending` | TBD | Start after R06 closes |
@@ -295,7 +295,7 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P0
 - **Proposed destination:** Skill
-- **Status:** `grilling`
+- **Status:** `complete`
 - **Rationale:** Prevents the archive's most expensive correction and is reusable across project boards.
 - **Source specification:** Resolve ownership before writes; ask for estimate unit and 3–5 anchors; preview a representative sample; handle umbrella tickets explicitly; re-fetch and total from the final write ledger.
 - **Reuse scan:**
@@ -304,10 +304,21 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
   - No board-provider-specific workflow exists in this repository, so provider commands and field schemas should remain outside a reusable core.
 - **Architecture hypothesis:** Add a focused calibration skill that prepares a board-write ledger and then hands the exact approved batch to `preflight-mutations`. This keeps numerical calibration separate from shared-state authority without duplicating the mutation gate.
 - **Open design tree:**
-  1. Should R03 be a focused specialization that hands off to `preflight-mutations`, an expansion of R02, or a standalone end-to-end board workflow?
-  2. When may an existing durable estimate policy replace asking for a unit and 3–5 anchors?
-  3. What sample, umbrella-ticket, aggregation, and final-total evidence is required before and after writes?
-- **Decisions / final artifact / verification:** Pending.
+  1. Should R03 be a focused specialization that hands off to `preflight-mutations`, an expansion of R02, or a standalone end-to-end board workflow? **Resolved:** focused specialization.
+  2. When may an existing durable estimate policy replace asking for a unit and 3–5 anchors? **Resolved:** only when a durable policy defines the unit, scale, representative anchors, and applicability to the current board.
+  3. What sample, umbrella-ticket, aggregation, and final-total evidence is required before and after writes? **Resolved:** representative preview plus authoritative final read-back.
+- **Decisions:**
+  1. **Architecture:** Create a focused calibration skill that produces an approved board-write ledger, then hand that exact batch to `preflight-mutations` for shared-state authorization and execution gating.
+  2. **Calibration source:** Reuse an existing durable policy only when it defines the estimate unit, scale, representative anchors, and applicability to the current board. Otherwise obtain 3–5 fresh anchors before preparing writes.
+  3. **Evidence gate:** Preview 3–5 varied representative items before preparing the batch. Classify every umbrella as directly estimated, excluded, or derived from children without double-counting. After execution, re-fetch every written item and calculate totals only from confirmed final values.
+- **Proposed implementation shape:** Create a concise model-invoked `calibrate-board-mutations` skill. It resolves the owner boundary, calibration policy or anchors, representative preview, umbrella treatment, intended batch ledger, and final read-back calculation; it delegates shared-state authorization to `preflight-mutations` and performs no board write itself. Validate with the existing structural verifier and lightweight routing examples only.
+- **Shared-understanding confirmation:** Confirmed by the user on 13 August 2026. Grill complete.
+- **Final artifact:** `skills/calibrate-board-mutations/`
+- **Verification:**
+  - The repository structural verifier passed across 21 skills and 53 Markdown files; the only warning is the pre-existing ignored `license` key in `git-commit` frontmatter.
+  - Five lightweight routing cases cover multi-item calibration, changed-unit recalibration, partial-batch reconciliation, exact single-value collision with `preflight-mutations`, and read-only exclusion. The trigger catalog parses successfully.
+  - Diff and added-comment checks passed. One bounded independent review reported zero Critical or Serious findings.
+  - The optional standalone validator could not start because PyYAML is not installed; no dependency was installed because the repository verifier covers the committed skill structure.
 
 ### R04 — Review-ledger convergence
 
@@ -479,3 +490,8 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Added nine routing cases and exercised four read-only behavior examples. Hardened the contract around consumed-history recovery, exact-SHA leases, captured production prior values, self-contained next actions, and partial-batch provenance.
 - The user corrected the run for over-testing and over-engineering. Removed the per-skill evaluator and fixture tree, retained the reusable structural verifier and trigger catalog, and added the proportional-delivery rule to this ledger.
 - Closed R02 after proportional structural, syntax, JSON, diff, and sampled behavior checks. Advanced R03 to `grilling` after confirming that calibration is the missing behavior and shared-state authority already belongs to `preflight-mutations`.
+- Recorded R03 decision 1: board calibration is a focused specialization that hands its exact batch to `preflight-mutations` rather than expanding or duplicating the shared-state gate.
+- Recorded R03 decision 2: a durable estimate policy replaces fresh anchors only when it completely defines the unit, scale, representative anchors, and current-board applicability.
+- Recorded R03 decision 3: preview 3–5 varied items, classify every umbrella without double-counting, and derive final totals only from authoritative read-back of confirmed writes. The grill frontier is empty pending shared-understanding confirmation.
+- User confirmed the complete R03 design. Implemented the concise `calibrate-board-mutations` workflow and moved R03 to `implementing`.
+- Closed R03 after proportional structural, routing-data, diff, and one-pass Critical/Serious review checks. Advanced R04 to `researching`.

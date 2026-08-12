@@ -155,6 +155,26 @@
 
     { "utterance": "The board write is finished. Use verify-claims to confirm the completion claim from a fresh authoritative read-back.",
       "expect": "verify-claims",
-      "why": "COLLISION: post-write acceptance-boundary verification belongs to verify-claims, not preflight-mutations" }
+      "why": "COLLISION: post-write acceptance-boundary verification belongs to verify-claims, not preflight-mutations" },
+
+    { "utterance": "Estimate every issue assigned to me on this project board, preview a representative sample, then update the board.",
+      "expect": "calibrate-board-mutations",
+      "why": "primary branch: a multi-item estimate batch needs scope, anchors, sample approval, and a final ledger before shared writes" },
+
+    { "utterance": "Our board estimates used person-hours, but I meant agent-assisted elapsed hours. Recalibrate the remaining tickets before continuing.",
+      "expect": "calibrate-board-mutations",
+      "why": "recalibration branch: a changed unit invalidates the unexecuted estimate batch" },
+
+    { "utterance": "Resume the partially completed board-estimate batch and total only what actually landed.",
+      "expect": "calibrate-board-mutations",
+      "why": "reconciliation branch: partial board writes require authoritative item read-back and ledger-derived totals" },
+
+    { "utterance": "Set issue 12's estimate to the exact value 5 hours; no other item is in scope.",
+      "expect": "preflight-mutations",
+      "why": "COLLISION: one explicitly valued board write needs shared-state preflight, not numerical calibration" },
+
+    { "utterance": "Read the project board and summarize its current estimates without changing anything.",
+      "forbid": "calibrate-board-mutations",
+      "why": "NEGATIVE: read-only board analysis does not prepare an estimate mutation batch" }
   ]
 }
