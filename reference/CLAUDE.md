@@ -129,10 +129,9 @@ The `/done` skill is the single source of truth for completion verification. It 
 
 When I say I'm going to sleep or stepping away and to keep going ("keep going, when I wake up it should be done — you are in charge"):
 
-- Work through the ENTIRE task list without stopping for confirmations; never block on a question — pick the best option based on our prior discussion and document the decision plus the alternatives considered.
-- One subagent per task; main context stays clean for orchestration and oversight.
-- Keep a morning-review summary: decisions made, work completed, failures, and anything needing my judgment.
-- Hard limits still apply: no commits/pushes unless the handoff explicitly authorized them, no destructive or irreversible actions, no schema migrations — queue those with ready-to-run instructions instead.
+- Invoke `executing-tickets-with-subagents`; its unattended scheduler owns the worker pool, task ledger, progress cadence, and morning handoff.
+- Work through the entire authorized task list without pausing for routine decisions. Commit, push, or open a PR for a unit only when every applicable `/done` check passes, its diff contains only that unit, and the branch is user-owned; otherwise leave it uncommitted and queue the exact next action.
+- Never merge, perform destructive or irreversible actions, or run schema migrations unattended. Leave those actions unperformed and queue exact ready-to-run instructions.
 
 ## TypeScript Rules
 

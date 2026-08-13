@@ -64,7 +64,7 @@ npx skills add bhagyamudgal/skills
 | `preflight-mutations` | Resolve exact targets, authority, dependencies, reversibility, confirmation, and read-back before changing shared state |
 | `calibrate-board-mutations` | Calibrate board-estimate batches with anchors, representative previews, umbrella rules, and authoritative totals |
 | `converge-reviews` | Reuse review evidence, track affected coverage, and cap stable review scopes at three rounds |
-| `executing-tickets-with-subagents` | Execute a multi-sub-task GitHub ticket via subagents — one wave per task, ledger-tracked so a compaction can resume, follow-up triage, manual-QA handoff doc |
+| `executing-tickets-with-subagents` | Orchestrate bundled tickets or explicit away/keep-going work through a durable ledger, with one mutation owner per task and a bounded unattended worker pool |
 | `resolving-merge-conflicts` | Resolve an in-progress git conflict without a **silent drop** — every hunk from both sides placed as kept, superseded, or dropped before you commit |
 | `git-commit` | Conventional commits from diff analysis — every file classified into exactly one commit; append-only, with a message-only mode |
 | `openclaw-backup` | Verified restore point for an OpenClaw install — official archive, `VACUUM INTO` SQLite snapshots, a raw archive covering the session transcripts the official tool drops, checksum manifest, and a per-install `RESTORE.md`. Manual-only via `disable-model-invocation`, so its description stays out of context until you invoke it |

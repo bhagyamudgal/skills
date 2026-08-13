@@ -203,6 +203,14 @@
 
     { "utterance": "Review https://github.com/acme/widgets/pull/42 and give me the findings.",
       "expect": "review-pr",
-      "why": "COLLISION: producing a PR review belongs to review-pr; convergence coordinates later rounds" }
+      "why": "COLLISION: producing a PR review belongs to review-pr; convergence coordinates later rounds" },
+
+    { "utterance": "I'm stepping away. Keep going on this one remaining task and leave me a durable handoff.",
+      "expect": "executing-tickets-with-subagents",
+      "why": "unattended single-task branch: explicit away/keep-going delegation has no task-count threshold" },
+
+    { "utterance": "I'm going to sleep. Work through the whole task list with subagents and tell me what is ready in the morning.",
+      "expect": "executing-tickets-with-subagents",
+      "why": "unattended multi-task branch: the orchestrator owns bounded scheduling and the morning ledger" }
   ]
 }

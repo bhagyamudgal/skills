@@ -1,6 +1,6 @@
 ---
 name: executing-tickets-with-subagents
-description: Orchestrate a bundled GitHub ticket through subagents — one wave per sub-task, ledger-tracked. Use when a ticket carries 3+ sub-issues shipping as one reviewed PR, when the user asks for subagent-driven execution, or when resuming such a run after a compaction.
+description: Orchestrate ledger-tracked work through subagents. Use for a bundled GitHub ticket with 3+ sub-issues, a request for subagent-driven execution, resuming such a run after compaction, or explicit away/keep-going delegation even when only one task remains.
 ---
 
 # Executing Tickets with Subagents
@@ -8,6 +8,13 @@ description: Orchestrate a bundled GitHub ticket through subagents — one wave 
 ## Overview
 
 The main conversation is an **orchestrator only**. Every edit, review, and QA pass runs in a dispatched subagent. Durable state lives on disk and GitHub — the two places compaction cannot reach.
+
+## Select the run branch
+
+- **Unattended:** When the user explicitly says they are stepping away and asks work to continue, read `${CLAUDE_SKILL_DIR}/references/unattended-scheduler.md` in full before the first dispatch. Its scheduling, transition, update, and handoff contract applies even to one task. Use the phases below only when the work is also a bundled GitHub ticket.
+- **Bundled ticket:** Use the phases below for the ticket's intake, waves, and endgame.
+
+**Gate:** record the selected branch in the ledger before dispatching work.
 
 ## Phase 0 — Intake
 

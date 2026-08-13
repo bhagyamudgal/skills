@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R06 — Bounded unattended orchestrator`
-- **NEXT ACTION:** Complete the R06 overlap scan against `executing-tickets-with-subagents` and unattended-work rules, then grill the smallest unresolved design frontier.
-- **Progress:** 5 of 18 recommendations complete; 1 researching; 12 pending.
+- **Current item:** `R07 — Claude ↔ Codex setup sync`
+- **NEXT ACTION:** Inventory the current Claude/Codex setup-sync workflows and acceptance surfaces, then grill the smallest unresolved R07 design frontier.
+- **Progress:** 6 of 18 recommendations complete; 1 researching; 11 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 13 August 2026
@@ -47,8 +47,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R03 | P0 | Calibrated project-board mutation | Skill | `complete` | `skills/calibrate-board-mutations/` | Complete |
 | R04 | P0 | Review-ledger convergence | Skill | `complete` | `skills/converge-reviews/` | Complete |
 | R05 | P0 | Surface-aware done | Skill | `complete` | `skills/done/` | Complete |
-| R06 | P1 | Bounded unattended orchestrator | Skill | `researching` | TBD | Resolve overlap |
-| R07 | P1 | Claude ↔ Codex setup sync | Skill | `pending` | TBD | Start after R06 closes |
+| R06 | P1 | Bounded unattended orchestrator | Skill | `complete` | `skills/executing-tickets-with-subagents/` | Complete |
+| R07 | P1 | Claude ↔ Codex setup sync | Skill | `researching` | TBD | Resolve overlap |
 | R08 | P1 | Structured decision ledger | Skill | `pending` | TBD | Start after R07 closes |
 | R09 | P1 | Ticket evidence preservation | Skill | `pending` | TBD | Start after R08 closes |
 | R10 | P1 | Artifact lifecycle manager | Skill | `pending` | TBD | Start after R09 closes |
@@ -394,17 +394,44 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `researching`
+- **Status:** `complete`
 - **Rationale:** Addresses duplicate agents, capacity failures, progress nudges, and lost state in overnight work.
 - **Source specification:** One owner per task; fixed worker pool; one retry on capacity failure; material-only updates; durable morning handoff ledger.
 - **Known overlap to resolve:** `executing-tickets-with-subagents` and its ledger contract.
-- **Decisions / final artifact / verification:** Pending.
+- **Reuse scan:**
+  - `executing-tickets-with-subagents` already makes main an orchestrator, runs one implementation wave per task, requires self-contained dispatches, and persists a zero-context ledger with per-task status, commit SHAs, standing rules, artifacts, deferred findings, and an imperative next action.
+  - Its current trigger is limited to bundled GitHub tickets. It has no fixed worker-pool declaration, capacity-specific retry bound, material-only update rule, or morning handoff view.
+  - Its wedged-agent rule replaces an agent without a retry ceiling. Its reviewers intentionally inspect the same task through distinct lenses, so “one owner” must distinguish the sole mutation owner from independent read-only review.
+  - `review-pr` batch mode already demonstrates unattended continuation and end-of-run pending decisions, but owns PR review rather than general task execution.
+  - The global unattended rule grants continued execution across the task list, requires one subagent per task and a morning summary, and retains hard authority boundaries. It should remain a short trigger and authority contract rather than duplicate scheduler mechanics.
+- **Architecture hypothesis:** Deepen `executing-tickets-with-subagents` with an unattended branch and a disclosed scheduler reference. Reuse its ledger as the single source of run state, widen its model trigger to explicit unattended delegation, and keep the global rule as the short invocation and authority boundary.
+- **Open design tree:**
+  1. Should R06 deepen `executing-tickets-with-subagents`, create a separate unattended orchestrator, or remain only a global rule? **Resolved:** deepen the existing skill with an unattended branch and disclosed scheduler reference.
+  2. Should the unattended branch fire on any explicit away/keep-going delegation, or only when a minimum task count is present? **Resolved:** any explicit away/keep-going delegation; a single task uses one worker.
+  3. How should the fixed worker pool and one-owner rule be defined without preventing independent review? **Resolved:** reserve main for orchestration and fix the pool at kickoff to at most three available workers; each task has one mutation owner while independent read-only reviewers remain allowed.
+  4. After the pool contract is settled, what happens after the single capacity retry fails? **Resolved:** retry once after the next worker-slot state change; after a second capacity failure, block that task for the run and continue other runnable work.
+  5. After scheduler behavior is settled, which transitions deserve user-visible updates and what exact morning handoff must survive compaction? **Resolved:** persist every task transition in the existing ledger, surface only material transitions to the user, and maintain a fixed morning-handoff section in that ledger.
+- **Decisions:**
+  1. **Architecture:** Deepen `executing-tickets-with-subagents` with an unattended branch and disclosed scheduler reference. Keep its ledger as the sole run-state authority and leave the global rule as the short activation and authority contract.
+  2. **Activation:** Enter the unattended branch whenever the user explicitly says they are stepping away and asks the agent to continue. Do not impose a task-count threshold; one task uses one worker and multiple runnable tasks share the fixed pool.
+  3. **Pool and ownership:** Reserve main for orchestration and record a kickoff-fixed pool of up to three currently available workers. Do not expand it mid-run. Assign exactly one mutation owner to each task; distinct read-only reviewers may inspect that owner's output without becoming competing owners.
+  4. **Capacity failure:** A capacity rejection receives exactly one retry after the next worker-slot state change. A second capacity rejection marks that task `blocked` for the current run; record both attempts and continue every other runnable task. Do not nudge, spin, or open additional capacity retries.
+  5. **Updates and handoff:** Keep the existing ledger as the sole durable state. Update it after every task transition, but send user-facing progress only at kickoff, task completion, a new blocker or authority boundary, a materially changed plan, or final handoff. Maintain a morning section containing completed work and verification, active owners, blocked tasks and retry evidence, pending decisions, uncommitted work, opened PRs, and the exact next action.
+- **Proposed implementation shape:** Add an explicit unattended branch to `executing-tickets-with-subagents` and disclose its scheduling mechanics in one focused reference loaded only on that branch. Widen the skill description to explicit away/keep-going delegation, add the minimum README and routing updates, and shorten the global unattended rule to point to this skill while retaining its authority limits. Add no evaluator or second orchestrator skill.
+- **Shared-understanding confirmation:** Confirmed by the user on 13 August 2026. Grill complete.
+- **Final artifact:** `skills/executing-tickets-with-subagents/`, including `references/unattended-scheduler.md`, with its README description, two lightweight routing cases, and the global unattended pointer in `reference/CLAUDE.md` updated in place. No second orchestrator skill or evaluator was added.
+- **Verification:**
+  - The repository structural verifier passed across 22 skills and 55 Markdown files; the only warning is the pre-existing ignored `license` key in `git-commit` frontmatter.
+  - The trigger catalog parses successfully with 50 unique cases. Two focused cases cover explicit unattended delegation with one task and with a multi-task list; no live provider evaluator was added or run.
+  - Foundation's Markdown parser accepted all five changed Markdown documents. Diff whitespace validation passed.
+  - One bounded acceptance review found four Serious contract gaps: a non-portable reference pointer, zero-slot kickoff deadlock, owner assignment before dispatch success, and an implicit global commit/PR gate. The repair uses the runtime skill path, per-task two-attempt pool initialization, ownerless capacity waits, and a self-contained scoped-diff/verified-check/user-owned-branch authority boundary.
+  - The affected-area recheck found one remaining Serious gap: a second zero-slot result globally blocked unrelated runnable tasks. The repair now binds initialization attempts and blocking to one selected task, leaves the pool unset, and lets each remaining runnable task enter its own bounded capacity path. The final exact-line recheck reported zero Critical and zero Serious findings.
 
 ### R07 — Claude ↔ Codex setup sync
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `pending`
+- **Status:** `researching`
 - **Rationale:** Makes custom workflow migration behavior-preserving and testable.
 - **Source specification:** Classify exact copy, adaptation, and unsupported behavior; treat custom slash workflows as portable; preserve backups; verify parsing, discovery, picker visibility, and manual invocation separately.
 - **Decisions / final artifact / verification:** Pending.
@@ -561,3 +588,10 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - User confirmed the complete R05 design. Reworked `done` as the single surface-aware completion router with six acceptance lanes, conditional code verification, delegated boundary checks, and a universal evidence ceiling. Moved R05 to `verifying`.
 - Moved R05 to `verifying` after implementation; closure awaits the actual documentation and skill-invocation acceptance checks.
 - Closed R05 after the changed Markdown parsed successfully and a fresh-agent acceptance review verified the skill's routing contract with zero Critical or Serious findings. Advanced R06 to `researching`.
+- Completed the R06 overlap scan. The bundled-ticket orchestrator already owns waves and a durable ledger, while the global unattended rule supplies only the trigger, authority boundary, and morning-summary requirement. Advanced R06 to `grilling` with architecture, activation, and pool ownership as the first frontier.
+- Recorded R06 decisions 1–3: deepen the existing orchestrator, activate on explicit away/keep-going delegation without a task-count threshold, and use a kickoff-fixed pool of at most three workers with one mutation owner per task and independent read-only review.
+- Recorded R06 decisions 4–5: retry capacity once after a worker-slot transition, then block only that task; persist every task transition in the existing ledger while surfacing only material updates and maintaining a fixed morning-handoff section. The grill frontier is empty pending confirmation.
+- User confirmed the complete R06 design. Implemented the unattended branch and its single disclosed scheduler reference, aligned the global authority pointer, and moved R06 to `verifying` for one bounded acceptance review.
+- Repaired the bounded R06 acceptance findings by making reference loading portable, preventing fixed-zero-pool deadlock, assigning owners only after successful dispatch, and spelling out the unattended commit/push/PR verification gate. R06 remains `verifying` pending one affected-area recheck.
+- Repaired the remaining affected-area finding by binding zero-slot initialization retries and blocking to the selected task rather than the entire runnable queue. R06 remains `verifying` pending the final affected-area recheck.
+- Closed R06 after the final exact-line recheck confirmed task-bound zero-slot retries and reported zero Critical and zero Serious findings. Advanced R07 to `researching`.
