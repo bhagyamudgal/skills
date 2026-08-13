@@ -19,7 +19,7 @@ The main conversation is an **orchestrator only**. Every edit, review, and QA pa
 ## Phase 0 — Intake
 
 1. **Resume check** — if a ledger exists for this ticket, read it before anything else and execute its NEXT ACTION. The ledger is the only source of run state; conversation memory is not. Reconcile the four trackers (todo, checklist comment, harness tasks, ledger) before the next wave.
-2. **Fetch the full issue thread** — every comment and every attached image (`gh issue view <n> --comments`; download images and actually read them). Comments routinely override or extend the original body; an unread comment is a spec you don't have.
+2. **Fetch the full issue thread** — read `${CLAUDE_SKILL_DIR}/../audit-ticket/references/ticket-evidence.md` in full, then fetch structured issue JSON with `gh issue view <n> --json number,title,body,author,createdAt,updatedAt,state,assignees,url,comments`. Build the source map from the issue body and every comment's `body`, `author`, `createdAt`, and `url`; download every attached image and actually read it. Comments routinely override or extend the original body; an unread comment is a spec you don't have.
 3. **Research the codebase** — verify claims against the code before bringing questions to the user.
 
 ## Phase 1 — Lock, plan, instrument
@@ -35,7 +35,7 @@ The main conversation is an **orchestrator only**. Every edit, review, and QA pa
 
 ## Ledger contract
 
-Written for a reader with **zero context** — assume the next writer remembers nothing. Update after EVERY wave. Must contain: per-task status with commit SHAs; the current NEXT ACTION stated imperatively; accumulated deferred Moderate and Minor findings awaiting triage; standing process rules (permissions granted, environment quirks + fallbacks, QA credentials/data notes); locations of briefs/artifacts.
+Written for a reader with **zero context** — assume the next writer remembers nothing. Update after EVERY wave. Must contain: per-task status with commit SHAs; the current NEXT ACTION stated imperatively; accumulated deferred Moderate and Minor findings awaiting triage; standing process rules (permissions granted, environment quirks + fallbacks, QA credentials/data notes); locations of briefs/artifacts and the ticket source map.
 
 ## Phase 2 — The wave (one per task)
 
@@ -58,7 +58,7 @@ A **wedged** agent gets replaced, not re-nudged: dispatch a fresh one.
 2. Fix pass → `fix-pr-review` to reply-and-resolve every external review thread citing commit SHAs or rationale.
 3. Immediately before updating the PR body or marking it ready, invoke `preflight-mutations` for that external-metadata batch with the exact PR URL, current base/head SHA and draft state, final body delta, update/ready actions, dependent PRs/workflows, and the user's ready approval. Apply its result contract before updating the body or ready state. **Watch CI on the final head** — drafts and merge conflicts silently skip `pull_request` workflows, so "no failures" may mean "never ran". Confirm the workflow ran on the final head, then confirm it passed.
 4. **Manual-QA handoff doc** — standard closing artifact for bundled bug-fix tickets. Per fixed item: link to the originating issue comment, what was wrong before vs what changed (plain language), and step-by-step testing instructions so the user can validate each fix.
-5. **Every stray finding leaves as its own ticket**: small ones → ONE consolidated follow-up ticket; major findings → a dedicated issue each. Immediately before the first issue creation in the approved follow-up batch, invoke `preflight-mutations` with the exact repository, proposed titles/bodies/assignee and predecessor links, source finding IDs, and the authorization covering that batch. Apply its result contract before creating or assigning them.
+5. **Every stray finding leaves as its own ticket**: small ones → ONE consolidated follow-up ticket; major findings → a dedicated issue each. Before composing any rewritten, split, or follow-up issue, reread `${CLAUDE_SKILL_DIR}/../audit-ticket/references/ticket-evidence.md`; its provenance graph and rendered closeout gate apply to the original and every successor. Immediately before the first write, invoke `preflight-mutations` once for the complete batch: exact repository; current original issue state and guards; the original issue's complete investigation update or comment payload; every successor create payload; original-to-successor, successor-to-predecessor, and dependency-relevant sibling links; source finding and evidence IDs; assignees; authorization; and the rendered issue-and-image read-back plan. Apply its result contract, then execute only the writes in that batch. Re-fetch and reread the rendered issue set and images against the source map before reporting the tickets complete.
 
 ## Hard rules
 

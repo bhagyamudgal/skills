@@ -23,6 +23,8 @@ If the URL points at a different repo than cwd, pass `--repo <owner>/<repo>` to 
 
 ## Phase 1: Intake (main)
 
+Read `${CLAUDE_SKILL_DIR}/references/ticket-evidence.md` in full before extracting requirements. Build its source map alongside the requirement list so later rewrites and splits retain the original evidence.
+
 ### Fetch the full ticket
 
 ```bash
@@ -57,7 +59,7 @@ Walk body + comments in chronological order and enumerate every discrete require
 - Acceptance criteria and follow-up asks buried in comments
 - Requirements implied by attached mocks/screenshots
 
-For each, record: `id`, `text` (short quote), `source` (body | comment by <author> on <date> | image <i>), and `superseded_by` if a later comment amended it. Merge duplicates; a requirement restated in three comments is still one `Rn`.
+For each, record: `id`, `text` (short quote), its supporting `E<n>` IDs from the source map, and `superseded_by` if a later comment amended it. Merge duplicates; a requirement restated in three comments is still one `Rn`, but retain each relevant source item under its own evidence ID.
 
 If zero requirements are extractable (ticket is a vague one-liner), ask the user what specifically to verify before dispatching anything.
 
@@ -177,6 +179,8 @@ When every requirement is done or obsolete, reorder: "Sunset (close)" goes first
 ## Phase 5: Execute (gh)
 
 Phase 5 runs on the Phase 4 fate choice, and only on it — the report is always safe to print, but every `gh` write waits for that explicit choice. Read `${CLAUDE_SKILL_DIR}/references/execute.md` for the chosen fate's recipe.
+
+For any rewrite or split, reread `${CLAUDE_SKILL_DIR}/references/ticket-evidence.md` before composing issue bodies and again for its rendered closeout gate. The chosen fate cannot close while required source evidence is missing.
 
 Immediately before that recipe's first `gh` write, invoke `preflight-mutations` for the approved fate batch. Pass the exact issue URL and number; its current state, author, assignees, and audit SHA; the ordered comment/edit/close/create actions and their targets; the Phase 4 approval; and, for a split, the proposed successor title, body, assignee, and predecessor link. Apply its result contract before continuing.
 

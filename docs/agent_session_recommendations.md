@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R09 — Ticket evidence preservation`
-- **NEXT ACTION:** Inventory `audit-ticket` and ticket-execution evidence intake/write-back behavior, then grill the smallest unresolved R09 design frontier.
-- **Progress:** 7 complete; 1 declined; 1 researching; 9 pending.
+- **Current item:** `R10 — Artifact lifecycle manager`
+- **NEXT ACTION:** Inventory existing artifact creation, consolidation, canonical-link, and closeout behavior, then grill the smallest unresolved R10 design frontier.
+- **Progress:** 8 complete; 1 declined; 1 researching; 8 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 14 August 2026
@@ -50,8 +50,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R06 | P1 | Bounded unattended orchestrator | Skill | `complete` | `skills/executing-tickets-with-subagents/` | Complete |
 | R07 | P1 | Claude ↔ Codex setup sync | Skill | `complete` | `skills/sync-agent-setups/` | Complete |
 | R08 | P1 | Structured decision ledger | Skill | `declined` | Decision recorded | Declined as disproportionate |
-| R09 | P1 | Ticket evidence preservation | Skill | `researching` | TBD | Resolve overlap |
-| R10 | P1 | Artifact lifecycle manager | Skill | `pending` | TBD | Start after R09 closes |
+| R09 | P1 | Ticket evidence preservation | Skill | `complete` | `skills/audit-ticket/references/ticket-evidence.md` | Complete |
+| R10 | P1 | Artifact lifecycle manager | Skill | `researching` | TBD | Resolve overlap |
 | R11 | P1 | Merge-readiness evidence card | Skill | `pending` | TBD | Start after R10 closes |
 | R12 | P1 | Non-interactive tooling canary | Skill | `pending` | TBD | Start after R11 closes |
 | R13 | P1 | Material-state progress updates | Global rules | `pending` | TBD | Start after R12 closes |
@@ -500,17 +500,49 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `researching`
+- **Status:** `complete`
 - **Rationale:** Repeated extraction and split workflows lost screenshots, author context, or exact source evidence.
 - **Source specification:** Treat screenshots as source of truth; preserve author, text, and image references; link predecessor and successor tickets; reread the final ticket; post investigation back to the durable issue.
 - **Known overlap to resolve:** `audit-ticket` and `executing-tickets-with-subagents` intake.
-- **Decisions / final artifact / verification:** Pending.
+- **Reuse scan:**
+  - `audit-ticket` already fetches the full issue thread, downloads and reads every body/comment image, treats newer comments as amendments, and records each requirement's short text plus body/comment-author-date/image source.
+  - Its execution recipe weakens that provenance: an edited body preserves intent paragraphs but not an evidence index; a split successor carries open items and gaps but not every originating author, exact source link, or image reference.
+  - `executing-tickets-with-subagents` requires the full thread and attached images before planning, but its durable ledger does not require a source-evidence map and its endgame does not require rereading a rewritten/successor ticket against the extraction.
+  - Both workflows use `preflight-mutations` before issue writes, but neither explicitly posts investigation findings back to the durable source issue or re-fetches the final ticket to prove author/text/image/predecessor/successor preservation.
+  - Ticket evidence is also relevant to filing and splitting workflows beyond stale-ticket audit, so an `audit-ticket`-only amendment may leave the same loss path elsewhere.
+- **Architecture hypothesis:** Define one reusable ticket-evidence preservation contract and integrate it into existing ticket workflows, without creating another ticket-management interface. The contract should own provenance and closeout evidence; `audit-ticket` and ticket execution continue to own their actions.
+- **Open design tree:**
+  1. Should R09 create a shared preservation skill/contract used by ticket workflows, or deepen `audit-ticket` and `executing-tickets-with-subagents` independently? **Resolved:** add one shared preservation reference behind the existing ticket workflows; do not create another user-facing skill.
+  2. Should the durable evidence record preserve full source text, short attributed excerpts plus source links, or only normalized requirements? **Resolved:** preserve every relevant item as an attributed exact excerpt with author, date, source URL, and image reference/checksum alongside its normalized requirement; omit unrelated discussion.
+  3. Which issue is the durable home for investigation findings when a ticket is split or superseded? **Resolved:** the original issue remains the provenance hub and receives the complete investigation plus successor links; each successor carries only its relevant evidence and a predecessor backlink.
+  4. After source fidelity and ownership are settled, how should screenshots be retained across predecessor/successor issues without losing access or context? **Resolved:** reuse accessible original attachment URLs with source/checksum provenance; when successor readers cannot access them, re-upload the original bytes and record both URLs/checksums; never replace images with descriptions.
+  5. What predecessor/successor links and authoritative-status markers must each final ticket contain? **Resolved:** the original declares itself the authoritative provenance record in an `Investigation and successors` section; successors name `Split from #N`, scoped evidence IDs, and dependency-relevant sibling links.
+  6. What exact reread/read-back comparison closes the workflow, and what happens when the final ticket drops evidence? **Resolved:** re-fetch and reread every final issue and rendered image, compare evidence IDs/excerpts/authors/links/checksums with the source map, and block closure or mark a successor incomplete until omissions are repaired.
+- **Decisions:**
+  1. **Architecture:** Deepen `audit-ticket` and `executing-tickets-with-subagents` with one shared ticket-evidence reference loaded only by evidence extraction, rewrite, or split branches. Do not add a standalone preservation skill or another ticket interface.
+  2. **Evidence fidelity:** For every relevant source item, preserve an exact excerpt plus author, date, direct source URL, and image reference/checksum, paired with the normalized requirement it supports. Exclude unrelated discussion; summaries supplement rather than replace evidence.
+  3. **Durable issue:** Keep the original issue as the provenance hub even when it closes. Post the complete investigation there and add every successor link. Each successor contains only evidence relevant to its scope and links back to the predecessor.
+  4. **Screenshot retention:** Reuse an original GitHub attachment URL when the intended successor readers can access it and retain its source comment plus checksum. If access fails, re-upload the exact downloaded bytes and record original URL, new URL, and matching checksum. A prose description never replaces the image.
+  5. **Linkage and authority:** Add an `Investigation and successors` section to the original issue and label it the authoritative provenance record. Each successor says `Split from #N`, lists its scoped evidence IDs, and links dependency-relevant sibling successors. The original links every successor.
+  6. **Closeout:** After every issue mutation, re-fetch and reread the rendered original and all successors, including opening each referenced image. Compare evidence IDs, exact excerpts, authors, source/backlinks, successor links, and image checksums with the source map. Missing evidence blocks closure or leaves that successor explicitly incomplete until repaired and reread.
+- **Proposed implementation shape:** Add one direct ticket-evidence reference under the existing ticket workflow most suitable as its shared home, then point `audit-ticket` and `executing-tickets-with-subagents` to it at intake and rewrite/split closeout. Keep action decisions and GitHub writes in their current skills, reuse `preflight-mutations`, update README descriptions only if behavior discovery changes, and add no new skill or evaluator.
+- **Shared-understanding confirmation:** Confirmed by the user on 14 August 2026. Grill complete.
+- **Final artifact:** `skills/audit-ticket/references/ticket-evidence.md`, with intake and closeout pointers from `audit-ticket` and `executing-tickets-with-subagents`.
+- **Verification:**
+  - The repository structural verifier passed across 25 skills and 59 Markdown files; its only warning is the pre-existing ignored `license` key in `git-commit` frontmatter.
+  - Swift Foundation parsed the five affected Markdown files, and `git diff --check` passed.
+  - The workflow contract was inspected for direct intake and closeout pointers, continued `preflight-mutations` ownership, original-issue authority, scoped successor evidence, image-byte/checksum preservation, and a blocking rendered reread.
+  - The first acceptance review found two Serious gaps: bundled-ticket intake used rendered `--comments` output without structured comment provenance, and follow-up preflight did not bind the original investigation write plus every successor and relationship write into one exact batch.
+  - The repair fetches structured issue JSON including the body and each comment's author, creation time, and direct URL. Its single preflight batch now includes current original guards, the complete investigation payload, every successor payload, every predecessor/successor/dependency link, and the full rendered read-back plan; writes outside that batch are excluded.
+  - The focused affected-area recheck found zero Critical and zero Serious issues after both repairs.
+  - Python compilation passed for the repository verifier, which now resolves explicit sibling-skill reference paths; the verifier passed across 25 skills and 59 Markdown files.
+  - No live GitHub mutation or custom evaluator was run because the implementation changes agent instructions rather than an external issue. R09 is complete.
 
 ### R10 — Artifact lifecycle manager
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `pending`
+- **Status:** `researching`
 - **Rationale:** Artifacts are valuable but proliferated, competed, or lost unique evidence during consolidation.
 - **Source specification:** Maintain one canonical URL; track sources and superseded artifacts; deduplicate without discarding unique findings; verify links and duplicate status at closeout.
 - **Decisions / final artifact / verification:** Pending.
@@ -658,3 +690,9 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Closed R07 after structural, metadata, Markdown, explicit manual-invocation, and bounded contract-review checks. No setup state changed. Advanced R08 to `researching`.
 - Completed the R08 overlap scan. Existing grilling tools ask good questions and `harden-plan` records richer run-local dispositions, but no workflow owns durable effective decisions, history, recap, undo, or dependency invalidation. Advanced R08 to `grilling`.
 - Declined R08 as disproportionate after the user challenged its restrictiveness. Preserved the existing lightweight summaries, rationale capture, and irreversible-action confirmation instead of adding a cross-workflow decision state machine. Advanced R09 to `researching`.
+- Completed the R09 overlap scan. Existing ticket intake reads full threads and images, but audit rewrites and successor tickets do not preserve a durable provenance map, require final-ticket reread, or guarantee investigation write-back. Advanced R09 to `grilling`.
+- Recorded R09 decisions 1–3: amend the existing ticket workflows through one shared reference, preserve attributed exact excerpts and image provenance, and keep the original issue as the durable investigation hub with linked successors.
+- Recorded R09 decisions 4–6: preserve screenshot bytes and access provenance, make predecessor/successor authority explicit, and require a live final reread against the evidence map before closure. The grill frontier is empty pending confirmation.
+- Confirmed and implemented the R09 design as one shared evidence-preservation reference used by the existing ticket workflows. Advanced R09 to `verifying`; no GitHub issue was mutated.
+- Repaired two Serious R09 acceptance findings by fetching structured comment provenance and binding the original investigation plus every successor and relationship write into one preflight batch. R09 remains `verifying` pending the affected-area recheck.
+- Closed R09 after the focused affected-area recheck reported zero Critical and zero Serious findings and all applicable structural, Python, Markdown, and diff checks passed. Advanced R10 to `researching`.

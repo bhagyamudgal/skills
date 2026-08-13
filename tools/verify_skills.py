@@ -517,7 +517,10 @@ def check_reference_files_exist():
         skill = skill_dir_of(path)
         for i, l in enumerate(ls, 1):
             for m in re.finditer(r"\b(references|modes)/([a-z0-9._-]+\.md)", l):
-                if not (skill / m.group(1) / m.group(2)).exists():
+                prefix = l[:m.start()]
+                sibling = re.search(r"\$\{CLAUDE_SKILL_DIR\}/\.\./([a-z0-9-]+)/$", prefix)
+                owner = ROOT / sibling.group(1) if sibling else skill
+                if not (owner / m.group(1) / m.group(2)).exists():
                     fail(rel(path), f"line {i}: {m.group(1)}/{m.group(2)} does not exist")
 
 
