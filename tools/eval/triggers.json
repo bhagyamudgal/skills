@@ -175,6 +175,26 @@
 
     { "utterance": "Read the project board and summarize its current estimates without changing anything.",
       "forbid": "calibrate-board-mutations",
-      "why": "NEGATIVE: read-only board analysis does not prepare an estimate mutation batch" }
+      "why": "NEGATIVE: read-only board analysis does not prepare an estimate mutation batch" },
+
+    { "utterance": "Review round two is complete. Reconcile the current findings ledger and tell me whether the unchanged scope warrants another round.",
+      "expect": "converge-reviews",
+      "why": "primary branch: a completed repeated review needs evidence reuse, round accounting, and one bounded next action" },
+
+    { "utterance": "The third review pass still has two Serious findings and three Moderate findings. Decide how this review ends without starting round four.",
+      "expect": "converge-reviews",
+      "why": "cap branch: blockers remain blocking while non-blockers move to proposed follow-up at the stable-scope limit" },
+
+    { "utterance": "Only one file changed after review. Reuse the unaffected reviewer coverage and identify the exact delta that needs re-review.",
+      "expect": "converge-reviews",
+      "why": "invalidation branch: changed content invalidates affected coverage rather than all prior evidence" },
+
+    { "utterance": "Run a quick review of my current uncommitted diff.",
+      "expect": "parallel-review",
+      "why": "COLLISION: producing a first local review belongs to parallel-review; convergence consumes its completed round" },
+
+    { "utterance": "Review https://github.com/acme/widgets/pull/42 and give me the findings.",
+      "expect": "review-pr",
+      "why": "COLLISION: producing a PR review belongs to review-pr; convergence coordinates later rounds" }
   ]
 }

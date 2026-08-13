@@ -251,6 +251,8 @@ Comparing `last_run_sha` to `CURRENT_HEAD` selects one of three branches: replay
 
 After successful run, write result to `$CACHE_FILE` at end of Phase 4 (cache is local, independent of GitHub state).
 
+If `PRIOR_STATE.convergence` exists, invoke `converge-reviews` with the current request, base/head, diff hash, paths, and planned roster/lenses before Phase 2. Reuse a matching result without dispatch. When it returns `continue`, review only the invalidated coverage it names; apply any other result without starting another round.
+
 ### Compute shared-package repo map (for Q6)
 
 If `packages/` or `apps/` exists, load `${CLAUDE_SKILL_DIR}/references/q6-reusability-search.md` and run its "Phase 1 — compute the shared-package repo map" section: it holds both shell blocks (the cross-repo `gh api` tree fetch and the local `bash -c` find/grep pair, each truncating at 500 lines) and stashes `repo_map_files` + `repo_map_exports` for Subagent 1's prompt.
@@ -1031,6 +1033,8 @@ Write a one-sentence approval reason grounded in the most important finding (or 
 
 ## Phase 4: Output
 
+Every Phase 4 path, including zero findings, self-review, keep-local, and posted-review paths, reaches **Convergence handoff** before exiting.
+
 ### Print this block to terminal, always
 
 ```
@@ -1222,6 +1226,10 @@ Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT
 ### If edit first
 
 Write summary body to `/tmp/review-pr-<num>.md`, open in `${EDITOR:-vi}`, then post after editor closes. This flow edits the summary body only; to change or remove a review comment (line-level or file-level), edit the findings list before "Post now".
+
+### Convergence handoff
+
+Before any Phase 4 path exits, invoke `converge-reviews` with the PR request, base/current head and diff hash, reviewed paths, reviewer roster and lenses, current findings and dispositions, and `$STATE_FILE`. Store its `convergence` block in that existing state file without replacing `review-pr`'s finding state. Apply its result contract before recommending another review round or declaring the review converged.
 
 ### Post-completion next actions (context-aware)
 

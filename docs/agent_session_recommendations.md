@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R04 — Review-ledger convergence`
-- **NEXT ACTION:** Complete the R04 overlap scan, then grill whether convergence belongs in `review-pr`, `parallel-review`, or shared review infrastructure.
-- **Progress:** 3 of 18 recommendations complete; 1 researching; 14 pending.
+- **Current item:** `R05 — Surface-aware done`
+- **NEXT ACTION:** Complete the R05 overlap scan against `done` and acceptance-surface workflows, then grill the smallest unresolved design frontier.
+- **Progress:** 4 of 18 recommendations complete; 1 researching; 13 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 13 August 2026
@@ -45,8 +45,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R01 | P0 | Evidence-backed claim gate | Skill | `complete` | `skills/verify-claims/` | Complete |
 | R02 | P0 | External-state mutation preflight | Skill | `complete` | `skills/preflight-mutations/` | Complete |
 | R03 | P0 | Calibrated project-board mutation | Skill | `complete` | `skills/calibrate-board-mutations/` | Complete |
-| R04 | P0 | Review-ledger convergence | Skill | `researching` | TBD | Resolve overlap |
-| R05 | P0 | Surface-aware done | Skill | `pending` | TBD | Start after R04 closes |
+| R04 | P0 | Review-ledger convergence | Skill | `complete` | `skills/converge-reviews/` | Complete |
+| R05 | P0 | Surface-aware done | Skill | `researching` | TBD | Resolve overlap |
 | R06 | P1 | Bounded unattended orchestrator | Skill | `pending` | TBD | Start after R05 closes |
 | R07 | P1 | Claude ↔ Codex setup sync | Skill | `pending` | TBD | Start after R06 closes |
 | R08 | P1 | Structured decision ledger | Skill | `pending` | TBD | Start after R07 closes |
@@ -324,11 +324,36 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P0
 - **Proposed destination:** Skill
-- **Status:** `pending`
+- **Status:** `complete`
 - **Rationale:** Retains the proven value of independent review without endless review waves.
 - **Source specification:** Hash the reviewed diff; store reviewer coverage and disposition; rerun delta plus open findings only; cap convergence at three rounds; convert important remainder to issues.
 - **Known overlap to resolve:** `review-pr`, `parallel-review`, and their persisted finding state.
-- **Decisions / final artifact / verification:** Pending.
+- **Reuse scan:**
+  - `review-pr` already persists stable finding IDs and dispositions, compares cached head SHA with the current head, replays an unchanged review, re-reviews only new commits when ancestry is intact, invalidates on rewritten history, and relaxes Moderate/Minor blocking from round 3.
+  - `parallel-review` builds a reviewer roster and merges traceable findings, but retains no diff identity, coverage record, finding dispositions, or round history between invocations.
+  - `done` repeatedly calls `parallel-review` until Critical and Serious reach zero, with no explicit round cap or unchanged-diff reuse contract.
+  - No existing workflow enforces a hard three-round stop or converts important unresolved remainder into approved follow-up work.
+- **Initial architecture hypothesis (rejected):** Amend the existing review workflows rather than create another user-facing command. The user instead selected a dedicated convergence skill so all reviewers share one coordinator contract.
+- **Open design tree:**
+  1. Should convergence amend `review-pr`, `parallel-review`, and `done`, or live in a new standalone skill? **Resolved:** standalone convergence skill.
+  2. Is the convergence skill model-invoked by the existing review workflows or manual-only? **Resolved:** automatic shared coordinator.
+  3. What exactly identifies an unchanged review scope and invalidates prior evidence? **Resolved:** content hash plus review contract, with affected-area invalidation.
+  4. Does the three-round cap apply per unchanged scope, per task, or separately to PR and local review? **Resolved:** three rounds per stable review scope.
+  5. Which unresolved findings become follow-up issues, and what approval is required before creating them? **Resolved:** blockers remain; important non-blockers become a proposed follow-up requiring approval before external creation.
+- **Decisions:**
+  1. **Architecture:** Create a dedicated convergence skill that owns the shared ledger and convergence decision rather than independently extending each review workflow.
+  2. **Invocation:** Make `converge-reviews` model-invoked. `review-pr`, `parallel-review`, and `done` hand every completed review round to it; users may also invoke it directly.
+  3. **Scope identity:** Key reusable evidence by reviewed diff hash, base/head, scope paths, reviewer roster and lenses, and originating request. Reuse unchanged coverage; invalidate and re-review only the affected portion when that contract changes.
+  4. **Round cap:** Allow at most three review/fix rounds per stable review scope. A material change resets only its affected portion; cosmetic, generated, or unrelated changes do not reset the counter.
+  5. **Cap disposition:** Keep Critical and Serious findings blocking after round three. Convert worthwhile Moderate and Minor remainder into a proposed follow-up list. Creating external issues requires user approval and `preflight-mutations`; dismissed noise remains closed in the ledger.
+- **Proposed implementation shape:** Create a concise model-invoked `converge-reviews` skill that owns a common ledger contract and returns `continue`, `converged`, `blocked-at-cap`, or `follow-up-proposed`. Add narrow handoffs from `review-pr`, `parallel-review`, and `done`; reuse `review-pr`'s existing finding state rather than replacing it. Validate structurally plus lightweight routing and contract inspection only.
+- **Shared-understanding confirmation:** Confirmed by the user on 13 August 2026. Grill complete.
+- **Final artifact:** `skills/converge-reviews/`, with narrow handoffs from `review-pr`, `parallel-review`, and `done`.
+- **Verification:**
+  - The repository structural verifier passed across 22 skills and 54 Markdown files; the only warning is the pre-existing ignored `license` key in `git-commit` frontmatter.
+  - Five lightweight routing cases cover repeated-round reconciliation, the round-three cap, affected-coverage reuse, and first-review collisions with `parallel-review` and `review-pr`. The trigger catalog parses successfully.
+  - Diff and added-comment checks passed. One bounded review found two Serious contract gaps: caller-specific `regression` state was not normalized as open, and the cap lacked a blocker-fix verification path.
+  - The affected-area repair maps all caller-specific open states to blocking semantics and allows exactly one targeted blocker-closure check without a new-finding sweep or fourth review round. The affected-area recheck reported zero Critical or Serious findings.
 
 ### R05 — Surface-aware done
 
@@ -495,3 +520,11 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Recorded R03 decision 3: preview 3–5 varied items, classify every umbrella without double-counting, and derive final totals only from authoritative read-back of confirmed writes. The grill frontier is empty pending shared-understanding confirmation.
 - User confirmed the complete R03 design. Implemented the concise `calibrate-board-mutations` workflow and moved R03 to `implementing`.
 - Closed R03 after proportional structural, routing-data, diff, and one-pass Critical/Serious review checks. Advanced R04 to `researching`.
+- Completed the R04 overlap scan. `review-pr` already implements most convergence machinery, while `parallel-review` and `done` lack durable scope and round state; advanced R04 to `grilling` without assuming a new skill is needed.
+- Recorded R04 decision 1: create a dedicated convergence skill. Added the dependent invocation/coordination decision to the design frontier.
+- Recorded R04 decision 2: `converge-reviews` is an automatic shared coordinator invoked after each `review-pr`, `parallel-review`, and `done` review round.
+- Recorded R04 decision 3: reuse evidence by content hash plus review contract and invalidate only the affected portion when the diff, scope, roster, lens, or originating request changes.
+- Recorded R04 decision 4: cap review/fix convergence at three rounds per stable scope, resetting only a materially changed affected portion.
+- Recorded R04 decision 5: Critical/Serious remain blocking at the cap; worthwhile Moderate/Minor remainder becomes a proposed follow-up whose external creation requires approval and `preflight-mutations`. The grill frontier is empty pending confirmation.
+- User confirmed the complete R04 design. Implemented the concise `converge-reviews` coordinator, preserved `review-pr`'s finding state as authoritative, and added the three agreed handoffs.
+- Closed R04 after proportional structural, routing-data, diff, and bounded review checks. The only review findings were fixed and the affected-area recheck reported zero Critical or Serious issues. Advanced R05 to `researching`.

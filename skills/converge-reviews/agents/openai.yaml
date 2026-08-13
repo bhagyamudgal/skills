@@ -1,0 +1,4 @@
+interface:
+  display_name: "Converge Reviews"
+  short_description: "Bound review rounds with a shared findings ledger"
+  default_prompt: "Use $converge-reviews to reconcile this review round and decide the next bounded action."

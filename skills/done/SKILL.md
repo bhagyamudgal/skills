@@ -23,7 +23,7 @@ If you already ran `/fix-ts-errors` during implementation, run it again — new 
 
 Run `/parallel-review`.
 
-Fix every critical and serious finding, then re-run `/parallel-review` until it returns zero of both. List every moderate and minor finding with one line each: fixed, or why deferred.
+Apply the `converge-reviews` result returned by `/parallel-review`. On `continue`, fix the named Critical and Serious findings and re-run only the invalidated coverage. On `converged`, proceed. On `blocked-at-cap`, stop completion. On `follow-up-proposed`, list each Moderate or Minor proposal and its approval boundary before proceeding; external issue creation is a separate approved mutation.
 
 Re-run `/fix-ts-errors` after the fixes.
 

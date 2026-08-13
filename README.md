@@ -63,6 +63,7 @@ npx skills add bhagyamudgal/skills
 | `verify-claims` | Gate inference-backed, decision-driving claims with a counter-hypothesis and paired evidence from their basis and user-facing acceptance boundary |
 | `preflight-mutations` | Resolve exact targets, authority, dependencies, reversibility, confirmation, and read-back before changing shared state |
 | `calibrate-board-mutations` | Calibrate board-estimate batches with anchors, representative previews, umbrella rules, and authoritative totals |
+| `converge-reviews` | Reuse review evidence, track affected coverage, and cap stable review scopes at three rounds |
 | `executing-tickets-with-subagents` | Execute a multi-sub-task GitHub ticket via subagents — one wave per task, ledger-tracked so a compaction can resume, follow-up triage, manual-QA handoff doc |
 | `resolving-merge-conflicts` | Resolve an in-progress git conflict without a **silent drop** — every hunk from both sides placed as kept, superseded, or dropped before you commit |
 | `git-commit` | Conventional commits from diff analysis — every file classified into exactly one commit; append-only, with a message-only mode |
@@ -98,6 +99,7 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 /verify-claims         # Verify a consequential inference before relying on it
 /preflight-mutations   # Prepare or block a shared-state mutation before execution
 /calibrate-board-mutations  # Calibrate an estimate batch before board writes
+/converge-reviews      # Reconcile a review round and choose its bounded next action
 /executing-tickets-with-subagents  # Run a bundled ticket end-to-end via subagents
 /resolving-merge-conflicts         # Resolve merge/rebase conflicts safely
 /git-commit          # Conventional commit (or message-only)
