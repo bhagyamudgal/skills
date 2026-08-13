@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R08 — Structured decision ledger`
-- **NEXT ACTION:** Inventory `grill-me`, `grilling`, and `harden-plan` decision persistence and undo behavior, then grill the smallest unresolved R08 design frontier.
-- **Progress:** 7 of 18 recommendations complete; 1 researching; 10 pending.
+- **Current item:** `R09 — Ticket evidence preservation`
+- **NEXT ACTION:** Inventory `audit-ticket` and ticket-execution evidence intake/write-back behavior, then grill the smallest unresolved R09 design frontier.
+- **Progress:** 7 complete; 1 declined; 1 researching; 9 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 14 August 2026
@@ -49,8 +49,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R05 | P0 | Surface-aware done | Skill | `complete` | `skills/done/` | Complete |
 | R06 | P1 | Bounded unattended orchestrator | Skill | `complete` | `skills/executing-tickets-with-subagents/` | Complete |
 | R07 | P1 | Claude ↔ Codex setup sync | Skill | `complete` | `skills/sync-agent-setups/` | Complete |
-| R08 | P1 | Structured decision ledger | Skill | `researching` | TBD | Resolve overlap |
-| R09 | P1 | Ticket evidence preservation | Skill | `pending` | TBD | Start after R08 closes |
+| R08 | P1 | Structured decision ledger | Skill | `declined` | Decision recorded | Declined as disproportionate |
+| R09 | P1 | Ticket evidence preservation | Skill | `researching` | TBD | Resolve overlap |
 | R10 | P1 | Artifact lifecycle manager | Skill | `pending` | TBD | Start after R09 closes |
 | R11 | P1 | Merge-readiness evidence card | Skill | `pending` | TBD | Start after R10 closes |
 | R12 | P1 | Non-interactive tooling canary | Skill | `pending` | TBD | Start after R11 closes |
@@ -475,17 +475,32 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `researching`
+- **Status:** `declined`
 - **Rationale:** Structured choices were frequent, and several sessions asked to show options again after mistaken selection.
 - **Source specification:** Echo the effective decision; allow recap and undo; persist rationale and dependencies; confirm before irreversible action.
 - **Known overlap to resolve:** `grill-me` file write-back and `harden-plan` resolution state.
-- **Decisions / final artifact / verification:** Pending.
+- **Reuse scan:**
+  - `grill-me` enumerates decisions, asks one question at a time, detects contradictions, and appends final numbered answers to a passed file. It does not persist after each answer, store rationale/dependencies, expose history, or define recap/undo.
+  - `grilling` models a dependency-aware design tree and recomputes the frontier, but its state lives in conversation unless the caller maintains a separate ledger.
+  - `harden-plan` distinguishes accepted, dismissed-with-rationale, skipped, and self-healed findings and can write accepted additions into a plan. Those arrays are run-local, its write-back is final-only, and later corrections cannot identify or supersede the effective decision.
+  - `review-pr` has a durable lifecycle with reasons and dependency invalidation, but its finding schema is PR-specific and too heavy for ordinary human choices.
+  - `preflight-mutations` confirms irreversible or shared-state actions, but it consumes authorization; it does not own the earlier decision history or make mistaken selections undoable.
+- **Architecture hypothesis:** Add a small shared decision-lifecycle coordinator rather than another grilling interface. `grill-me`, `grilling`, `harden-plan`, and irreversible-action workflows can reuse one effective-decision record while keeping their existing question formats.
+- **Open design tree:**
+  1. Should R08 create a dedicated shared decision-lifecycle skill, deepen only `grill-me`, or add a plain shared reference used by existing skills?
+  2. Should the coordinator invoke automatically whenever a workflow presents structured choices, or only when a durable artifact exists or the user explicitly asks for recap/undo?
+  3. Where should decision state live when the caller has a plan/ledger file, and where should it live when no durable artifact exists?
+  4. After identity and storage are settled, what fields and statuses define the effective decision and its history?
+  5. How should recap, undo, replacement, and dependency invalidation change downstream decisions?
+  6. What confirmation gate must irreversible actions apply to the current effective decisions?
+- **Decision:** Declined by the user on 14 August 2026 after the overlap scan. A shared coordinator would add a new state machine and invocation contract across workflows that already preserve the useful parts locally: `grill-me` echoes final decisions, `harden-plan` records accepted/dismissed/skipped rationale, and `preflight-mutations` reconfirms consequential actions. Keep those mechanisms and revisit only if concrete recurrence shows that recap or undo is still being lost.
+- **Final artifact:** This decision record; no skill, shared reference, global rule, or workflow integration was added.
 
 ### R09 — Ticket evidence preservation
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `pending`
+- **Status:** `researching`
 - **Rationale:** Repeated extraction and split workflows lost screenshots, author context, or exact source evidence.
 - **Source specification:** Treat screenshots as source of truth; preserve author, text, and image references; link predecessor and successor tickets; reread the final ticket; post investigation back to the durable issue.
 - **Known overlap to resolve:** `audit-ticket` and `executing-tickets-with-subagents` intake.
@@ -641,3 +656,5 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - User confirmed the complete R07 design. Implemented the manual-only `sync-agent-setups` workflow, registered its picker metadata and README entry, and moved R07 to `verifying` without performing an agent-setup sync or adding a bespoke evaluator.
 - Repaired two Serious R07 acceptance findings by separating preserved or blocked rows from the independently ready preflight batch and binding each adaptation write to staged, checksummed bytes confirmed in the preview. R07 remains `verifying` pending one affected-area recheck.
 - Closed R07 after structural, metadata, Markdown, explicit manual-invocation, and bounded contract-review checks. No setup state changed. Advanced R08 to `researching`.
+- Completed the R08 overlap scan. Existing grilling tools ask good questions and `harden-plan` records richer run-local dispositions, but no workflow owns durable effective decisions, history, recap, undo, or dependency invalidation. Advanced R08 to `grilling`.
+- Declined R08 as disproportionate after the user challenged its restrictiveness. Preserved the existing lightweight summaries, rationale capture, and irreversible-action confirmation instead of adding a cross-workflow decision state machine. Advanced R09 to `researching`.
