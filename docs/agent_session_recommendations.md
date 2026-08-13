@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R10 — Artifact lifecycle manager`
-- **NEXT ACTION:** Inventory existing artifact creation, consolidation, canonical-link, and closeout behavior, then grill the smallest unresolved R10 design frontier.
-- **Progress:** 8 complete; 1 declined; 1 researching; 8 pending.
+- **Current item:** `R11 — Merge-readiness evidence card`
+- **NEXT ACTION:** Inventory `done`, review, and completion-report evidence ownership, then grill the smallest unresolved R11 design frontier.
+- **Progress:** 9 complete; 1 declined; 1 researching; 7 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 14 August 2026
@@ -51,8 +51,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R07 | P1 | Claude ↔ Codex setup sync | Skill | `complete` | `skills/sync-agent-setups/` | Complete |
 | R08 | P1 | Structured decision ledger | Skill | `declined` | Decision recorded | Declined as disproportionate |
 | R09 | P1 | Ticket evidence preservation | Skill | `complete` | `skills/audit-ticket/references/ticket-evidence.md` | Complete |
-| R10 | P1 | Artifact lifecycle manager | Skill | `researching` | TBD | Resolve overlap |
-| R11 | P1 | Merge-readiness evidence card | Skill | `pending` | TBD | Start after R10 closes |
+| R10 | P1 | Artifact lifecycle manager | Skill | `complete` | `skills/manage-report-lifecycle/` | Complete |
+| R11 | P1 | Merge-readiness evidence card | Skill | `researching` | TBD | Resolve overlap |
 | R12 | P1 | Non-interactive tooling canary | Skill | `pending` | TBD | Start after R11 closes |
 | R13 | P1 | Material-state progress updates | Global rules | `pending` | TBD | Start after R12 closes |
 | R14 | P1 | Evidence reuse and ownership | Global rules | `pending` | TBD | Start after R13 closes |
@@ -542,16 +542,51 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `researching`
+- **Status:** `complete`
 - **Rationale:** Artifacts are valuable but proliferated, competed, or lost unique evidence during consolidation.
 - **Source specification:** Maintain one canonical URL; track sources and superseded artifacts; deduplicate without discarding unique findings; verify links and duplicate status at closeout.
-- **Decisions / final artifact / verification:** Pending.
+- **Reuse scan:**
+  - The global hosted-report rule requires findings, reports, audits, and lists to be reviewable HTML artifacts, but says nothing about authority, consolidation, or supersession after creation.
+  - `done` verifies one rendered artifact and its links or published consumer; it does not determine which of several artifacts is canonical or whether consolidation preserved unique evidence.
+  - `preflight-mutations` owns authorization, exact remote mutation targets, recovery, and authoritative read-back. It should gate lifecycle writes, not decide artifact semantics.
+  - The R09 ticket-evidence contract is the closest provenance analog but must remain ticket-scoped. `converge-reviews` and `review-pr` already own stable finding IDs, dispositions, and rolling-review deduplication; R10 should cite those IDs instead of copying their state.
+  - Batch review can produce a consolidated report, but no general workflow records its source set, elects one canonical URL, marks predecessors superseded, or re-fetches competing artifacts at closeout.
+  - Setup-sync manifests, backup checksums, and ticket provenance solve domain-specific lifecycle problems; none should become a hidden general artifact registry.
+- **Concrete gap:** No workflow inventories all source report artifacts before consolidation, accounts for each unique finding as carried/dismissed/retained by reference, elects and announces one canonical artifact, records reciprocal supersession links, and verifies rendered links plus remote duplicate status at closeout.
+- **Boundaries:** Reuse `preflight-mutations` for writes and `done` for acceptance. Do not absorb ticket provenance, review finding-state ownership, task-status ledgers, build artifacts, QA screenshots, backups, generated code, or setup-sync files. Do not introduce a hidden registry or provider-specific evaluator without evidence.
+- **Open design tree:**
+  1. Should R10 be only a rule/reference wired into known producers, or a narrowly invoked coordinator for consolidating, replacing, or canonicalizing hosted review/research/report artifacts? **Resolved:** create a narrow coordinator skill; do not rely only on producer wiring or broaden `done` into lifecycle ownership.
+  2. After architecture is settled, which artifact types and entry conditions are in scope? **Resolved:** govern durable hosted reviews, research, audits, findings, and reports only when consolidating, replacing, superseding, or choosing a canonical artifact. Exclude first-time creation, routine edits, temporary files, tickets, PR finding state, build outputs, screenshots, backups, and setup manifests.
+  3. After scope is settled, where does the lifecycle record live and how is canonical authority represented? **Resolved:** keep lifecycle state in the canonical report itself, with a stable ID, canonical URL, source URLs, and superseded-artifact list. Add a short canonical-replacement marker to each writable predecessor. Keep draft state inline or in an existing authorized ledger; create no separate registry.
+  4. After authority is settled, what exact per-finding/source accounting permits deduplication without evidence loss? **Resolved:** build a source-item map in which every source finding ID and URL has exactly one disposition—`carried`, `merged`, `dismissed`, or `retained by reference`—plus its canonical destination ID or dismissal rationale. Preserve links to source evidence instead of copying whole reports.
+  5. After the record and accounting are settled, what mutation preview, supersession, link, and duplicate-status read-back closes the workflow? **Resolved:** preview one complete logical publication plan, partition it into mutation cards only where `preflight-mutations` requires separate authority or guard domains, and publish only ready dependency-satisfied cards. Then re-fetch the canonical report and every predecessor. Verify canonical and supersession markers, source and predecessor links, every source-item disposition, rendered links, and remote duplicate status. Record unwritable predecessors in the canonical report; block completion on any writable competing authority, broken required link, or unaccounted source item.
+- **Decisions:**
+  1. **Architecture:** Create a narrowly invoked lifecycle coordinator for consolidating, replacing, superseding, or choosing the canonical hosted review/research/report artifact. It coordinates existing owners: `preflight-mutations` gates writes, `done` verifies rendered and published acceptance surfaces, ticket evidence stays with R09, and review finding state stays with its source workflow.
+  2. **Scope and activation:** Activate only from explicit lifecycle intent involving durable hosted reviews, research, audits, findings, or reports. Do not trigger for first-time report creation, routine edits, temporary artifacts, tickets, PR finding-state records, build outputs, screenshots, backups, or setup manifests.
+  3. **Authority record:** The canonical report owns its lifecycle section: stable artifact ID, canonical URL, complete source URLs, and the artifacts it supersedes. Each writable predecessor gets a concise `Superseded by <canonical URL>` marker. Draft lifecycle state remains inline or in an already-authorized ledger; do not create a registry merely to store it.
+  4. **Lossless consolidation:** Before publishing, map every source finding ID and URL to exactly one of `carried`, `merged`, `dismissed`, or `retained by reference`. A carried or merged item names its canonical destination ID; a dismissal records its rationale. Keep source evidence reachable by link rather than copying entire reports.
+  5. **Mutation and closeout:** Build and preview one complete logical publication plan, partitioned into mutation cards only where `preflight-mutations` requires different authority or guard domains. Execute only ready cards in dependency order. Re-fetch the canonical report and all predecessors and verify authority markers, reciprocal links where writable, source-item accounting, rendered links, and duplicate status. An unwritable predecessor is acceptable only when the canonical report identifies it and records why it could not be marked; writable competing authority or missing evidence blocks completion.
+- **Proposed implementation shape:** Add one narrowly model-invoked skill for explicit consolidation, replacement, supersession, and canonicalization requests involving hosted analytical artifacts. Keep its complete lifecycle protocol in one `SKILL.md`, register it in the README and routing catalog, add no hidden registry or bespoke evaluator, and hand mutation safety and final acceptance to `preflight-mutations` and `done`.
+- **Shared-understanding confirmation:** Confirmed by the user on 14 August 2026. Grill complete.
+- **Final artifact:** `skills/manage-report-lifecycle/`, with README discovery and lightweight routing cases.
+- **Verification:**
+  - The repository structural verifier passed across 26 skills and 60 Markdown files; its only warning is the pre-existing ignored `license` key in `git-commit` frontmatter.
+  - Ruby's standard YAML parser accepted the skill frontmatter and generated `agents/openai.yaml`. The skill creator's optional validator could not start because PyYAML is unavailable; no dependency was installed.
+  - Swift Foundation parsed the skill, README, and ledger Markdown; the trigger catalog parsed as JSON; `git diff --check` passed.
+  - The first acceptance review found two gaps: inventory did not require one authoritative discovery query proving the competing report set was complete, and routing data did not exercise routine edits, ticket lifecycle, or PR finding-state exclusions.
+  - The repair records and classifies every match from one broad host/workspace query and repeats that exact query at closeout. Three lightweight negative cases now cover the missing exclusion branches.
+  - Mandatory parallel review found four Serious gaps: canonical election could target a nonexistent hosted object; one mutation card could cross ownership or confirmation domains; discovered competing authorities were not exhaustively bound as predecessors; and repeated discovery did not invalidate completion when its stable-ID set drifted.
+  - The repair requires an existing hosted writable canonical candidate with a known URL and guard, models one complete publication plan partitioned into domain-correct mutation cards, gives every discovered match a final canonical/predecessor/unrelated classification, and returns discovery drift to inventory and preflight.
+  - The review also found one Moderate identity gap. The lifecycle Artifact ID is now stable across replacements while each elected version records its separate host object ID and canonical URL.
+  - A Moderate request for fixture-backed routing evidence is deferred: R10 explicitly adds routing catalog data without a live evaluator, and fixture expansion is outside this bounded implementation. The catalog remains schema-validated routing data rather than a claimed behavioral pass.
+  - The affected-area rechecks after repair and simplification each reported zero Critical and zero Serious findings. The simplicity pass removed duplicated mutation mechanics and aligned the ledger with the publication-plan contract; no added code comments exist.
+  - No hosted report mutation was run because the implementation changes the coordinator instructions rather than an external report. No bespoke evaluator was added. R10 is complete.
 
 ### R11 — Merge-readiness evidence card
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `pending`
+- **Status:** `researching`
 - **Rationale:** Directly answers recurring “are we good?”, “what is left?”, and “no regression?” loops.
 - **Source specification:** Map each request item to implementation; list tests, browser, database, CI, and review evidence; separate verified, assumed, deferred, and pending; state the exact next action.
 - **Known overlap to resolve:** `done` correctness accounting and completion reporting.
@@ -696,3 +731,13 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Confirmed and implemented the R09 design as one shared evidence-preservation reference used by the existing ticket workflows. Advanced R09 to `verifying`; no GitHub issue was mutated.
 - Repaired two Serious R09 acceptance findings by fetching structured comment provenance and binding the original investigation plus every successor and relationship write into one preflight batch. R09 remains `verifying` pending the affected-area recheck.
 - Closed R09 after the focused affected-area recheck reported zero Critical and zero Serious findings and all applicable structural, Python, Markdown, and diff checks passed. Advanced R10 to `researching`.
+- Completed the R10 overlap scan. Existing workflows own rendering, safe mutations, ticket provenance, and review finding state, but none owns general report-artifact authority, lossless consolidation, reciprocal supersession, or duplicate closeout. Advanced R10 to `grilling` with a narrow lifecycle-architecture frontier.
+- Recorded R10 architecture: add a narrow lifecycle coordinator rather than a producer-only reference or more global completion prose. Scope and entry conditions are the next frontier.
+- Recorded R10 scope: cover only explicit consolidation, replacement, supersession, or canonicalization of durable hosted analytical artifacts; exclude routine creation and unrelated artifact classes.
+- Recorded R10 authority: lifecycle state lives in the canonical report, writable predecessors point to it, and no separate registry is introduced.
+- Recorded R10 consolidation accounting: every source finding receives one explicit disposition and destination or rationale, while original evidence remains linked rather than duplicated.
+- Recorded R10 closeout: preflight one exact publication batch, then re-fetch the canonical artifact and every predecessor to verify authority, links, item accounting, and duplicate status. The grill frontier is empty pending confirmation.
+- User confirmed the complete R10 design. Implemented the focused `manage-report-lifecycle` coordinator with one compact protocol, UI metadata, README discovery, and lightweight routing cases. Advanced R10 to `verifying`; R11 remains pending.
+- Repaired the two R10 acceptance gaps by making source-set discovery authoritative and repeatable and adding the three missing exclusion cases. R10 remains `verifying`; R11 remains pending.
+- Repaired the mandatory R10 review findings by grounding canonical election in an existing hosted object, partitioning the complete publication plan by mutation domain, exhaustively binding competing authorities, invalidating closeout on discovery drift, and separating lifecycle identity from host-version identity. Deferred fixture-backed routing evidence as outside R10's no-evaluator scope. R10 remains `verifying`; R11 remains pending.
+- Closed R10 after the mandatory review and post-simplification delta checks both reported zero Critical and zero Serious findings and all applicable structural, YAML, Markdown, JSON, and diff checks passed. Advanced R11 to `researching`.

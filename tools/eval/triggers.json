@@ -211,6 +211,30 @@
 
     { "utterance": "I'm going to sleep. Work through the whole task list with subagents and tell me what is ready in the morning.",
       "expect": "executing-tickets-with-subagents",
-      "why": "unattended multi-task branch: the orchestrator owns bounded scheduling and the morning ledger" }
+      "why": "unattended multi-task branch: the orchestrator owns bounded scheduling and the morning ledger" },
+
+    { "utterance": "Consolidate these three hosted audit reports into one canonical report, preserve every unique finding, and mark the old reports superseded.",
+      "expect": "manage-report-lifecycle",
+      "why": "primary branch: explicit consolidation of existing hosted analytical reports needs lossless item accounting and one authority" },
+
+    { "utterance": "Replace this research report with the corrected hosted version and verify that the predecessor links to the new canonical URL.",
+      "expect": "manage-report-lifecycle",
+      "why": "replacement branch: an existing durable report is being superseded and needs reciprocal authority closeout" },
+
+    { "utterance": "Create a first research report about our authentication architecture.",
+      "forbid": "manage-report-lifecycle",
+      "why": "NEGATIVE: first-time report creation has no existing report lifecycle to reconcile" },
+
+    { "utterance": "Fix the typo in the executive summary of our current hosted audit report.",
+      "forbid": "manage-report-lifecycle",
+      "why": "NEGATIVE: a routine edit to one hosted report does not change lifecycle authority" },
+
+    { "utterance": "Split issue 12 into two successor tickets and link both back to the original issue.",
+      "forbid": "manage-report-lifecycle",
+      "why": "COLLISION: ticket provenance and restructuring stay with ticket workflows, not report lifecycle" },
+
+    { "utterance": "Mark finding S2 resolved in the PR review state after commit abc123.",
+      "forbid": "manage-report-lifecycle",
+      "why": "COLLISION: PR finding-state lifecycle remains owned by the review workflow" }
   ]
 }

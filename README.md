@@ -64,6 +64,7 @@ npx skills add bhagyamudgal/skills
 | `preflight-mutations` | Resolve exact targets, authority, dependencies, reversibility, confirmation, and read-back before changing shared state |
 | `calibrate-board-mutations` | Calibrate board-estimate batches with anchors, representative previews, umbrella rules, and authoritative totals |
 | `converge-reviews` | Reuse review evidence, track affected coverage, and cap stable review scopes at three rounds |
+| `manage-report-lifecycle` | Consolidate or supersede hosted analytical reports while preserving every source item, one canonical URL, and verifiable predecessor state |
 | `executing-tickets-with-subagents` | Orchestrate bundled tickets or explicit away/keep-going work through a durable ledger, with one mutation owner per task and a bounded unattended worker pool |
 | `sync-agent-setups` | Manually preview and sync Claude Code's user-authored behavioral setup outward to explicitly selected agents |
 | `resolving-merge-conflicts` | Resolve an in-progress git conflict without a **silent drop** — every hunk from both sides placed as kept, superseded, or dropped before you commit |
@@ -103,6 +104,7 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 /preflight-mutations   # Prepare or block a shared-state mutation before execution
 /calibrate-board-mutations  # Calibrate an estimate batch before board writes
 /converge-reviews      # Reconcile a review round and choose its bounded next action
+/manage-report-lifecycle  # Consolidate hosted reports into one verified canonical artifact
 /executing-tickets-with-subagents  # Run a bundled ticket end-to-end via subagents
 /sync-agent-setups     # Preview and sync Claude setup to selected agents
 /resolving-merge-conflicts         # Resolve merge/rebase conflicts safely
