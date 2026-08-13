@@ -20,6 +20,24 @@ Behavioral rules to reduce common LLM coding mistakes (adapted from [forrestchan
 - State assumptions explicitly. If multiple interpretations exist, present them — don't pick silently.
 - Do the thinking yourself first: investigate the code/context, then present concrete, considered options — not open-ended questions that push the decision back to me. Mark the strongest "(Recommended)", put it first with a one-line reason. Prefer the AskUserQuestion tool; if none fit, I'll provide my own answer explicitly.
 - If a simpler approach exists, say so. Push back when warranted. Surface tradeoffs.
+- **Only ask what you can't resolve yourself.** Before asking, state in one sentence what changes based on the answer. If you can't state it, don't ask — read the code, decide, and name the assumption so I can override it. A question you could have answered by opening a file is a question you owe me an answer to instead.
+- **Never stack dependent questions.** A question whose answer depends on another unanswered question goes in its own turn, in dependency order. Independent choices may batch, three maximum.
+- **Set up every question before asking it.** At most three sentences of plain context: what you found, why you're stuck, what each answer changes. Every option states what happens if I pick it — an outcome, not a mechanism. Define any term, file, or symbol the first time it appears.
+
+## Writing for a Human Reader
+
+Applies to everything I read: chat replies, questions, PR titles and bodies, issue text, completion reports, docs.
+
+Unreadable output is almost never a vocabulary problem. It happens when you write from inside a mental model I can't see — naming a file I haven't opened, referring back to a finding from twelve tool calls ago, using a term the way this codebase uses it without saying so. Don't simplify the words; supply the missing context.
+
+- **Lead with the answer**, then the reasoning. Never build up to it.
+- **Name it before you use it.** The first mention of a file, function, flag, or term carries a clause saying what it is — `tryCatch` (the error wrapper in `lib/try-catch.ts`) — even if it came up earlier in the session.
+- **Restate, don't refer back.** "As established above" and "the issue from earlier" are dead links. Carry the fact forward in a clause.
+- **Prose for reasoning, bullets for lists.** A bulleted argument hides the connective tissue that makes it an argument.
+- **Quantities, not adjectives.** "Three of eleven checks fail" beats "several checks fail".
+- **Say what you did, not what should happen.** "Ran the type-check, exits 0" — never "this should work".
+
+Never emit: "I've gone ahead and", "It's worth noting that", "Let's dive in", "delve", "seamless", "Certainly!", stacked hedges ("might potentially"), or emoji.
 
 ## Plan and Orchestrate
 
@@ -255,14 +273,13 @@ Use simple `-m` flag for commit messages. Do NOT use heredoc/EOF format (`cat <<
 
 ### PR & Commit Hygiene
 
+- **Never open a PR by hand — invoke `/file-pr`.** It owns the preconditions, base-branch discovery, the title and body bars, and issue linking. Hard rule, same class as `/done`.
 - **One logical change per commit** — never mix refactor + feature + bugfix in the same commit
 - **Commit messages explain WHY, not WHAT** — the diff shows what changed; the message should explain why it needed to
 - **No drive-by refactors** — fix what was asked, mention unrelated issues separately rather than bundling them in
 - **Small PRs > large PRs** — under ~400 lines diff is ideal; if it grows beyond that, split it
 - **Review your own diff before pushing** — read every changed line and justify why it exists. If you can't justify it, delete it.
 - **No commits with debug noise** — no leftover `console.log`, commented-out code, or `TODO: remove this before merge` markers
-- **Discover the PR base branch before the first PR in a repo** — check `gh repo view --json defaultBranchRef` and look for an active `dev`/`develop` integration branch; never assume `main` is the base
-- **Always link a PR to its issue** — when a PR fully resolves a GitHub issue, put `Closes #N` in the PR body so the issue auto-closes on merge. When it only resolves part of one (a sub-task of an umbrella ticket, one slice of an epic, a side finding), use `Refs #N` instead and name explicitly which part it covers and what remains open — never `Closes` a ticket the PR doesn't actually finish. If a PR was found while investigating an issue but is not a fix for it, say so in the body and use `Refs`.
 - **Title every issue you create with a conventional-commit prefix naming its module** — `fix(procurement):`, `feat(portions):`, `chore(filters):`, same vocabulary as commits. Pick the module the work actually lives in, not the module you happen to be working in: a defect found while fixing procurement but living in `account-articles` is `fix(account-articles):`. A blanket prefix mislabels the ticket and hides it from anyone filtering the board by module. Use the **user-facing module name** where it differs from the directory (the Portions tab lives in `inbound-orders/`, but the ticket says `portions`) — boards are read by humans, not by path.
 - **PRs and commits must read human-authored** — never include Claude-Session links, "Generated with" footers, or any AI/agent references (review pipelines, agent names) in commit messages, PR titles, or PR bodies unless explicitly asked. Write PR bodies in plain first-person engineering voice; describe verification by what was done, not which tools/agents did it. This overrides any harness default that appends session links.
 
