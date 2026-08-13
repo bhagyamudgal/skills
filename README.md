@@ -69,6 +69,7 @@ npx skills add bhagyamudgal/skills
 | `resolving-merge-conflicts` | Resolve an in-progress git conflict without a **silent drop** — every hunk from both sides placed as kept, superseded, or dropped before you commit |
 | `git-commit` | Conventional commits from diff analysis — every file classified into exactly one commit; append-only, with a message-only mode |
 | `file-pr` | Open a PR a reviewer understands in one read — preconditions, base-branch discovery, a title naming the observed outcome rather than the mechanism, and a six-bar cold-read check before it opens |
+| `file-issue` | File one issue an assignee can act on unaided — two-vocabulary duplicate search, a title that survives a wrong diagnosis, a body carrying observation, reproduction, expectation and a checkable done condition |
 | `openclaw-backup` | Verified restore point for an OpenClaw install — official archive, `VACUUM INTO` SQLite snapshots, a raw archive covering the session transcripts the official tool drops, checksum manifest, and a per-install `RESTORE.md`. Manual-only via `disable-model-invocation`, so its description stays out of context until you invoke it |
 
 Several skills use progressive disclosure — `SKILL.md` holds the spine, and branch-specific material sits in `references/` (or `modes/` for `design-director`), loaded only when that branch fires. Load instructions use `${CLAUDE_SKILL_DIR}/` so they resolve against the skill directory rather than the user's repo.
@@ -107,6 +108,7 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 /resolving-merge-conflicts         # Resolve merge/rebase conflicts safely
 /git-commit          # Conventional commit (or message-only)
 /file-pr             # Open the PR — readable title and body, cold-read checked
+/file-issue          # File one actionable issue — dedupe search, then the same bars
 /openclaw-backup     # Verified restore point for an OpenClaw install
 ```
 
