@@ -1,0 +1,7 @@
+interface:
+  display_name: "Sync Agent Setups"
+  short_description: "Sync Claude setup outward to selected agents"
+  default_prompt: "Use $sync-agent-setups to preview and sync my Claude Code setup to selected agents."
+
+policy:
+  allow_implicit_invocation: false

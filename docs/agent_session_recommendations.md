@@ -5,12 +5,12 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R07 — Claude ↔ Codex setup sync`
-- **NEXT ACTION:** Inventory the current Claude/Codex setup-sync workflows and acceptance surfaces, then grill the smallest unresolved R07 design frontier.
-- **Progress:** 6 of 18 recommendations complete; 1 researching; 11 pending.
+- **Current item:** `R08 — Structured decision ledger`
+- **NEXT ACTION:** Inventory `grill-me`, `grilling`, and `harden-plan` decision persistence and undo behavior, then grill the smallest unresolved R08 design frontier.
+- **Progress:** 7 of 18 recommendations complete; 1 researching; 10 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
-- **Last updated:** 13 August 2026
+- **Last updated:** 14 August 2026
 
 ### Working contract
 
@@ -48,8 +48,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R04 | P0 | Review-ledger convergence | Skill | `complete` | `skills/converge-reviews/` | Complete |
 | R05 | P0 | Surface-aware done | Skill | `complete` | `skills/done/` | Complete |
 | R06 | P1 | Bounded unattended orchestrator | Skill | `complete` | `skills/executing-tickets-with-subagents/` | Complete |
-| R07 | P1 | Claude ↔ Codex setup sync | Skill | `researching` | TBD | Resolve overlap |
-| R08 | P1 | Structured decision ledger | Skill | `pending` | TBD | Start after R07 closes |
+| R07 | P1 | Claude ↔ Codex setup sync | Skill | `complete` | `skills/sync-agent-setups/` | Complete |
+| R08 | P1 | Structured decision ledger | Skill | `researching` | TBD | Resolve overlap |
 | R09 | P1 | Ticket evidence preservation | Skill | `pending` | TBD | Start after R08 closes |
 | R10 | P1 | Artifact lifecycle manager | Skill | `pending` | TBD | Start after R09 closes |
 | R11 | P1 | Merge-readiness evidence card | Skill | `pending` | TBD | Start after R10 closes |
@@ -431,16 +431,51 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `researching`
+- **Status:** `complete`
 - **Rationale:** Makes custom workflow migration behavior-preserving and testable.
 - **Source specification:** Classify exact copy, adaptation, and unsupported behavior; treat custom slash workflows as portable; preserve backups; verify parsing, discovery, picker visibility, and manual invocation separately.
-- **Decisions / final artifact / verification:** Pending.
+- **Reuse scan:**
+  - No existing skill owns Claude ↔ Codex setup inventory, classification, backup, reconciliation, or end-to-end acceptance.
+  - Portable skills already converge on `~/.agents/skills`: 65 Claude and 61 Codex entries are symlinks into that shared store. The visible sets have drifted: Claude has shared skills absent from Codex, while Codex also carries platform-system skills and several Claude-sourced exceptions.
+  - Claude has two custom slash-command files, `rams.md` and `web-interface-guidelines.md`; no `~/.codex/prompts` directory or equivalent local prompt files were found. Their behavior is portable agent instruction, even though their current packaging is Claude-specific.
+  - Backup fragments exist for Claude settings and prior Codex migrations, but there is no per-run backup manifest or restoration map for a setup sync.
+  - `done` and `verify-claims` define the needed acceptance boundaries—parse, registration/discovery, picker visibility, manual invocation, and actual consumer behavior—but neither performs migration or reconciliation.
+- **Architecture hypothesis:** Add one dedicated user-invoked setup-sync skill. It should inventory Claude Code before transforming, classify each target artifact as exact copy, adaptation, or unsupported, propagate only from Claude Code to other agents, and hand final acceptance to `done`/`verify-claims`.
+- **Open design tree:**
+  1. Should R07 create a dedicated setup-sync skill, remain a global rule, or be folded into `done`? **Resolved:** create a dedicated user-invoked `sync-agent-setups` skill with automatic/model invocation disabled.
+  2. Should one platform be globally authoritative, or should a manifest declare the canonical source and classification per artifact? **Resolved:** Claude Code is authoritative for every other agent; sync direction is outward from Claude Code.
+  3. Which setup surfaces belong in scope: user-authored behavior only, or also credentials, history, caches, and platform-managed state? **Resolved:** sync Claude-authored global rules, skills, custom slash workflows, hooks, and non-secret behavioral settings; exclude credentials, histories, caches, telemetry, and platform-managed content.
+  4. After authority and scope are settled, how should conflicts, backups, and rollback work? **Resolved:** dry-run manifest first; timestamped path-and-checksum backup before writes; exact-copy drift may be replaced, adaptations carry provenance, unsupported items remain untouched, and ambiguous collisions block only their item.
+  5. After packaging rules are settled, when should a custom slash workflow be copied exactly, adapted into a skill, or marked unsupported? **Resolved:** presume behavior portable; exact copy when format and semantics match, adaptation when packaging/tools/invocation differ but behavior survives, and unsupported only when a required capability cannot be reproduced.
+  6. What exact evidence is required at parsing, discovery, picker, and manual-invocation boundaries before parity can be claimed? **Resolved:** parse every write, compare full discovery to the manifest, verify picker visibility for every changed user-invoked entry where supported, manually invoke every changed custom workflow/adaptation, and sample bulk exact-copy skills; unavailable surfaces prevent a full-parity claim.
+  7. Should an invocation target every detected non-Claude agent automatically, or preview detected targets and let the user select the write set? **Resolved:** inventory and preview every detected target, then require explicit target selection or confirmation before writes.
+  8. What happens to downstream-only user-authored artifacts that have no Claude source? **Resolved:** report them as orphaned downstream drift; do not delete or import automatically, and require a separate decision for either action.
+  9. Should exact-copy targets share Claude's physical file through symlinks, or receive generated copies that can drift without mutating the source of truth? **Resolved:** keep symlinks to Claude's resolved source and accept shared physical mutation as a deliberate tradeoff.
+- **Decisions:**
+  1. **Authority and direction:** Claude Code is the source of truth for all other agents. Sync is one-way from Claude Code outward. A downstream agent's local difference is drift to classify or replace, never a candidate source to promote automatically. The manifest records target classification and provenance, not competing authority.
+  2. **Invocation:** Package the workflow as a dedicated `sync-agent-setups` skill with `disable-model-invocation: true`. Only explicit user invocation may start inventory, backup, adaptation, or writes; drift detection and other skills never trigger it automatically.
+  3. **Scope:** Propagate Claude-authored global rules, skills, custom slash workflows, hooks, and non-secret behavioral settings. Credentials, conversation histories, caches, telemetry, and platform-managed system files are outside the sync inventory and mutation authority.
+  4. **Preview, backup, and collision handling:** Generate a dry-run manifest before mutation. Before the first write, create a timestamped backup that preserves every affected path and checksum. Replace classified exact-copy drift; generate adaptations with source/target provenance in the manifest; leave unsupported items untouched. An ambiguous or unclassified collision blocks that item while independent items continue.
+  5. **Workflow portability:** Treat Claude custom slash-workflow behavior as portable by default. Classify `exact copy` only when the target accepts the same format and semantics, `adaptation` when behavior survives through different packaging, variables, tools, or invocation syntax, and `unsupported` only when the target lacks a required capability. Preserve the authoritative Claude command unchanged.
+  6. **Acceptance evidence:** Verify each target platform independently. Parse every written artifact and compare the complete discovered name set with the manifest. Check picker visibility for every changed user-invoked entry when the target exposes a picker. Manually invoke every changed custom workflow and every generated adaptation; for bulk exact-copy skills, manually invoke a representative sample while parsing and discovering the full set. Label unavailable surfaces explicitly and do not claim full parity for that target. Use `done` for the final evidence card and `verify-claims` if the parity conclusion materially changes.
+  7. **Target authorization:** Inventory and preview all detected non-Claude agents, then require the user to select or confirm the targets included in the write set. Detection alone authorizes no mutation; one confirmed invocation may cover all selected targets.
+  8. **Downstream-only artifacts:** Classify user-authored content with no Claude source as `orphaned downstream drift`. Preserve it by default. Deletion requires a separate explicit choice after backup; promotion into Claude requires a separate authorship decision because it changes the source of truth.
+  9. **Exact-copy storage:** Keep exact-copy targets as symlinks to the authoritative Claude-resolved source. The manifest records the Claude-visible source, resolved physical path, link target, and checksum. This preserves the current shared-store behavior; Claude authority is procedural rather than filesystem isolation, so an edit through a downstream symlink changes the same shared content. Backups preserve both link metadata and resolved content before link replacement.
+- **Proposed implementation shape:** Create one user-invoked `sync-agent-setups` skill with model invocation disabled. Keep the workflow spine in `SKILL.md` and disclose the dry-run manifest, backup, classification, target-confirmation, write, and acceptance record shape in one direct reference if needed for legibility. Integrate `preflight-mutations` immediately before confirmed local setup writes and `done`/`verify-claims` at the target acceptance boundary. Add README registration and lightweight manual-invocation metadata; add no bespoke evaluator and do not perform an actual setup sync while building the skill.
+- **Grill status:** Complete. The user confirmed the shared understanding on 14 August 2026.
+- **Final artifact:** `skills/sync-agent-setups/`, registered in `README.md`. The skill is manual-only in both skill frontmatter and its OpenAI interface policy; it uses one in-file workflow, no extra reference, no evaluator, and performs no setup sync during construction.
+- **Verification:**
+  - The repository verifier passed across 24 skills and 57 Markdown files; the only warning is the pre-existing ignored `license` key in `git-commit` frontmatter. The system quick validator was unavailable because its Python environment lacks PyYAML, so the repo-native verifier and a direct YAML parse covered the packaging surface.
+  - Frontmatter and OpenAI metadata both disable implicit invocation, the default prompt explicitly names `$sync-agent-setups`, and the skill is registered in the README catalogue and usage list. All changed Markdown parsed and diff whitespace validation passed.
+  - A fresh explicit `$sync-agent-setups` invocation loaded the manual skill and remained read-only. It honored exclusions while identifying Claude sources plus concrete Codex, Cursor, Gemini CLI, Zed, and GitHub Copilot targets. The bounded check was stopped before manifest synthesis; no setup mutation, backup, or preflight occurred.
+  - The first bounded review found two Serious ordering gaps: non-ready items could poison the preflight batch, and adaptation bytes were not fixed before confirmation. The repair preflights only independently ready items and stages/checksums exact adaptation bytes before confirmation. The affected-area recheck reported zero Critical and zero Serious findings.
+  - No live setup sync ran, as required by the confirmed construction scope.
 
 ### R08 — Structured decision ledger
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `pending`
+- **Status:** `researching`
 - **Rationale:** Structured choices were frequent, and several sessions asked to show options again after mistaken selection.
 - **Source specification:** Echo the effective decision; allow recap and undo; persist rationale and dependencies; confirm before irreversible action.
 - **Known overlap to resolve:** `grill-me` file write-back and `harden-plan` resolution state.
@@ -595,3 +630,14 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Repaired the bounded R06 acceptance findings by making reference loading portable, preventing fixed-zero-pool deadlock, assigning owners only after successful dispatch, and spelling out the unattended commit/push/PR verification gate. R06 remains `verifying` pending one affected-area recheck.
 - Repaired the remaining affected-area finding by binding zero-slot initialization retries and blocking to the selected task rather than the entire runnable queue. R06 remains `verifying` pending the final affected-area recheck.
 - Closed R06 after the final exact-line recheck confirmed task-bound zero-slot retries and reported zero Critical and zero Serious findings. Advanced R07 to `researching`.
+- Completed the R07 inventory. Shared skill symlinks already exist but the Claude and Codex sets have drifted, two Claude custom slash workflows lack Codex equivalents, backups are fragmented, and no workflow verifies parity at the invocation surface. Advanced R07 to `grilling` with architecture, per-artifact authority, and sync scope as the first frontier.
+- User corrected R07's authority model: Claude Code is the source of truth for all other agents. Replaced bidirectional/per-artifact authority with one-way Claude-outward propagation; downstream differences are drift, not upstream candidates.
+- User corrected R07's invocation model: the setup-sync skill is user-invoked only. Automatic/model invocation is disabled, and no other workflow may start a sync implicitly.
+- Recorded R07 scope: propagate Claude-authored behavioral setup only; exclude secrets, histories, caches, telemetry, and platform-managed content.
+- Recorded R07 backup and portability decisions: preview and checksum-backup before writes, item-scoped collision blocking, and behavior-preserving exact-copy/adaptation/unsupported classification for custom workflows.
+- Recorded R07 acceptance gates: full parse/discovery, per-entry picker checks where available, manual invocation of every custom workflow/adaptation, and representative manual invocation for bulk exact-copy skills. Unavailable surfaces cap the parity claim.
+- Recorded R07 target and orphan decisions: preview all detected agents but mutate only confirmed targets; preserve downstream-only artifacts as orphaned drift unless deletion or promotion into Claude is separately authorized.
+- Recorded R07 exact-copy storage: preserve shared symlinks to Claude's resolved sources, record resolved paths and checksums, and accept that authority is procedural rather than filesystem-isolated. The grill frontier is empty pending confirmation.
+- User confirmed the complete R07 design. Implemented the manual-only `sync-agent-setups` workflow, registered its picker metadata and README entry, and moved R07 to `verifying` without performing an agent-setup sync or adding a bespoke evaluator.
+- Repaired two Serious R07 acceptance findings by separating preserved or blocked rows from the independently ready preflight batch and binding each adaptation write to staged, checksummed bytes confirmed in the preview. R07 remains `verifying` pending one affected-area recheck.
+- Closed R07 after structural, metadata, Markdown, explicit manual-invocation, and bounded contract-review checks. No setup state changed. Advanced R08 to `researching`.

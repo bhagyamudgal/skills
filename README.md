@@ -65,6 +65,7 @@ npx skills add bhagyamudgal/skills
 | `calibrate-board-mutations` | Calibrate board-estimate batches with anchors, representative previews, umbrella rules, and authoritative totals |
 | `converge-reviews` | Reuse review evidence, track affected coverage, and cap stable review scopes at three rounds |
 | `executing-tickets-with-subagents` | Orchestrate bundled tickets or explicit away/keep-going work through a durable ledger, with one mutation owner per task and a bounded unattended worker pool |
+| `sync-agent-setups` | Manually preview and sync Claude Code's user-authored behavioral setup outward to explicitly selected agents |
 | `resolving-merge-conflicts` | Resolve an in-progress git conflict without a **silent drop** — every hunk from both sides placed as kept, superseded, or dropped before you commit |
 | `git-commit` | Conventional commits from diff analysis — every file classified into exactly one commit; append-only, with a message-only mode |
 | `file-pr` | Open a PR a reviewer understands in one read — preconditions, base-branch discovery, a title naming the observed outcome rather than the mechanism, and a six-bar cold-read check before it opens |
@@ -102,6 +103,7 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 /calibrate-board-mutations  # Calibrate an estimate batch before board writes
 /converge-reviews      # Reconcile a review round and choose its bounded next action
 /executing-tickets-with-subagents  # Run a bundled ticket end-to-end via subagents
+/sync-agent-setups     # Preview and sync Claude setup to selected agents
 /resolving-merge-conflicts         # Resolve merge/rebase conflicts safely
 /git-commit          # Conventional commit (or message-only)
 /file-pr             # Open the PR — readable title and body, cold-read checked
