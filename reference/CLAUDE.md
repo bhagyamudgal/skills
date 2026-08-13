@@ -107,14 +107,7 @@ Heuristic: would a senior engineer be embarrassed if the user found a gap you di
 > This applies to ALL tasks — even single-line changes, trivial fixes, or "obvious" edits.
 > NEVER mark a task as complete without running `/done` first.
 
-The `/done` skill runs the full verification pipeline in sequence:
-
-1. `/fix-ts-errors` — workspace type-check loop until it exits 0
-2. `/parallel-review` — every reviewer in parallel; fix critical + serious, re-run until zero remain
-3. `/simplify` — code quality and reuse, plus a blocking scan of every added comment
-4. Verify correctness — account for every item in the request against the diff; tests must pass
-5. Report what was checked and fixed
-6. Commit via `/git-commit` when the task is a discrete unit of work
+The `/done` skill is the single source of truth for completion verification. It selects the acceptance surfaces affected by the task, runs the code pipeline only when code changed, verifies every other required lane at its user-facing boundary, and reports the evidence ceiling. Commit only after every required lane is verified.
 
 **If you are tempted to skip `/done` because the change is small — that is exactly when bugs slip through. Run it.**
 

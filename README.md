@@ -46,7 +46,7 @@ npx skills add bhagyamudgal/skills
 
 | Skill | Description |
 |-------|-------------|
-| `done` | MANDATORY post-task verification — six blocking steps: type-check, parallel review to zero critical/serious, simplify + blocking comment scan, correctness against the request, roll-call report, commit |
+| `done` | MANDATORY surface-aware verification — infer six acceptance lanes, verify each at its user-facing boundary, and cap completion at the weakest required lane |
 | `parallel-review` | Build a reviewer roster, dispatch it in parallel over a local diff, and merge to one ranked list — the merge is not done while any reviewer is outstanding |
 | `review-pr` | Deep anti-slop review of a GitHub PR with critic-pass filtering, persistent multi-round state, and rolling-review posting — batch mode reviews multiple PRs via one subagent per PR with a consolidated report |
 | `fix-pr-review` | Triage and fix CodeRabbit / `review-pr` findings, then reply + resolve PR conversations |

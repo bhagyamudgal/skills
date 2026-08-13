@@ -114,8 +114,16 @@
       "why": "COLLISION: claim verification must not divert a direct bug-diagnosis request" },
 
     { "utterance": "I changed VERSION from 2 to 3. Run the completion checks.",
-      "forbid": "verify-claims",
-      "why": "COLLISION: claim verification must not divert an explicit finish-pipeline request" },
+      "expect": "done",
+      "why": "primary code branch: an explicit completion request routes through done rather than directly to claim verification" },
+
+    { "utterance": "I updated the done skill and its README entry. Run final completion checks for the rendered docs, skill parsing, discovery, and manual invocation.",
+      "expect": "done",
+      "why": "documentation and skill branches: done owns the cross-surface verdict while routing to rendered and invocation boundaries" },
+
+    { "utterance": "Test the checkout flow in the browser and capture screenshots, network requests, and console errors.",
+      "expect": "browser-qa",
+      "why": "COLLISION: producing UI boundary evidence belongs to browser-qa; done consumes it only for a completion verdict" },
 
     { "utterance": "No, VERSION is 2, not 3. Correct that factual mistake.",
       "expect": null,

@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R05 — Surface-aware done`
-- **NEXT ACTION:** Complete the R05 overlap scan against `done` and acceptance-surface workflows, then grill the smallest unresolved design frontier.
-- **Progress:** 4 of 18 recommendations complete; 1 researching; 13 pending.
+- **Current item:** `R06 — Bounded unattended orchestrator`
+- **NEXT ACTION:** Complete the R06 overlap scan against `executing-tickets-with-subagents` and unattended-work rules, then grill the smallest unresolved design frontier.
+- **Progress:** 5 of 18 recommendations complete; 1 researching; 12 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 13 August 2026
@@ -46,8 +46,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R02 | P0 | External-state mutation preflight | Skill | `complete` | `skills/preflight-mutations/` | Complete |
 | R03 | P0 | Calibrated project-board mutation | Skill | `complete` | `skills/calibrate-board-mutations/` | Complete |
 | R04 | P0 | Review-ledger convergence | Skill | `complete` | `skills/converge-reviews/` | Complete |
-| R05 | P0 | Surface-aware done | Skill | `researching` | TBD | Resolve overlap |
-| R06 | P1 | Bounded unattended orchestrator | Skill | `pending` | TBD | Start after R05 closes |
+| R05 | P0 | Surface-aware done | Skill | `complete` | `skills/done/` | Complete |
+| R06 | P1 | Bounded unattended orchestrator | Skill | `researching` | TBD | Resolve overlap |
 | R07 | P1 | Claude ↔ Codex setup sync | Skill | `pending` | TBD | Start after R06 closes |
 | R08 | P1 | Structured decision ledger | Skill | `pending` | TBD | Start after R07 closes |
 | R09 | P1 | Ticket evidence preservation | Skill | `pending` | TBD | Start after R08 closes |
@@ -359,17 +359,42 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P0
 - **Proposed destination:** Skill
-- **Status:** `pending`
+- **Status:** `complete`
 - **Rationale:** Mandatory verification is valuable, but code checks do not validate board writes, global config, or publication.
 - **Source specification:** Route to code, docs, global config, external metadata, or publication lane; verify the actual acceptance surface; avoid unrelated repository checks; always report verified versus assumed.
 - **Known overlap to resolve:** The mandatory `done` skill.
-- **Decisions / final artifact / verification:** Pending.
+- **Reuse scan:**
+  - `done` is already the mandatory completion entry point, but it always assumes a code change: workspace type-check, local diff review, simplification, correctness, report, and commit.
+  - `browser-qa` verifies UI flows at the browser, including screenshots, network, and console evidence.
+  - `verify-claims` already defines paired evidence and evidence ceilings for decision-driving completion claims.
+  - `preflight-mutations` owns authoritative read-back plans for shared-state writes; `calibrate-board-mutations` owns confirmed board totals.
+  - Global configuration, skill discovery/manual invocation, documentation rendering/links, external metadata, and publication have no completion router. Running repository checks against these surfaces can pass while the user-facing outcome remains unverified.
+- **Architecture hypothesis:** Deepen the mandatory `done` skill into a surface router rather than add a second completion command. Delegate lane-specific checks to existing skills where they exist and keep the universal verified/assumed report in `done`.
+- **Open design tree:**
+  1. Should R05 deepen `done`, create a separate surface-verification skill, or add a shared reference behind `done`? **Resolved:** deepen `done`.
+  2. Should the agent infer acceptance surfaces from the request and diff, or require the user to declare them? **Resolved:** agent infers and shows lanes; user may override.
+  3. Which lanes and minimum evidence belong in the routing table? **Resolved:** six practical lanes.
+  4. What completion states and reporting fields are required when a surface is unavailable or intentionally deferred? **Resolved:** per-lane states with an evidence ceiling.
+- **Decisions:**
+  1. **Architecture:** Deepen the mandatory `done` skill into the acceptance-surface router. Preserve one completion command and delegate lane-specific checks rather than creating a competing completion workflow.
+  2. **Surface selection:** Infer acceptance surfaces from the originating request, changed artifacts, and external actions. Show the selected lanes before verification and allow the user to correct them; do not require routine declaration.
+  3. **Lane table:** Route across six practical lanes: code, UI, documentation, global configuration or skills, external metadata or data, and publication or deployment. Minimum evidence is respectively targeted/full checks plus review; affected browser flow; rendered final artifact plus links; parse/discovery/picker/manual invocation as applicable; authoritative re-fetch and comparison; and inspection of the published consumer or live target.
+  4. **Completion states:** Assign each lane `verified`, `assumed`, `deferred`, `blocked`, or `not-applicable`. Overall completion is `verified` only when every required lane is verified; otherwise report the evidence ceiling, exact gap, and next action without claiming full completion.
+- **Proposed implementation shape:** Rewrite the existing `done` workflow around surface selection and a six-lane evidence card, while keeping code-only checks conditional and preserving `converge-reviews` for code review rounds. Reuse `browser-qa`, `verify-claims`, and authoritative read-back from mutation workflows where relevant. Update the README description and lightweight routing cases; add no new skill or evaluator.
+- **Shared-understanding confirmation:** Confirmed by the user on 13 August 2026. Grill complete.
+- **Final artifact:** `skills/done/`, with its README description, lightweight routing cases, and `reference/CLAUDE.md` completion rule updated in place. No competing skill or evaluator was added.
+- **Verification:**
+  - The repository structural verifier passed across 22 skills and 54 Markdown files; the only warning is the pre-existing ignored `license` key in `git-commit` frontmatter.
+  - The trigger catalog parses successfully with 48 unique cases. Three focused cases cover explicit code completion, combined documentation/skill completion, and the `browser-qa` evidence-production collision; no live provider eval ran.
+  - Contract inspection confirmed all six lanes, all five states, the conditional code pipeline, delegated boundary owners, and the overall evidence ceiling. Diff and added-comment checks passed.
+  - Foundation's Markdown parser accepted all four changed Markdown documents. The changed hunks add no links, assets, or navigation paths requiring separate traversal.
+  - A fresh-agent acceptance review confirmed the six-lane routing, conditional code checks, and evidence ceiling, then reported zero Critical or Serious findings. Its affected-area recheck confirmed the ledger statuses are aligned.
 
 ### R06 — Bounded unattended orchestrator
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `pending`
+- **Status:** `researching`
 - **Rationale:** Addresses duplicate agents, capacity failures, progress nudges, and lost state in overnight work.
 - **Source specification:** One owner per task; fixed worker pool; one retry on capacity failure; material-only updates; durable morning handoff ledger.
 - **Known overlap to resolve:** `executing-tickets-with-subagents` and its ledger contract.
@@ -528,3 +553,11 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Recorded R04 decision 5: Critical/Serious remain blocking at the cap; worthwhile Moderate/Minor remainder becomes a proposed follow-up whose external creation requires approval and `preflight-mutations`. The grill frontier is empty pending confirmation.
 - User confirmed the complete R04 design. Implemented the concise `converge-reviews` coordinator, preserved `review-pr`'s finding state as authoritative, and added the three agreed handoffs.
 - Closed R04 after proportional structural, routing-data, diff, and bounded review checks. The only review findings were fixed and the affected-area recheck reported zero Critical or Serious issues. Advanced R05 to `researching`.
+- Completed the R05 overlap scan. `done` is the mandatory entry point but assumes code; existing browser, claim, mutation, and board skills cover some acceptance boundaries while configuration, documentation, metadata, and publication lack routing. Advanced R05 to `grilling`.
+- Recorded R05 decision 1: deepen `done` into the surface-aware completion router rather than create a second completion command or hide the core routing contract in a separate reference.
+- Recorded R05 decision 2: the agent infers and displays acceptance lanes from request, artifacts, and actions, while the user retains an override.
+- Recorded R05 decision 3: use six practical lanes with minimum proof at the actual code, browser, rendered-doc, invocation, authoritative-data, or published-consumer surface.
+- Recorded R05 decision 4: assign per-lane `verified`, `assumed`, `deferred`, `blocked`, or `not-applicable` states and cap the overall verdict below verified whenever a required lane lacks verification. The grill frontier is empty pending confirmation.
+- User confirmed the complete R05 design. Reworked `done` as the single surface-aware completion router with six acceptance lanes, conditional code verification, delegated boundary checks, and a universal evidence ceiling. Moved R05 to `verifying`.
+- Moved R05 to `verifying` after implementation; closure awaits the actual documentation and skill-invocation acceptance checks.
+- Closed R05 after the changed Markdown parsed successfully and a fresh-agent acceptance review verified the skill's routing contract with zero Critical or Serious findings. Advanced R06 to `researching`.

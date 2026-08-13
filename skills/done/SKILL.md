@@ -1,68 +1,76 @@
 ---
 name: done
-description: MANDATORY post-task verification. Fire before reporting ANY task complete — including single-line edits and "trivial" fixes.
+description: MANDATORY post-task acceptance verification. Fire before reporting ANY task complete. Route code, UI, documentation, global configuration or skills, external metadata or data, and publication or deployment to their user-facing boundaries.
 ---
 
 # Post-Task Verification (/done)
 
-## Workflow
+`done` is the single completion entry point. Route verification to the surfaces the user will experience; repository checks are evidence only for surfaces they exercise.
 
-Every step is **blocking**: the task is not complete until the last one runs clean.
+## 1. Select acceptance lanes
 
-### Step 1: Type Check
+Infer the required lanes from the originating request, changed artifacts, and actions already performed. Show the six-lane selection before running checks, with one reason for every required or not-applicable lane. Continue without requiring routine confirmation; apply any user correction before the final verdict.
 
-Run `/fix-ts-errors` — this runs the workspace type-check and loops until it exits 0.
+| Lane | Select when |
+|---|---|
+| Code | Source, tests, scripts, build behavior, or runtime logic changed |
+| UI | A user-visible interface or interaction changed |
+| Documentation | A document, generated artifact, link, asset, or navigation path changed |
+| Global configuration or skills | Agent rules, configuration, registration, discovery, or invocation changed |
+| External metadata or data | A board, issue, PR, database, remote record, or computed external result changed |
+| Publication or deployment | A release, deploy, push, published package, hosted artifact, or live consumer changed |
 
-If the task only touched a specific app, you may scope the first pass (`--filter=frontend` or `--filter=backend`), but always run the full check at least once.
+An unselected lane is `not-applicable`, with its exclusion reason. A selected lane is required even when its boundary is unavailable.
 
-If you already ran `/fix-ts-errors` during implementation, run it again — new issues may have been introduced.
+**Gate:** all six lanes have a selection and reason, and every user-requested outcome maps to at least one required lane.
 
-**Proceed to Step 2 when the type-check reports zero errors.**
+## 2. Verify each required lane
 
-### Step 2: Parallel Code Review
+Use the narrowest check that reaches the actual acceptance boundary. Do not run code checks for a task with no code lane or use an internal proxy as proof of another lane.
 
-Run `/parallel-review`.
+| Lane | Minimum boundary evidence |
+|---|---|
+| Code | Run the affected repository-native type, lint, build, and test checks. Use `fix-ts-errors` when TypeScript applies, and the full workspace check when repository policy or cross-workspace impact requires it. Run `parallel-review`, apply its `converge-reviews` result, run `simplify`, scan every added comment, and account for the request against the diff. |
+| UI | Run the affected flow through `browser-qa`; require every affected step to pass and record browser output, screenshots, network results, and console state. |
+| Documentation | Inspect the rendered or generated final artifact and exercise affected links, assets, and navigation. Source text alone does not verify rendered output. |
+| Global configuration or skills | Parse the final configuration, verify registration and discovery, then check picker visibility, manual invocation, or actual consumer behavior wherever the change affects them. |
+| External metadata or data | Freshly re-fetch every changed target from the authoritative system and compare exact IDs, fields, counts, or totals with the request and mutation ledger. |
+| Publication or deployment | Inspect the published consumer or live target at the exact version and environment; a successful upload or deploy command alone is insufficient. |
 
-Apply the `converge-reviews` result returned by `/parallel-review`. On `continue`, fix the named Critical and Serious findings and re-run only the invalidated coverage. On `converged`, proceed. On `blocked-at-cap`, stop completion. On `follow-up-proposed`, list each Moderate or Minor proposal and its approval boundary before proceeding; external issue creation is a separate approved mutation.
+For the code lane, fix Critical and Serious review findings and apply `converge-reviews`: continue only on `continue`, proceed on `converged`, stop on `blocked-at-cap`, and present any `follow-up-proposed` approval boundary. Re-run only checks invalidated by a fix.
 
-Re-run `/fix-ts-errors` after the fixes.
+For a completed shared-state mutation, reuse the exact authoritative read-back plan and landed-item ledger produced by its execution workflow. When a lane conclusion depends on inference rather than direct observation, run `verify-claims` and preserve its evidence ceiling.
 
-### Step 3: Simplify
+Repair a failed check and re-run only its invalidated evidence. If it remains unresolved, assign the lane `blocked`.
 
-Run `/simplify` — this reviews changed code for reuse, quality, and efficiency.
+**Gate:** every required lane has direct boundary evidence or a concrete gap; every check named by an applicable lane has a recorded result.
 
-Apply every suggested improvement, or state why one was rejected. Re-run `/fix-ts-errors` after changes.
+## 3. Assign lane states
 
-#### Comment Scan (mandatory — blocking)
+Assign exactly one state to every lane:
 
-Run `git diff` on the changed code and inspect **every ADDED comment**. A comment may stay only if it states a non-obvious WHY — a gotcha, a workaround, a constraint, or a reason the code cannot express itself.
+- `verified` — the minimum boundary evidence supports the requested outcome.
+- `assumed` — only indirect evidence supports the outcome; name the assumption.
+- `deferred` — verification was intentionally postponed; name who or what resumes it and when.
+- `blocked` — required evidence failed or is unavailable; name the blocker.
+- `not-applicable` — the lane was not required; repeat the exclusion reason.
 
-Delete on sight:
+Unavailable boundary evidence creates an evidence ceiling. It never becomes `verified` because another lane passed.
 
-- Comments that narrate WHAT the code does
-- JSDoc on obvious functions
-- Section dividers
+**Gate:** each state follows from recorded evidence, and every non-verified required lane names its exact gap and next action.
 
-**Do not call the task done while any such comment remains in the diff.** Deleting them is part of this step, not a suggestion for later.
+## 4. Report the evidence card
 
-### Step 4: Verify Correctness
+Report all six lanes in this form:
 
-1. Restate the original request as a checklist; account for every item against the final diff
-2. If tests cover the changed code, run them — this step ends when they pass
+```markdown
+| Lane | Required | Acceptance boundary | Evidence | State | Gap / next action |
+|---|---|---|---|---|---|
+| Code | yes / no | <surface> | <observation and command or artifact> | verified / assumed / deferred / blocked / not-applicable | <none or exact gap and next action> |
+```
 
-### Step 5: Report
+Set **Overall completion** to `verified` only when every required lane is `verified`. Otherwise set it to `not verified`, name the weakest required lane states as the **Evidence ceiling**, and state the exact next action without claiming the task complete.
 
-Roll-call all six steps — one line each, in order, naming the step and either its result or `skipped, because <reason>`. A step missing from the list is a step you did not run.
+After every required lane is verified, run `git-commit` when the user asked for a commit or the task is a discrete unit of work; otherwise print the two commit-message variants. A requested push, release, or deployment remains part of the publication lane and requires its own live-target read-back before the overall verdict can be `verified`.
 
-- **Type check**: errors found, errors fixed, exit 0
-- **Parallel review**: critical/serious counts (must be 0), moderate/minor fixed or deferred
-- **Simplify**: what changed, plus comments deleted in the scan
-- **Verify correctness**: checklist items accounted for, tests run and their result
-- **Report**: this roll-call
-- **Commit**: committed, or variants printed
-
-Close with the final status: clean, or the remaining concerns.
-
-### Step 6: Commit
-
-Run `/git-commit` if the user asked to commit, or the task is a discrete unit of work. Otherwise print the two message variants and stop.
+**Done:** all six lanes are reported, every requested outcome is accounted for, and the overall completion claim does not exceed the weakest required lane.
