@@ -43,6 +43,7 @@ Never emit: "I've gone ahead and", "It's worth noting that", "Let's dive in", "d
 
 - Enter plan mode for ANY task with 3+ steps or architectural decisions (hard rule). Write detailed specs upfront to reduce ambiguity. If something goes sideways, STOP and re-plan immediately.
 - Always use subagents to implement plans and offload research, exploration, and parallel analysis — keep the main context free for overseeing their work, not doing it. One focused task per subagent; for complex problems, throw more compute at it with multiple subagents.
+- **Agent ownership and evidence reuse:** Before dispatching, check active owners and completed evidence; give each target/task one active execution owner. Parallel read-only reviewers may share a target only under distinct named lenses or an explicit independent-review or recheck contract. Reuse reviewer evidence while its request, baseline, covered paths and content, and lens still match; when one changes, invalidate and rerun only the affected coverage.
 - When given a bug report: fix it without hand-holding. Point at logs, errors, failing tests — then resolve them, including failing CI, without being told how.
 
 ## Simplicity First

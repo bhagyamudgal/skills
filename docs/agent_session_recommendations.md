@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R14 — Evidence reuse and ownership`
-- **NEXT ACTION:** Inventory current evidence-ownership and review-reuse rules before opening the R14 grill.
-- **Progress:** 11 complete; 2 declined; 1 researching; 4 pending.
+- **Current item:** `R15 — GSM3 operating facts`
+- **NEXT ACTION:** Locate the GSM3 repository and its authoritative project-rule source before opening the R15 grill.
+- **Progress:** 12 complete; 2 declined; 1 researching; 3 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 14 August 2026
@@ -55,8 +55,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R11 | P1 | Merge-readiness evidence card | Skill | `complete` | `skills/done/` and `skills/file-pr/` | Complete |
 | R12 | P1 | Non-interactive tooling canary | Skill | `declined` | Decision recorded | Declined as disproportionate |
 | R13 | P1 | Material-state progress updates | Global rules | `complete` | `~/.claude/CLAUDE.md` and `reference/CLAUDE.md` | Complete |
-| R14 | P1 | Evidence reuse and ownership | Global rules | `researching` | TBD | Complete overlap scan |
-| R15 | P0 | GSM3 operating facts | Project rules | `pending` | TBD | Start after R14 closes |
+| R14 | P1 | Evidence reuse and ownership | Global rules | `complete` | `~/.claude/CLAUDE.md` and `reference/CLAUDE.md` | Complete |
+| R15 | P0 | GSM3 operating facts | Project rules | `researching` | TBD | Locate project authority |
 | R16 | P1 | Spanical landing conventions | Project rules | `pending` | TBD | Start after R15 closes |
 | R17 | P1 | Fileseye skill-change canary | Project rules | `pending` | TBD | Start after R16 closes |
 | R18 | P2 | Fact-bound personal drafting | Decision log | `pending` | TBD | Start after R17 closes |
@@ -679,16 +679,27 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P1
 - **Proposed destination:** Global rules
-- **Status:** `researching`
+- **Status:** `complete`
 - **Rationale:** Universal guardrail against redundant subagents and reviewer churn.
 - **Source specification:** Never assign the same scope to two agents; treat completed reviewer output as valid until the diff changes.
-- **Decisions / final artifact / verification:** Pending.
+- **Reuse scan:**
+  - The global orchestration rules require subagents but do not check active owners or completed evidence before dispatch.
+  - The unattended scheduler already permits one active mutation owner per task and separate read-only reviewers. `executing-tickets-with-subagents` and `review-pr` use distinct lenses; `parallel-review` is an explicit independent-review contract over one target.
+  - `converge-reviews` already owns detailed evidence currency: request, baseline, covered paths and content hash, roster/lens, partial invalidation, and bounded review rounds.
+  - `verify-claims` intentionally requires a fresh independent recheck when a decision-driving conclusion materially reverses.
+- **Source correction:** Literal “same scope” would prohibit valuable independent review unless scope includes the target, task, and lens. Literal “until the diff changes” would discard unaffected evidence after unrelated changes and retain stale evidence after a request, baseline, or lens change.
+- **Architecture hypothesis:** Add one compact global dispatch rule: check owners and completed evidence first; assign one active execution owner per target/task; permit read-only reviewers to share a target under distinct lenses or an explicit independent-review or recheck contract; reuse evidence while its request, baseline, covered content, and lens match, invalidating only affected coverage. Leave hashes, state, and round mechanics in `converge-reviews`.
+- **Decision:** Before dispatch, check active owners and completed evidence. Give each target/task one active execution owner. Parallel read-only reviewers may share a target only under distinct named lenses or an explicit independent-review or recheck contract. Reuse reviewer evidence while its request, baseline, covered paths and content, and lens still match; invalidate and rerun only affected coverage when one changes.
+- **Implementation shape:** Add one short global rule under orchestration in `~/.claude/CLAUDE.md`; verify the Codex symlink surface; apply the same surgical addition to `reference/CLAUDE.md`. Keep detailed hash, state, and round semantics solely in `converge-reviews`; add no skill, template, or evaluator.
+- **Open design tree:** Empty; the user confirmed the complete design.
+- **Final artifact:** `~/.claude/CLAUDE.md` is authoritative; `~/.codex/AGENTS.md` consumes it through the existing symlink; `reference/CLAUDE.md` carries the same surgical reference-copy addition.
+- **Verification:** Exact wording appears once in the live Claude source, Codex symlink surface, and repository reference. The repository verifier passed across 26 skills and 60 Markdown files with only the pre-existing ignored `license` warning in `git-commit`. Swift Foundation read all four affected Markdown surfaces, `git diff --check` passed, and the added-comment scan was clean. The focused review found two ownership-boundary issues; after repair, one affected-area recheck ended with zero Critical and zero Serious findings. The proportional simplify pass found no actionable simplification. TypeScript, runtime, browser, database, and CI checks are not applicable to these instruction-only Markdown changes.
 
 ### R15 — GSM3 operating facts
 
 - **Priority:** P0
 - **Proposed destination:** Project rules
-- **Status:** `pending`
+- **Status:** `researching`
 - **Rationale:** Board fields, estimate scale, runner policy, database fingerprints, module names, and migration permissions are repository-specific.
 - **Source specification:** Agent-assisted estimate anchors; owner-only board mutation; Blacksmith runner policy; database target preflight; module and release field vocabulary.
 - **Decisions / final artifact / verification:** Pending; requires the GSM3 repository's actual rule source and acceptance surface.
@@ -830,3 +841,9 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Implemented the confirmed R13 rule in the Claude Code source of truth and repository reference copy. Verified that the existing Codex symlink exposes the exact rule and advanced R13 to `verifying`.
 - The focused R13 review found a stale aggregate status and ambiguous material-change grammar. Corrected the count to `1 verifying` and made materiality apply only to the four progress fields; decision and ETA changes remain explicit update triggers.
 - Closed R13 after exact live/source/symlink checks, structural Markdown verification, focused review, one clean affected-area recheck, and a proportional simplify pass. Advanced R14 to `researching`.
+- Completed the R14 overlap scan. Existing review workflows already reuse hash-bound coverage, while the global orchestration rule lacks a dispatch-time owner/evidence check. Advanced R14 to `grilling` with the independent-review exception as the only open decision.
+- Recorded the recommended R14 contract: one active owner per target/task/lens, explicit distinct-lens or independent-recheck exceptions, and partial evidence invalidation. The grill frontier is empty pending confirmation.
+- User confirmed the complete R14 design. Advanced R14 to `implementing` with `writing-for-agents` governing the two surgical global-rule additions.
+- Implemented the confirmed R14 rule in the Claude Code source of truth and repository reference copy. Verified that the existing Codex symlink exposes the exact rule and advanced R14 to `verifying`.
+- The focused R14 review found that target/task/lens ownership could permit two executors and that the exception did not clearly cover the existing explicit parallel-review contract. Tightened ownership to one execution owner per target/task and reserved lenses or explicit independent-review/recheck contracts for read-only reviewers.
+- Closed R14 after exact live/source/symlink checks, structural Markdown verification, focused review, one clean affected-area recheck, and a proportional simplify pass. Advanced R15 to `researching`.
