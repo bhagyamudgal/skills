@@ -48,7 +48,7 @@ GIT_INDEX_FILE="$snapshot_index" git diff --cached --no-ext-diff <merge-base> --
 
 Require the snapshot to match **Verified content snapshot**. Account every changed hunk or logical change to one verified request row; anything outside those rows is the stop-and-ask case in `CLAUDE.md`. Then run `done`'s index cleanup.
 
-Before committing, require `HEAD` to equal **Pre-verification head** and **Expected append-only commits** to be `none`. A changed request, base, head, or content snapshot makes the card stale. Return to `done` on any mismatch.
+For an initial publication card whose **Existing PR URL** is `not-applicable`, require `HEAD` to equal **Pre-verification head** and **Expected append-only commits** to be `none`. For a superseding existing-PR card, require the recorded append-only transition and post-commit content seal from `done` to match current `HEAD` and **Verified content snapshot**; another commit is forbidden. A changed request, base, unexpected head, or content snapshot makes the card stale. Return to `done` on any mismatch.
 
 **Gate:** the recomputed request, branch, base ref and SHAs, head, snapshot, external currency, candidate diff, and `ready-to-publish` verdict all match the card.
 
@@ -103,27 +103,37 @@ A bar you did not name is a bar you did not check. A failed bar is rewritten and
 
 ## 6. Commit and open it
 
-Immediately before `git-commit`, or before push when no commit is needed, repeat the branch, head, refreshed base ref and SHAs, mixed external read-back, and alternate-index snapshot checks from sections 1–2. Reuse the completed hunk accounting only when the snapshot is unchanged; a changed snapshot returns to `done`. When the verified snapshot differs from `HEAD^{tree}`, invoke `git-commit` for the verified request rows and record every SHA it creates. Run the append-only transition commands defined by `done`; their ancestry, merge, and exact ordered-list criteria must all pass. A rebase, merge, or unrecorded commit returns to `done`. Add the exact ordered list to **Expected append-only commits** in the publication evidence returned with the card.
+When **Existing PR URL** is present, skip commit, push, and create. Revalidate the remote branch at current `HEAD`, then resume at the existing-PR search and read-back below; only a separately preflighted title/body edit may mutate it.
 
-Before pushing, require the active branch to still equal **Branch**, freshly re-fetch every mixed external target, and require its currency to still match. Then run `done`'s post-commit content seal. Record the exact outputs of `git status --porcelain=v1 --untracked-files=all` and `git rev-parse HEAD^{tree}`. The status output must be empty and the tree SHA must exactly equal **Verified content snapshot**; otherwise return to `done`.
+For an initial publication, immediately before `git-commit`, or before push when no commit is needed, repeat the branch, head, refreshed base ref and SHAs, mixed external read-back, and alternate-index snapshot checks from sections 1–2. Reuse the completed hunk accounting only when the snapshot is unchanged; a changed snapshot returns to `done`. When the verified snapshot differs from `HEAD^{tree}`, invoke `git-commit` for the verified request rows and record every SHA it creates. Run the append-only transition commands defined by `done`; their ancestry, merge, and exact ordered-list criteria must all pass. A rebase, merge, or unrecorded commit returns to `done`. Add the exact ordered list to **Expected append-only commits** in the publication evidence returned with the card.
 
-Immediately before pushing, invoke `preflight-mutations` with one inline, single-item card. Its action is the exact local head SHA pushed to `origin` at `refs/heads/<card-branch>`; its guards include the current remote SHA or confirmed absence, and its read-back is the exact `git ls-remote` query below. The authorized `file-pr` invocation under the global rule is the authorization source. Apply the result independently: continue only on `ready` while invalidators match; present `confirmation-required`; stop on `blocked`.
+For an initial publication, before pushing, require the active branch to still equal **Branch**, freshly re-fetch every mixed external target, and require its currency to still match. Then run `done`'s post-commit content seal. Record the exact outputs of `git status --porcelain=v1 --untracked-files=all` and `git rev-parse HEAD^{tree}`. The status output must be empty and the tree SHA must exactly equal **Verified content snapshot**; otherwise return to `done`.
+
+For an initial publication, immediately before pushing, invoke `preflight-mutations` with one inline, single-item card. Its action is the exact local head SHA pushed to `origin` at `refs/heads/<card-branch>`; its guards include the current remote SHA or confirmed absence, and its read-back is the exact `git ls-remote` query below. The authorized `file-pr` invocation under the global rule is the authorization source. Apply the result independently: continue only on `ready` while invalidators match; present `confirmation-required`; stop on `blocked`.
 
 ```bash
 git push -u origin <card-branch>
 git ls-remote --heads origin "refs/heads/<card-branch>"
 ```
 
-Require the remote branch SHA to equal local `HEAD`. Record the landed push before proceeding.
+On an initial publication, require the remote branch SHA to equal local `HEAD` and record the landed push before proceeding. On the existing-PR branch, the revalidation at the start of this section supplies the same remote-head evidence without another push.
 
-Immediately before creating the PR, invoke `preflight-mutations` with a new inline, single-item card. Its target is the exact repository; its action records the base, head branch and SHA, title, and complete body; its guards include the verified remote branch and recorded base tip; and its read-back is the exact `gh pr view` query below. Apply this result independently under the same result contract. A non-ready PR card does not erase the landed push evidence.
+Write the final body to a file and record its SHA-256 digest. First search the exact head and base for an existing PR from an earlier attempt:
 
 ```bash
-gh pr create --base <base> --title "<title>" --body "<body>"
-gh pr view <pr-url> --json url,baseRefName,headRefName,headRefOid,state
+gh pr list --repo "$repository" --head "$head_branch" --base "$base" --state open --json url,title,body,baseRefName,baseRefOid,headRefName,headRefOid,state
 ```
 
-Require the PR `headRefName` to equal **Branch** and `headRefOid` to equal local `HEAD`; require its URL, base, and state to match the publication request. Record both single-step cards, the landed push, the PR observations, the ordered commit list, and the exact commands as publication evidence for the next `done` run.
+Reconcile and reuse only one open candidate whose `headRefOid` equals local `HEAD`, base name equals the requested base, and state matches the publication request. Other candidates are historical or unrelated and do not count as the current attempt. Create only when this authoritative search confirms no current-attempt candidate exists. Use the same query when `gh pr create` returns no usable URL.
+
+Immediately before creating the PR, invoke `preflight-mutations` with a new inline, single-item card. Its target is the exact repository; its action records the base, head branch and SHA, title, body path, and body digest; its guards include the verified remote branch, recorded base tip, and confirmed absence of an existing PR; and its read-back is the exact `gh pr view` query below. Apply this result independently under the same result contract. A changed title, body path, or digest invalidates the card; a non-ready PR card does not erase the landed push evidence.
+
+```bash
+gh pr create --repo "$repository" --base "$base" --title "$title" --body-file "$body_path"
+gh pr view <pr-url> --repo "$repository" --json url,title,body,baseRefName,baseRefOid,headRefName,headRefOid,state
+```
+
+Require the PR `title` and `body` to equal the frozen values, `headRefName` to equal **Branch**, `headRefOid` to equal local `HEAD`, and `baseRefOid` to equal **Remote base-tip commit**; require its URL, base name, and state to match the publication request. Record the created URL as `landed` as soon as one PR is authoritatively identified. If only title or body differs while base and head still match, preflight an exact edit of that existing PR and read it back. A base mismatch enters `done`'s existing-PR rebind path with that URL and its observed values; never issue another create. After `done` verifies a superseding card against the observed base, reuse only **Existing PR URL** and preflight any still-required title/body edit as its own exact mutation. Record both single-step cards, the landed push, the PR observations, the ordered commit list, and the exact commands as publication evidence for the next `done` run. If authoritative search cannot identify whether a PR was created, mark the create `reconcile-required` and do not retry.
 
 Print the URL and return to `done` for CI, review, publication-lane, and final row evaluation. Never merge. Opening the PR is a publication transition, not overall task completion.
 

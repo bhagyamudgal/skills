@@ -1134,7 +1134,7 @@ AUTHOR=$(gh pr view <url> --json author -q .author.login)
 
 If `SELF_REVIEW=true`:
 
-If review has zero findings: print "No findings — nothing to fix." and exit. Otherwise:
+If review has zero findings, print "No findings — nothing to fix.", skip the posting prompts, and continue to **Convergence handoff**. Otherwise:
 
 ```
 header: "Self-review"

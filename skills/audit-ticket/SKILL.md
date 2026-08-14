@@ -182,7 +182,9 @@ Phase 5 runs on the Phase 4 fate choice, and only on it — the report is always
 
 For any rewrite or split, reread `${CLAUDE_SKILL_DIR}/references/ticket-evidence.md` before composing issue bodies and again for its rendered closeout gate. The chosen fate cannot close while required source evidence is missing.
 
-Immediately before that recipe's first `gh` write, invoke `preflight-mutations` for the approved fate batch. Pass the exact issue URL and number; its current state, author, assignees, and audit SHA; the ordered comment/edit/close/create actions and their targets; the Phase 4 approval; and, for a split, the proposed successor title, body, assignee, and predecessor link. Apply its result contract before continuing.
+Before preflight, render every final comment and body to its write-time file. Record each path, SHA-256 digest, exact title or command options, and the original issue's fresh `updatedAt`, body, state, author, and assignees. Define the expected guard transition after each planned write. For a split, apply `file-issue`'s two-vocabulary duplicate search to the proposed successor and resolve every near match; record both queries, results, and resolutions.
+
+Immediately before that recipe's first `gh` write, invoke `preflight-mutations` for the approved fate batch. Pass the exact issue URL and number; its refreshed guards and per-step expected transitions; the audit SHA; the ordered comment/edit/close/create actions and targets; every frozen payload path and digest; the Phase 4 approval; and, for a split, the successor's title, body, assignee, predecessor link, and duplicate-search evidence. Apply its result contract before continuing. Before each later write, advance the expected guard only from the prior write's exact authoritative read-back, then compare the fields that write protects. An unexpected issue change, option, file path, or digest invalidates the unexecuted remainder; re-render and re-preflight instead of changing an approved payload during execution.
 
 ---
 

@@ -67,6 +67,6 @@ Count one round only after the planned roster returned or was explicitly recorde
 
 Round three is a hard cap for the stable scope. Reworded findings, another reviewer over unchanged coverage, or a cosmetic diff do not create round four. The one targeted blocker closure check exists only to verify named fixes; it cannot widen coverage or emit fresh findings.
 
-The caller applies this contract: rerun only for `continue`; proceed for `converged`; stop for `blocked-at-cap`; present the proposal and approval boundary for `follow-up-proposed`.
+The caller applies this contract: rerun affected review coverage only for `continue`; proceed for `converged`; stop for `blocked-at-cap`; present the proposal and approval boundary for `follow-up-proposed`. After a named blocker fix at the cap, `closure_check: available` is the dispatch signal for the one targeted check: pass only those blocker IDs and changed sites, leave `round` unchanged, and reject any new-finding sweep.
 
 **Done:** the ledger is current, unchanged evidence was reused, affected coverage is explicit, the stable-scope round is at most three, and the caller received exactly one result and next action.

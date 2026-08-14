@@ -47,6 +47,7 @@ npx skills add bhagyamudgal/skills
 | Skill | Description |
 |-------|-------------|
 | `done` | MANDATORY readiness verification — map every request item to implementation, verify six acceptance lanes and five evidence facets, and issue final readiness only after required publication evidence exists |
+| `simplify` | Remove unnecessary complexity from a completed diff while preserving its behavior, guards, and verified scope |
 | `parallel-review` | Build a reviewer roster, dispatch it in parallel over a local diff, and merge to one ranked list — the merge is not done while any reviewer is outstanding |
 | `review-pr` | Deep anti-slop review of a GitHub PR with critic-pass filtering, persistent multi-round state, and rolling-review posting — batch mode reviews multiple PRs via one subagent per PR with a consolidated report |
 | `fix-pr-review` | Triage and fix CodeRabbit / `review-pr` findings, then reply + resolve PR conversations |
@@ -87,6 +88,7 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 
 ```
 /done                # Run after every task
+/simplify            # Remove unnecessary complexity without changing behavior
 /parallel-review     # Review locally-changed code
 /review-pr <pr-url>  # Review a GitHub PR (or several at once — batch mode)
 /fix-pr-review       # Triage and apply CodeRabbit / review-pr findings

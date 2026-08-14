@@ -25,7 +25,7 @@ Create one ledger in the existing authorized artifact that owns the batch:
 
 | Item ID | Owner | Kind | Current | Proposed | Basis | Status |
 |---|---|---|---:|---:|---|---|
-| <stable ID> | <owner> | leaf / umbrella | <value> | <value> | <evidence> | candidate / excluded / pending / landed / failed / skipped |
+| <stable ID> | <owner> | leaf / umbrella | <value> | <value> | <evidence> | candidate / excluded / pending / landed / failed / skipped / reconcile-required |
 ```
 
 Record every candidate or its exclusion; totals may not silently drop items.
@@ -69,14 +69,14 @@ Invoke `preflight-mutations` with the exact board and field IDs, item IDs, curre
 
 ## 5. Reconcile authoritative results
 
-After execution, re-fetch every attempted item from the board. Mark each row `landed`, `failed`, or `skipped` from observed final state, not command output. Preserve partial state and re-preflight only the remaining `pending` rows.
+After execution, re-fetch every attempted item from the board. Mark each row `landed`, `failed`, or `skipped` from observed final state, not command output. When read-back cannot establish whether an attempted write landed, mark it `reconcile-required`; exclude it from retries and totals until an authoritative query resolves it. Preserve partial state and re-preflight only the safe `pending` rows.
 
 Report separately:
 
-- attempted, landed, failed, skipped, excluded, and still-pending counts;
+- attempted, landed, failed, skipped, reconcile-required, excluded, and still-pending counts;
 - the confirmed batch total calculated only from `landed` final values; and
 - any wider scope total, with its exact inclusion rule.
 
-If authoritative read-back is unavailable, report the intended values and missing verification; do not claim a confirmed total or completed batch.
+If authoritative read-back is unavailable, report the intended values and `reconcile-required` items; do not claim a confirmed total or completed batch.
 
-**Done:** the approved calibration and complete ledger are preserved, every attempted item has authoritative final state or an explicit missing-read-back gap, and every reported total is reproducible from the ledger.
+**Done:** the approved calibration and complete ledger are preserved, every attempted item has authoritative final state or `reconcile-required`, and every reported total is reproducible from `landed` rows.

@@ -4,6 +4,7 @@
     "tools/eval/fixture/, and records which skill (if any) the agent invokes first.",
     "",
     "'expect' is the skill slug, or null for utterances that should fire nothing.",
+    "'forbid' is a skill slug that must not fire; another skill or no skill may fire.",
     "'why' states what the case is actually testing, so a failure is interpretable.",
     "",
     "A case only measures what the fixture can support. An utterance about",
@@ -113,7 +114,7 @@
       "forbid": "verify-claims",
       "why": "COLLISION: claim verification must not divert a direct bug-diagnosis request" },
 
-    { "utterance": "I changed VERSION from 2 to 3. Run the completion checks.",
+    { "utterance": "I added VERSION = 2. Run the completion checks.",
       "expect": "done",
       "why": "primary code branch: an explicit completion request routes through done rather than directly to claim verification" },
 

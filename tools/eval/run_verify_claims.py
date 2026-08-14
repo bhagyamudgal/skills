@@ -77,7 +77,8 @@ def parse_stream(output):
                     result = content.get("content", "")
                     tool_call["result"] = result if isinstance(result, str) else json.dumps(result)
         elif event.get("type") == "result":
-            final_text = event.get("result", "")
+            result = event.get("result", "")
+            final_text = result if isinstance(result, str) else json.dumps(result)
             if event.get("is_error"):
                 status = event.get("api_error_status")
                 terminal_reason = event.get("terminal_reason")

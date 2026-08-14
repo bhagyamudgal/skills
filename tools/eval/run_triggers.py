@@ -17,7 +17,7 @@ Usage:
     python3 tools/eval/run_triggers.py --case 7       # one case by index
     python3 tools/eval/run_triggers.py --budget 0.15  # per-case USD cap
 """
-import argparse, json, pathlib, selectors, shutil, subprocess, sys, tempfile, time
+import argparse, json, os, pathlib, selectors, shutil, signal, subprocess, sys, tempfile, time
 
 HERE = pathlib.Path(__file__).resolve().parent
 CASES = HERE / "triggers.json"
@@ -60,7 +60,29 @@ def run_case(utterance, budget, timeout, tools=None, skill_path=None):
         cmd += ["--tools", tools]
     proc = subprocess.Popen(
         cmd, cwd=str(repo), stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, text=True)
+        stderr=subprocess.PIPE, text=True, start_new_session=True)
+
+    is_process_group_stopped = False
+
+    def stop_process_group():
+        nonlocal is_process_group_stopped
+        if is_process_group_stopped:
+            return "", ""
+        is_process_group_stopped = True
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            return proc.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            proc.stdout.close()
+            proc.stderr.close()
+            try:
+                proc.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                pass
+            return "", ""
 
     def parse_event(line):
         try:
@@ -96,7 +118,7 @@ def run_case(utterance, budget, timeout, tools=None, skill_path=None):
             while proc.poll() is None:
                 remaining = timeout - (time.time() - started)
                 if remaining <= 0:
-                    proc.kill()
+                    stop_process_group()
                     return None, cost, time.time() - started, "timeout"
                 events = selector.select(timeout=min(remaining, 1.0))
                 if not events:
@@ -109,12 +131,21 @@ def run_case(utterance, budget, timeout, tools=None, skill_path=None):
                     continue
                 kind, value = parsed
                 if kind == "skill":
-                    proc.kill()
                     return value, cost, time.time() - started, None
                 cost, error = value
                 return None, cost, time.time() - started, error
 
-            for line in proc.stdout:
+            remaining = timeout - (time.time() - started)
+            if remaining <= 0:
+                stop_process_group()
+                return None, cost, time.time() - started, "timeout"
+            try:
+                stdout_tail, stderr = proc.communicate(timeout=remaining)
+            except subprocess.TimeoutExpired:
+                stop_process_group()
+                return None, cost, time.time() - started, "timeout"
+
+            for line in stdout_tail.splitlines():
                 parsed = parse_event(line)
                 if not parsed:
                     continue
@@ -124,16 +155,14 @@ def run_case(utterance, budget, timeout, tools=None, skill_path=None):
                 cost, error = value
                 return None, cost, time.time() - started, error
 
-            stderr = proc.stderr.read().strip()
-            returncode = proc.wait()
+            stderr = stderr.strip()
+            returncode = proc.returncode
             detail = f": {stderr}" if stderr else ""
             if returncode != 0:
                 return None, cost, time.time() - started, f"claude exited {returncode}{detail}"
             return None, cost, time.time() - started, f"missing result event{detail}"
     finally:
-        if proc.poll() is None:
-            proc.kill()
-        proc.wait()
+        stop_process_group()
         shutil.rmtree(tmp, ignore_errors=True)
 
     return fired, cost, time.time() - started, None

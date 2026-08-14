@@ -28,7 +28,7 @@ Render a simple card inline. For a multi-step or multi-batch run, persist it onl
 - **Recovery plan:** <undo, backup, compensation, or explicit absence>
 - **Invalidators:** <facts that make this preflight stale>
 - **Read-back plan:** <authoritative post-write query and expected result>
-- **Batch items:** <stable item ID → pending | landed | failed | skipped>
+- **Batch items:** <stable item ID → pending | landed | failed | skipped | reconcile-required>
 - **Verdict:** ready | confirmation-required | blocked
 - **Next action:** <one action permitted by the verdict>
 ```
@@ -103,12 +103,16 @@ Every caller follows the same result contract: continue only when **Verdict** is
 
 The execution handoff must use the surface's native conditional-write mechanism when one exists: expected versions, compare-and-swap tokens, exact-SHA leases, or idempotency keys. A recovery push for published Git history must also be lease-guarded against the re-read remote head.
 
-After each attempted item, record `landed`, `failed`, or `skipped`. On interruption or invalidation:
+After each attempted item, record `landed`, `failed`, `skipped`, or `reconcile-required`. Use `reconcile-required` when the command result and authoritative read-back cannot establish whether the write landed. Stop that item: do not retry it or classify it as `failed` until an authoritative query resolves its state.
+
+On interruption, invalidation, or `reconcile-required`:
 
 1. preserve the item ledger;
 2. authoritatively re-read every `landed` item;
 3. record the observed partial external state; and
-4. create a new card whose **Targets** cover only the `pending` remainder, while **Batch items** carries the authoritative `landed`, `failed`, and `skipped` history alongside those pending items.
+4. create a new card whose **Targets** cover only the safe `pending` remainder, while **Batch items** carries the authoritative `landed`, `failed`, `skipped`, and unresolved `reconcile-required` history alongside those pending items.
+
+Exclude every `reconcile-required` item from the new card's write targets. Its **Next action** is the exact authoritative query needed to resolve that item; only the observed result may move it to `landed`, `failed`, or `pending`.
 
 Never restart from an assumed zero state. The execution workflow owns writes; `verify-claims` may validate consequential post-write claims, and the final completion workflow owns its acceptance-surface verdict.
 

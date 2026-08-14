@@ -18,8 +18,8 @@ Work that splits into several tickets with blocking edges between them belongs t
 ## 2. Search before filing
 
 ```bash
-gh issue list --search "<the symptom in your words>" --state all --limit 20
-gh issue list --search "<the symptom in the reporter's words>" --state all --limit 20
+gh issue list --repo "$repository" --search "<the symptom in your words>" --state all --limit 20
+gh issue list --repo "$repository" --search "<the symptom in the reporter's words>" --state all --limit 20
 ```
 
 Search twice with different vocabulary, because the existing ticket was filed by someone who described it differently. `--state all` matters: a closed near-match is either the thing to reopen or the context the new issue needs.
@@ -66,14 +66,19 @@ A bar you did not name is a bar you did not check.
 
 ## 6. File it
 
-Creating an issue writes to shared state, so `preflight-mutations` owns the authorization and recovery for it. Then:
+Render the final body to a file and record its SHA-256 digest. Resolve the repository's stable identity and current duplicate-search results, then invoke `preflight-mutations` with the exact repository, title, body path and digest, create options, ownership boundary, and authoritative read-back query. A changed title, option, body path, digest, repository, or duplicate result invalidates the card.
+
+Creating an issue writes to shared state, so continue only on a current `ready` result. Pass the title as one argument and the frozen body by file:
 
 ```bash
-gh issue create --title "<title>" --body-file <path>
+gh issue create --repo "$repository" --title "$title" --body-file "$body_path"
+gh issue view <issue-url> --repo "$repository" --json number,title,body,state,author,assignees,labels,url
 ```
 
 Set assignee, estimate, or priority only within the project-board ownership boundary in `CLAUDE.md`. Filing an issue does not make those fields yours to set.
 
-Print the URL.
+Require one created URL, then compare the fetched repository, title, body, metadata, and URL with the approved payload. If the command result is missing or ambiguous, search the target repository for exact-title candidates and compare their bodies and metadata. Mark the attempt `reconcile-required` and do not retry until that authoritative search proves whether the issue exists.
 
-**Done:** the scope is one issue, both duplicate searches ran and resolved, the title names an observation that survives a wrong diagnosis, the body carries all four parts, every cold-read bar is named and clean, and the issue URL is printed.
+Print the URL only after the read-back identifies one matching issue.
+
+**Done:** the scope is one issue, both duplicate searches ran and resolved, the title names an observation that survives a wrong diagnosis, the body carries all four parts, every cold-read bar is named and clean, and authoritative read-back identifies the printed issue URL or the attempt remains `reconcile-required` without retry.

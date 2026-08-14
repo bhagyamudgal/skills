@@ -11,7 +11,7 @@ description: MANDATORY post-task acceptance verification. Fire before reporting 
 
 Record the originating request as a stable, complete summary. Preserve later user corrections in that summary before continuing.
 
-For an initial Git run, record the exact outputs of `git rev-parse --abbrev-ref HEAD` as the branch and `git rev-parse HEAD` as the pre-verification head. A branch rename or switch invalidates the card. A post-publication run resumes the same card and preserves its branch, pre-verification head, base, and verified snapshot.
+For an initial Git run, record the exact outputs of `git rev-parse --abbrev-ref HEAD` as the branch and `git rev-parse HEAD` as the pre-verification head. A branch rename or switch invalidates the card. A post-publication run resumes the same card and preserves its branch, pre-verification head, base, and verified snapshot, except for the explicit existing-PR base-rebind path below.
 
 For PR-bound work, resolve the intended base once here. Apply an explicit repository policy when one exists. Otherwise inspect the default and integration candidates:
 
@@ -43,15 +43,17 @@ Infer the required lanes from the originating request, changed artifacts, and ac
 
 An unselected lane is `not-applicable`, with its exclusion reason. A selected lane is required even when its boundary is unavailable.
 
-**Gate:** request summary and applicable currency are exact; all six lanes have a selection and reason; and every user-requested outcome maps to at least one required lane.
+**Gate:** request summary and applicable currency are exact; all six lanes have a selection and reason; and every user-requested outcome maps to every lane that applies to that outcome. Do not require unrelated lanes.
 
 ## 2. Verify each required lane
 
 Use the narrowest check that reaches the actual acceptance boundary. Do not run code checks for a task with no code lane or use an internal proxy as proof of another lane.
 
+When Code or Global configuration or skills is required, run `simplify` once after the applicable review and parse checks. If it edits covered content, invalidate and rerun only that affected review coverage through `converge-reviews` before assigning the lane `verified`.
+
 | Lane | Minimum boundary evidence |
 |---|---|
-| Code | Run the affected repository-native type, lint, build, and test checks. Use `fix-ts-errors` when TypeScript applies, and the full workspace check when repository policy or cross-workspace impact requires it. Run `parallel-review`, apply its `converge-reviews` result, run `simplify`, scan every added comment, and account for the request against the diff. |
+| Code | Run the affected repository-native type, lint, build, and test checks. Use `fix-ts-errors` when TypeScript applies, and the full workspace check when repository policy or cross-workspace impact requires it. Run `parallel-review`, apply its `converge-reviews` result, scan every added comment, and account for the request against the diff. |
 | UI | Run the affected flow through `browser-qa`; require every affected step to pass and record browser output, screenshots, network results, and console state. |
 | Documentation | Inspect the rendered or generated final artifact and exercise affected links, assets, and navigation. Source text alone does not verify rendered output. |
 | Global configuration or skills | Parse the final configuration, verify registration and discovery, then check picker visibility, manual invocation, or actual consumer behavior wherever the change affects them. |
@@ -97,12 +99,12 @@ rmdir "$snapshot_directory"
 
 Record `$verified_content_snapshot`. It includes tracked changes and non-ignored new files while leaving the real index untouched. External-only work uses its target currency and read-back ledger instead of a Git snapshot.
 
-Map every originating request item exactly once, in request order:
+Map every originating request item exactly once, in request order, and name all lanes that apply to it:
 
 ```markdown
-| Request item | Implementation/deliverable | Acceptance evidence | State | Gap/next action |
-|---|---|---|---|---|
-| <one requested outcome> | <exact behavior, path, or external record> | <direct observation> | verified / pending / assumed / deferred / blocked | <none or exact gap/action> |
+| Request item | Applicable lanes | Implementation/deliverable | Acceptance evidence | State | Gap/next action |
+|---|---|---|---|---|---|
+| <one requested outcome> | <every applicable lane> | <exact behavior, path, or external record> | <direct observation> | verified / pending / assumed / deferred / blocked | <none or exact gap/action> |
 ```
 
 Then report all six lanes:
@@ -141,6 +143,8 @@ Render the card with the applicable currency header before the three tables. Git
 - **Originating request:** <complete stable summary>
 - **Branch:** <exact branch name>
 - **PR base ref:** <ref or not-applicable when no PR is intended>
+- **Existing PR URL:** <landed PR URL or not-applicable>
+- **Base refresh commands:** <exact commands run for the recorded base, or not-applicable>
 - **Remote base-tip commit:** <SHA or not-applicable>
 - **Merge-base commit:** <fixed diff baseline SHA>
 - **Pre-verification head:** <SHA>
@@ -169,7 +173,11 @@ External-only work uses:
 - **Exact next action:** <dependency-ready action or none>
 ```
 
-`file-pr` accepts only a current Git card with `ready-to-publish`. It commits verified content when needed, publishes, records the remote and PR read-back, then returns to `done`. On the post-publication run, validate the recorded commit transition with:
+`file-pr` accepts only a current Git card with `ready-to-publish`. It commits verified content when needed, publishes, records the remote and PR read-back, then returns to `done`.
+
+When `file-pr` authoritatively identifies the landed PR but observes that its base advanced, create a superseding verification card for the same request, branch, head, content, and **Existing PR URL**. Bind its base tip and merge base to the observed PR, then rerun every base-dependent diff, request-accounting, test, and review check. Preserve the landed PR identity and create evidence; invalidate the old base and every conclusion derived from it. The superseding card may return to `file-pr` only for that existing PR and can never authorize another create.
+
+On the ordinary post-publication run, or after that rebind completes, validate the recorded commit transition with:
 
 ```bash
 git merge-base --is-ancestor <pre-verification-head> HEAD
@@ -190,4 +198,4 @@ The status output must be empty and the tree SHA must exactly equal **Verified c
 
 For Git work with no PR publication, set PR base ref, remote base tip, and merge base to `not-applicable`. When a commit is requested, leave only that request row `pending` after every other request row and required lane is `verified` and every evidence facet is `verified` or `not-applicable`. Set the exact next action to `git-commit`, invoke it, record its SHAs as **Expected append-only commits**, and require the ordered transition plus clean-status and exact-tree content seal to pass. Then mark the commit request row `verified` and derive final readiness. When repository policy calls for an unrequested discrete-unit commit, use the same transition without adding a request row. No post-publication run applies. External-only work never creates a commit through `done`.
 
-**Done:** card currency is recorded, every request item appears once, all six lanes and five evidence facets are reported, the exact next action is dependency-ready, and the verdict does not exceed the weakest required row. `ready-to-publish` hands off to `file-pr`; only `ready` permits reporting task completion.
+**Done:** card currency is recorded, every request item appears once with every applicable lane, all six lanes and five evidence facets are reported, the exact next action is dependency-ready, and the verdict does not exceed the weakest required row. `ready-to-publish` hands off to `file-pr`; only `ready` permits reporting task completion.
