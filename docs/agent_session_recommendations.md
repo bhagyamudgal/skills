@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R16 — Spanical landing conventions`
-- **NEXT ACTION:** Locate the Spanical repository and its authoritative project-rule source before opening the R16 grill.
-- **Progress:** 13 complete; 2 declined; 1 researching; 2 pending.
+- **Current item:** `R17 — Fileseye skill-change canary`
+- **NEXT ACTION:** Locate the Fileseye repository and inventory its existing skill-regression safeguards before opening the R17 grill.
+- **Progress:** 13 complete; 3 declined; 1 researching; 1 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 14 August 2026
@@ -57,8 +57,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R13 | P1 | Material-state progress updates | Global rules | `complete` | `~/.claude/CLAUDE.md` and `reference/CLAUDE.md` | Complete |
 | R14 | P1 | Evidence reuse and ownership | Global rules | `complete` | `~/.claude/CLAUDE.md` and `reference/CLAUDE.md` | Complete |
 | R15 | P0 | GSM3 operating facts | Project rules | `complete` | GSM3 PR [#5767](https://github.com/gastrosmart/GSM3/pull/5767) | Complete |
-| R16 | P1 | Spanical landing conventions | Project rules | `researching` | TBD | Locate project authority |
-| R17 | P1 | Fileseye skill-change canary | Project rules | `pending` | TBD | Start after R16 closes |
+| R16 | P1 | Spanical landing conventions | Project rules | `declined` | Decision recorded | Declined as duplicate |
+| R17 | P1 | Fileseye skill-change canary | Project rules | `researching` | TBD | Locate project authority |
 | R18 | P2 | Fact-bound personal drafting | Decision log | `pending` | TBD | Start after R17 closes |
 
 ## Source record
@@ -720,16 +720,26 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P1
 - **Proposed destination:** Project rules
-- **Status:** `researching`
+- **Status:** `declined`
 - **Rationale:** Stacked PR and Drizzle conventions should not burden unrelated projects.
 - **Source specification:** Main integration base; bottom-up stacked merges; exact-SHA lease checks; Drizzle migration convention; repository config over repeated CLI flags.
-- **Decisions / final artifact / verification:** Pending; requires the Spanical repository's actual rule source and acceptance surface.
+- **Repository authority:** `/Users/bhagyamudgal/Desktop/MyFiles/Work/hexleap/spanical/CLAUDE.md` is the tracked project source. No project `AGENTS.md` or instruction symlink exists. The current clean checkout is on unrelated `bhagya/fix-42`; implementation should use a sibling worktree from freshly fetched `origin/main` on `bhagya/feat-landing-conventions`.
+- **Evidence inventory:**
+  - **Integration base:** `origin/HEAD`, CI push triggers, and first-parent merge history identify `main` as the final integration branch.
+  - **Stack order:** CI explicitly gates PRs targeting `main`, `bhagya/**`, and `feature/**`, and the five-deep historical stack landed in dependency order. The stable invariant is bottom-up landing; detailed restack mechanics may vary.
+  - **Exact lease:** Published stack branches have been force-updated after restacking, but no project rule requires live remote-head comparison and an exact-SHA lease. Generic mechanics already belong to `preflight-mutations`.
+  - **Cache schema:** The source recommendation conflicts with current architecture. Spanical intentionally uses no migration tool: a schema change updates `packages/cli/src/cache/schema.ts` and `ddl.ts`, increments `CACHE_SCHEMA_VERSION` in `open.ts`, and passes the parity and rebuild tests in `cache.test.ts`; mismatched versions rebuild the disposable local cache.
+  - **Config preference:** `spanical.config.ts` is the validated repository-level source for repeated defaults, while CLI flags intentionally remain valid one-off overrides. A ban on repeated flags would contradict the product design.
+- **Stable additions:** One compact project block can state the final `main` integration base, bottom-up stack invariant, live remote-head/exact-lease requirement, disposable-cache schema protocol, and config-over-flags preference. Add `AGENTS.md -> CLAUDE.md` so Codex reads the Claude project source. Add no skill, helper, evaluator, workflow, code change, unstable SHA, or current-stack cache.
+- **Decision:** Declined. The repository already exposes the integration base and stack behavior through CI and history, enforces the disposable-cache schema protocol through code and parity/rebuild tests, and encodes config-versus-flags behavior in the CLI. Published-branch exact-SHA protection belongs to `preflight-mutations`. Additional project prose or a source-sharing symlink would be duplicate surface without evidence of a current invocation gap.
+- **Final artifact:** This decision record; no Spanical project file, symlink, skill, workflow, or code change added.
+- **Verification:** Confirmed the Spanical checkout remained clean and no R16 implementation branch or worktree was created.
 
 ### R17 — Fileseye skill-change canary
 
 - **Priority:** P1
 - **Proposed destination:** Project rules
-- **Status:** `pending`
+- **Status:** `researching`
 - **Rationale:** A large prerequisite rewrite broke the skill it intended to improve, and review rounds expanded without convergence.
 - **Source specification:** Snapshot current behavior; run representative fixtures before and after; bound review rounds; block merge on behavior regression; preserve named user workflows.
 - **Decisions / final artifact / verification:** Pending; requires the Fileseye repository's actual rule source and acceptance surface.
@@ -867,3 +877,5 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Applied the R15 simplify findings: made redacted database endpoints distinguishable, removed action-version scope from the runner rule, collapsed estimate calibration to one batch-scoped invariant, and qualified volatile repository observations as inventory-time facts.
 - Repaired the final R15 wording edge by requiring identities for each applicable source or target, so single-database mutations do not invent a nonexistent source while cross-environment syncs still bind both endpoints.
 - Closed R15 after the final changed-line recheck reported zero Critical and zero Serious findings, all applicable instruction/symlink/security checks passed, and GSM3 PR #5767 published the exact verified commit. Advanced R16 to `researching`.
+- Completed the R16 repository inventory. Main and bottom-up landing are evidenced, exact leases lack a project invariant, the cache intentionally has no migration tool, and repository config is a preference for repeated defaults rather than a flag ban. Advanced R16 to `grilling` with the evidence-correct translation as the only open decision.
+- User declined R16 after reviewing the evidence-correct translation. Recorded that existing CI, code/tests, CLI behavior, and shared exact-lease workflow already own the proposed conventions. Advanced R17 to `researching`.
