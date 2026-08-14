@@ -49,7 +49,7 @@ An unselected lane is `not-applicable`, with its exclusion reason. A selected la
 
 Use the narrowest check that reaches the actual acceptance boundary. Do not run code checks for a task with no code lane or use an internal proxy as proof of another lane.
 
-When Code or Global configuration or skills is required, run `simplify` once after the applicable review and parse checks. If it edits covered content, invalidate and rerun only that affected review coverage through `converge-reviews` before assigning the lane `verified`.
+When Code or Global configuration or skills is required, run `simplify` once after the applicable review and parse checks. If it edits content, invalidate every acceptance observation that depends on the changed content across all lanes and evidence facets. Rerun affected code and global checks, review coverage, browser/UI flows, rendered documents/assets/links, external data or metadata read-backs, and publication or live-consumer checks. Route affected review coverage through `converge-reviews` before assigning any affected lane `verified`.
 
 | Lane | Minimum boundary evidence |
 |---|---|
@@ -88,16 +88,35 @@ Unavailable boundary evidence creates an evidence ceiling. It never becomes `ver
 For Git work, compute a deterministic content snapshot without changing the user's index. From the repository root, create a temporary directory and use a nonexistent index path inside it for every index operation:
 
 ```bash
-snapshot_directory=$(mktemp -d)
-snapshot_index="$snapshot_directory/index"
-GIT_INDEX_FILE="$snapshot_index" git read-tree HEAD
-GIT_INDEX_FILE="$snapshot_index" git add -A
-verified_content_snapshot=$(GIT_INDEX_FILE="$snapshot_index" git write-tree)
-unlink "$snapshot_index"
-rmdir "$snapshot_directory"
+create_verified_snapshot() (
+  snapshot_directory=$(mktemp -d) || return 1
+  snapshot_index="$snapshot_directory/index"
+  cleanup_snapshot() {
+    cleanup_status=0
+    test ! -e "$snapshot_index" || unlink "$snapshot_index" || cleanup_status=1
+    test ! -e "$snapshot_index.lock" || unlink "$snapshot_index.lock" || cleanup_status=1
+    rmdir -- "$snapshot_directory" || cleanup_status=1
+    return "$cleanup_status"
+  }
+  trap 'snapshot_status=$?; trap - EXIT; cleanup_snapshot || snapshot_status=1; exit "$snapshot_status"' EXIT
+
+  GIT_INDEX_FILE="$snapshot_index" git read-tree HEAD || return 1
+  GIT_INDEX_FILE="$snapshot_index" git add -A || return 1
+  snapshot=$(GIT_INDEX_FILE="$snapshot_index" git write-tree) || return 1
+  test -n "$snapshot" || return 1
+
+  cleanup_snapshot || return 1
+  trap - EXIT
+  printf '%s\n' "$snapshot" || return 1
+)
+
+if ! verified_content_snapshot=$(create_verified_snapshot); then
+  echo "Could not create an isolated verified-content snapshot" >&2
+  exit 1
+fi
 ```
 
-Record `$verified_content_snapshot`. It includes tracked changes and non-ignored new files while leaving the real index untouched. External-only work uses its target currency and read-back ledger instead of a Git snapshot.
+Record `$verified_content_snapshot`. Every index operation uses the isolated temporary index, so the real index remains untouched. The command fails closed if setup, staging, tree creation, or cleanup fails; its exit trap removes the temporary index on both success and failure. The snapshot includes tracked changes and non-ignored new files. External-only work uses its target currency and read-back ledger instead of a Git snapshot.
 
 Map every originating request item exactly once, in request order, and name all lanes that apply to it:
 

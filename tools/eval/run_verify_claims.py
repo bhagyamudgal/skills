@@ -2,9 +2,11 @@
 import argparse
 import datetime
 import json
+import os
 import pathlib
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import uuid
@@ -169,22 +171,47 @@ def run_case(case, budget, timeout):
         "--max-budget-usd", str(budget),
     ]
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             command,
             cwd=repository,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
+            start_new_session=True,
         )
-        final_text, tool_calls, result_error = parse_stream(completed.stdout)
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            stdout = (
+                error.stdout.decode() if isinstance(error.stdout, bytes) else error.stdout or ""
+            )
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                stdout, _ = process.communicate(timeout=1)
+            except subprocess.TimeoutExpired as drain_error:
+                drained_stdout = (
+                    drain_error.stdout.decode()
+                    if isinstance(drain_error.stdout, bytes)
+                    else drain_error.stdout or ""
+                )
+                stdout = drained_stdout or stdout
+                process.stdout.close()
+                process.stderr.close()
+                try:
+                    process.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    pass
+            final_text, tool_calls, _ = parse_stream(stdout)
+            return final_text, tool_calls, "timeout", stdout
+
+        final_text, tool_calls, result_error = parse_stream(stdout)
         process_error = result_error
-        if completed.returncode != 0 and not process_error:
-            process_error = f"claude exited {completed.returncode}: {completed.stderr.strip()}"
-        return final_text, tool_calls, process_error, completed.stdout
-    except subprocess.TimeoutExpired as error:
-        output = error.stdout.decode() if isinstance(error.stdout, bytes) else error.stdout or ""
-        final_text, tool_calls, _ = parse_stream(output)
-        return final_text, tool_calls, "timeout", output
+        if process.returncode != 0 and not process_error:
+            process_error = f"claude exited {process.returncode}: {stderr.strip()}"
+        return final_text, tool_calls, process_error, stdout
     finally:
         shutil.rmtree(temporary_directory, ignore_errors=True)
 
@@ -206,7 +233,12 @@ def main():
     timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     run_id = f"{timestamp}-{uuid.uuid4().hex[:8]}"
     output_directory = args.output_dir or REPO / ".eval-results" / "verify-claims" / run_id
-    output_directory.mkdir(parents=True, exist_ok=False)
+    try:
+        output_directory.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        if args.output_dir is not None:
+            parser.error(f"output directory already exists: {output_directory}")
+        raise
 
     summaries = []
     for case in cases:

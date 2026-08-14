@@ -111,51 +111,63 @@ def run_case(utterance, budget, timeout, tools=None, skill_path=None):
             return "result", (event.get("total_cost_usd", 0.0), error)
         return None
 
-    fired, cost, started = None, 0.0, time.time()
+    cost, started = 0.0, time.time()
+    stdout_buffer = b""
+    stderr_chunks = []
     try:
         with selectors.DefaultSelector() as selector:
             selector.register(proc.stdout, selectors.EVENT_READ)
-            while proc.poll() is None:
+            selector.register(proc.stderr, selectors.EVENT_READ)
+            while selector.get_map():
                 remaining = timeout - (time.time() - started)
                 if remaining <= 0:
                     stop_process_group()
                     return None, cost, time.time() - started, "timeout"
                 events = selector.select(timeout=min(remaining, 1.0))
                 if not events:
+                    if proc.poll() is not None:
+                        break
                     continue
-                line = proc.stdout.readline()
-                if not line:
-                    break
-                parsed = parse_event(line)
-                if not parsed:
-                    continue
-                kind, value = parsed
-                if kind == "skill":
-                    return value, cost, time.time() - started, None
-                cost, error = value
-                return None, cost, time.time() - started, error
+                for key, _ in events:
+                    chunk = os.read(key.fd, 65536)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    if key.fileobj is proc.stderr:
+                        stderr_chunks.append(chunk)
+                        continue
+                    stdout_buffer += chunk
+                    while b"\n" in stdout_buffer:
+                        line, stdout_buffer = stdout_buffer.split(b"\n", 1)
+                        parsed = parse_event(line.decode(errors="replace"))
+                        if not parsed:
+                            continue
+                        kind, value = parsed
+                        if kind == "skill":
+                            return value, cost, time.time() - started, None
+                        cost, error = value
+                        return None, cost, time.time() - started, error
 
             remaining = timeout - (time.time() - started)
             if remaining <= 0:
                 stop_process_group()
                 return None, cost, time.time() - started, "timeout"
             try:
-                stdout_tail, stderr = proc.communicate(timeout=remaining)
+                proc.wait(timeout=remaining)
             except subprocess.TimeoutExpired:
                 stop_process_group()
                 return None, cost, time.time() - started, "timeout"
 
-            for line in stdout_tail.splitlines():
-                parsed = parse_event(line)
-                if not parsed:
-                    continue
-                kind, value = parsed
-                if kind == "skill":
-                    return value, cost, time.time() - started, None
-                cost, error = value
-                return None, cost, time.time() - started, error
+            if stdout_buffer:
+                parsed = parse_event(stdout_buffer.decode(errors="replace"))
+                if parsed:
+                    kind, value = parsed
+                    if kind == "skill":
+                        return value, cost, time.time() - started, None
+                    cost, error = value
+                    return None, cost, time.time() - started, error
 
-            stderr = stderr.strip()
+            stderr = b"".join(stderr_chunks).decode(errors="replace").strip()
             returncode = proc.returncode
             detail = f": {stderr}" if stderr else ""
             if returncode != 0:
@@ -164,8 +176,6 @@ def run_case(utterance, budget, timeout, tools=None, skill_path=None):
     finally:
         stop_process_group()
         shutil.rmtree(tmp, ignore_errors=True)
-
-    return fired, cost, time.time() - started, None
 
 
 def main():
@@ -202,6 +212,11 @@ def main():
         cases = [cases[args.case]]
     elif args.limit:
         cases = cases[:args.limit]
+
+    for index, case in enumerate(cases):
+        if "expect" not in case and "forbid" not in case:
+            print(f"case {index} declares neither 'expect' nor 'forbid'", file=sys.stderr)
+            return 2
 
     results = []
     for i, c in enumerate(cases):

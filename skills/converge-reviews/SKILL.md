@@ -38,7 +38,7 @@ convergence:
   reviewers: [<reviewer and lens>]
   round: <1..3>
   coverage: [<path or component, lens, reviewed hash, source round>]
-  findings: [<finding ID, severity, status, disposition, source>]
+  findings: [<finding ID, severity, normalized_status, disposition, source>]
   closure_check: not-needed | available | passed | failed
   result: continue | converged | blocked-at-cap | follow-up-proposed
   next_action: <exact next action>
@@ -52,7 +52,7 @@ Invalidate only coverage whose reviewed content, path, or lens changed. Keep una
 
 ## 3. Reconcile the round
 
-Merge findings by stable ID. Preserve source reviewers and disposition history. Normalize caller states by meaning: `active`, `regression`, and any caller-specific open state are open; `resolved` and `dismissed` are closed; `follow-up` is deferred outside the current scope. Keep the caller's authoritative vocabulary in its artifact.
+Merge findings by stable ID. Preserve source reviewers and disposition history. The caller's finding status remains authoritative; derive `normalized_status` at reconciliation time without writing it back as caller status. Map `active`, `regression`, and caller-specific open states to `open`; `resolved`, `dismissed`, and `wontfix` to `closed`; and `follow-up` to `deferred` outside the current scope.
 
 Count one round only after the planned roster returned or was explicitly recorded unavailable and the caller reconciled every finding. Record fixes, dismissals, regressions, and newly invalidated coverage before selecting the result.
 

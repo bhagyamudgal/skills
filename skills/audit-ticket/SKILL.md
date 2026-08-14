@@ -129,7 +129,7 @@ A failed or empty subagent doesn't stop the audit — mark that requirement `unv
 
 Verify each returned `file:line` exists before printing (quick `Read` of the cited range) — drop fabricated citations and downgrade that verdict's confidence to `low`.
 
-Every `Rn` from Phase 1 appears exactly once in the table; N equals d + p + nd + o + u. A requirement with no returned verdict is `unverified`, not omitted.
+Every `Rn` from Phase 1 appears exactly once in the table; N equals d + p + nd + o + u. A requirement with no returned verdict is `unverified`, not omitted. Put only evidence IDs in table cells, then render every complete `Rn → E<n>` edge in a block-form source map; code citations remain separate verdict evidence.
 
 Then print:
 
@@ -141,12 +141,21 @@ Then print:
 **Requirements**: <N> — <d> done / <p> partial / <nd> not done / <o> obsolete / <u> unverified
 **Recommendation**: <one sentence — grounded in the verdict mix>
 
-| # | Requirement | Verdict | Evidence |
-|---|-------------|---------|----------|
-| R1 | <short text> | ✅ done | `<file:line>` |
-| R2 | <short text> | 🟡 partial | `<file:line>` — <gap, short> |
-| R3 | <short text> | ❌ not done | — |
-| R4 | <short text> | 🪦 obsolete | <reason, short> |
+| # | Requirement | Source evidence | Verdict | Code evidence |
+|---|-------------|-----------------|---------|---------------|
+| R1 | <short text> | R1 → E1 | ✅ done | `<file:line>` |
+| R2 | <short text> | R2 → E2, E4 | 🟡 partial | `<file:line>` — <gap, short> |
+| R3 | <short text> | R3 → E3 | ❌ not done | — |
+| R4 | <short text> | R4 → E5 | 🪦 obsolete | <reason, short> |
+
+## Source evidence map
+
+### R1 → E1
+**Source**: <author> · <date> · <direct URL>
+
+    <complete exact excerpt; indent every original line so multiline text and pipes remain intact>
+
+<repeat one block for every Rn → E<n> edge>
 
 ## Details
 <per-item: full gaps, obsolete reasons, low-confidence notes, unavailable images>
@@ -182,9 +191,19 @@ Phase 5 runs on the Phase 4 fate choice, and only on it — the report is always
 
 For any rewrite or split, reread `${CLAUDE_SKILL_DIR}/references/ticket-evidence.md` before composing issue bodies and again for its rendered closeout gate. The chosen fate cannot close while required source evidence is missing.
 
-Before preflight, render every final comment and body to its write-time file. Record each path, SHA-256 digest, exact title or command options, and the original issue's fresh `updatedAt`, body, state, author, and assignees. Define the expected guard transition after each planned write. For a split, apply `file-issue`'s two-vocabulary duplicate search to the proposed successor and resolve every near match; record both queries, results, and resolutions.
+Immediately before composing or freezing Phase 5 payloads, re-fetch the full issue body and comments and re-download every retained attachment. Compare `updatedAt`, body, comment IDs and content, attachment URLs, and attachment digests with Phase 1. When any source changed or currency cannot be established, rebuild the source map, retain matching evidence IDs, append IDs for new evidence, and rerun every affected requirement through Phases 2 and 3. Stop when required evidence is unavailable. Apply this currency gate again before the split flow's post-create render. A changed requirement, verdict, recommendation, successor scope, or fate returns to Phase 4 for fresh approval.
 
-Immediately before that recipe's first `gh` write, invoke `preflight-mutations` for the approved fate batch. Pass the exact issue URL and number; its refreshed guards and per-step expected transitions; the audit SHA; the ordered comment/edit/close/create actions and targets; every frozen payload path and digest; the Phase 4 approval; and, for a split, the successor's title, body, assignee, predecessor link, and duplicate-search evidence. Apply its result contract before continuing. Before each later write, advance the expected guard only from the prior write's exact authoritative read-back, then compare the fields that write protects. An unexpected issue change, option, file path, or digest invalidates the unexecuted remainder; re-render and re-preflight instead of changing an approved payload during execution.
+Every frozen body or comment carries the `Rn → E<n>` mappings and block-form preserved excerpts for every requirement it mentions. Predecessor status, reasoning, edited-body, and split-comment payloads carry the complete map; a successor carries the map for its moved requirements.
+
+For update-in-place or sunset, render every final body and comment before preflight. Present their exact frozen bytes and SHA-256 digests, current target guards, and ordered actions for fresh explicit approval. Bind approval to those values plus the source evidence, scope, verdicts, recommendation, and fate; any change invalidates it.
+
+For a split, bind non-repeatable create state to an existing durable ledger that the user has already authorized for writes. Before create, write an attempt entry with an operation ID, frozen successor payload path and digest, predecessor guards, intended title and assignee, reconciliation status `planned`, and reserved stable successor ID, URL, and guard fields. If no authorized writable ledger exists, keep the proposed entry inline and stop before create; do not start the multi-card split.
+
+First reconcile every `attempting`, `reconcile-required`, or `landed` entry. Render and preflight a create only from a `planned` entry with no prior non-repeatable attempt, after `file-issue`'s two-vocabulary duplicate search. Persist `attempting` immediately before `gh issue create`; an ambiguous result becomes `reconcile-required`, never a retry. Once authoritative read-back identifies the successor, fill its stable ID, URL, frozen payload digest, and guards, then mark the entry non-repeatable `landed` partial state. Every re-entry re-fetches and reuses that successor; it never targets create again.
+
+For each mutation card, record every payload path and SHA-256 digest, exact title or command options, fresh target guards, and per-step expected guard transition. Pass the exact targets, audit SHA, ordered actions, Phase 4 approval, and split metadata to `preflight-mutations` immediately before that card's first write. Before each later write, advance guards only from the prior write's authoritative read-back.
+
+After the successor lands, apply the source-currency gate, then render and freeze the predecessor comment with the real successor URL. Obtain fresh explicit approval for its exact bytes and digest, the current predecessor and successor guards, and the ordered comment → close actions with the expected comment guard transition. After authoritative read-back proves the exact comment landed, advance to the returned expected guard and permit close without reapproval. Any unexpected transition or changed external guard, source evidence, payload byte, scope, verdict, recommendation, or fate invalidates approval. Reconcile the landed successor through an explicit retain, edit, or close plan and return to Phase 4 when semantics changed; never restart successor creation.
 
 ---
 

@@ -38,7 +38,7 @@ Stage this section in the canonical report:
 - **Unwritable predecessors:** <URL and reason, or none>
 ```
 
-Stage `Superseded by [<artifact ID>](<canonical URL>).` on every writable predecessor. Record an unwritable predecessor and the reason in the canonical report instead of treating its missing marker as success.
+For every writable predecessor, stage its complete fetched report plus `Superseded by [<artifact ID>](<canonical URL>).` Preserve the original body and attributed evidence byte-for-byte; a marker-only replacement is not a valid payload. Record an unwritable predecessor and the reason in the canonical report instead of treating its missing marker as success.
 
 Select one disposition for every source item:
 
@@ -48,14 +48,14 @@ Select one disposition for every source item:
 
 `carried` and `merged` name an existing canonical destination ID. `dismissed` records a reason. `retained-by-reference` names the canonical anchor that keeps the original evidence reachable. Merge only genuinely equivalent items; preserve unique findings as distinct destinations or references rather than copying entire source reports.
 
-**Gate:** an existing hosted writable canonical candidate and guard are known; every discovery match has its final classification; every noncanonical authority is bound as a predecessor; and the canonical payload, predecessor markers, and item map are fully staged with every source item assigned exactly one valid disposition.
+**Gate:** an existing hosted writable canonical candidate and guard are known; every discovery match has its final classification; every noncanonical authority is bound as a predecessor; and the canonical payload, predecessor report-plus-marker payloads, and item map are fully staged with every source item assigned exactly one valid disposition.
 
 ## 3. Preflight the publication plan
 
 Build one complete logical publication plan containing:
 
 - the complete canonical payload and its current write guard;
-- every writable predecessor's complete marker payload and guard;
+- every writable predecessor's complete preserved-report-plus-marker payload and guard;
 - the artifact ID, canonical URL, source URLs, superseded list, and unwritable-predecessor record;
 - every source-item disposition and destination or rationale; and
 - the authoritative rendered-link and duplicate-status read-back plan;
@@ -69,13 +69,13 @@ Apply each card's `preflight-mutations` result contract in the previewed depende
 
 ## 4. Publish and reconcile
 
-Apply the staged canonical payload and predecessor markers without regenerating them. Follow `preflight-mutations`' execution and partial-state contract for each card while preserving the publication plan's dependency order and combined item ledger.
+Apply the staged canonical payload and predecessor report-plus-marker payloads without regenerating them. Follow `preflight-mutations`' execution and partial-state contract for each card while preserving the publication plan's dependency order and combined item ledger. After each write, authoritatively read back the landed body and guard. Require every predecessor's fetched content and attributed evidence to remain intact before recording its marker write as `landed`, and record the read-back guard as that target's expected post-write guard.
 
-**Gate:** every publication-plan item has an authoritative result and every landed payload matches its staged content.
+**Gate:** every publication-plan item has an authoritative result, every landed payload matches its staged content, and the canonical report plus each writable predecessor has an expected post-write guard from authoritative read-back.
 
 ## 5. Verify authority and evidence
 
-Re-fetch and reread the rendered canonical report and every predecessor. Exercise every canonical, source, predecessor, and evidence link. Repeat the exact Phase 1 discovery query and compare its stable host IDs and guards with the Phase 1 result. Fetch every new or changed non-unrelated match, then return to inventory, staging, and preflight before continuing; discovery drift can never close as success.
+Re-fetch and reread the rendered canonical report and every predecessor. Exercise every canonical, source, predecessor, and evidence link. Repeat the exact Phase 1 discovery query and compare its stable host IDs and guards with the expected set: use Phase 4's authoritative post-write guards for landed targets and Phase 1 guards for untouched matches. An expected landed guard is not drift. A missing stable ID, a new match, or any guard outside that expected set returns to inventory, staging, and preflight; fetch every unexpected match before continuing.
 
 Completion requires:
 
