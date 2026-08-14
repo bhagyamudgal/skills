@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R12 — Non-interactive tooling canary`
-- **NEXT ACTION:** Inventory existing shell, package-manager, and workspace-runner canary behavior, then grill the smallest unresolved R12 design frontier.
-- **Progress:** 10 complete; 1 declined; 1 researching; 6 pending.
+- **Current item:** `R14 — Evidence reuse and ownership`
+- **NEXT ACTION:** Inventory current evidence-ownership and review-reuse rules before opening the R14 grill.
+- **Progress:** 11 complete; 2 declined; 1 researching; 4 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 14 August 2026
@@ -53,9 +53,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R09 | P1 | Ticket evidence preservation | Skill | `complete` | `skills/audit-ticket/references/ticket-evidence.md` | Complete |
 | R10 | P1 | Artifact lifecycle manager | Skill | `complete` | `skills/manage-report-lifecycle/` | Complete |
 | R11 | P1 | Merge-readiness evidence card | Skill | `complete` | `skills/done/` and `skills/file-pr/` | Complete |
-| R12 | P1 | Non-interactive tooling canary | Skill | `researching` | TBD | Resolve overlap |
-| R13 | P1 | Material-state progress updates | Global rules | `pending` | TBD | Start after R12 closes |
-| R14 | P1 | Evidence reuse and ownership | Global rules | `pending` | TBD | Start after R13 closes |
+| R12 | P1 | Non-interactive tooling canary | Skill | `declined` | Decision recorded | Declined as disproportionate |
+| R13 | P1 | Material-state progress updates | Global rules | `complete` | `~/.claude/CLAUDE.md` and `reference/CLAUDE.md` | Complete |
+| R14 | P1 | Evidence reuse and ownership | Global rules | `researching` | TBD | Complete overlap scan |
 | R15 | P0 | GSM3 operating facts | Project rules | `pending` | TBD | Start after R14 closes |
 | R16 | P1 | Spanical landing conventions | Project rules | `pending` | TBD | Start after R15 closes |
 | R17 | P1 | Fileseye skill-change canary | Project rules | `pending` | TBD | Start after R16 closes |
@@ -639,25 +639,47 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `researching`
+- **Status:** `declined`
 - **Rationale:** A package-manager firewall wrapper broke non-interactive pnpm use and forced development workflows to bypass the workspace runner.
 - **Source specification:** Test interactive and non-interactive shells; exercise development, test, and workspace-build commands; verify dependent package outputs; document intentional bypasses and their cost.
-- **Decisions / final artifact / verification:** Pending.
+- **Reuse scan:**
+  - `done` requires repository-native build and test checks but does not compare shell modes, executable resolution, workspace-runner traversal, output freshness, or bypass cost.
+  - `fix-ts-errors` owns only the TypeScript loop and assumes an available workspace command; it does not discover or test development, test, and build scripts.
+  - `systematic-debugging` investigates environment differences after a failure but provides no proactive canary or reusable evidence card.
+  - `executing-tickets-with-subagents` records known environment quirks and fallbacks without discovering them. `sync-agent-setups` verifies agent hooks, not package-manager wrappers or workspace tooling.
+  - The trigger evaluator runs fresh non-interactive agent sessions but measures skill routing; reusing it would add an unrelated networked evaluator.
+- **Concrete gap:** No workflow discovers the repository-native package manager and runner, executes representative development/test/workspace-build commands in both interactive and actual non-interactive contexts, verifies dependent outputs, and records the guarantees lost by intentional bypasses.
+- **Boundaries:** `done` should consume a current canary result only when tooling or shell behavior changed. Keep TypeScript remediation in `fix-ts-errors`, root-cause diagnosis in `systematic-debugging`, browser flows in `browser-qa`, and runner-specific repository facts in project rules. Do not print full environments or run interactive and non-interactive development servers concurrently.
+- **Architecture hypothesis:** Add one compact `tooling-canary` skill and one conditional `done` handoff. Keep the complete procedure in one `SKILL.md`; add no helper script, reference tree, fixture, or bespoke evaluator initially.
+- **Decision:** Declined. The evidence is one narrow historical wrapper failure, while existing diagnostic workflows can investigate a concrete recurrence. A permanent proactive skill and conditional `done` integration would add disproportionate invocation and maintenance cost. Reconsider only if interactive/non-interactive parity failures recur across projects.
+- **Final artifact:** This decision record; no skill or global rule added.
+- **Verification:** Confirmed that no R12 implementation files were created. The overlap scan and decline rationale remain preserved here.
 
 ### R13 — Material-state progress updates
 
 - **Priority:** P1
 - **Proposed destination:** Global rules
-- **Status:** `pending`
+- **Status:** `complete`
 - **Rationale:** Universal, short, and cheap to enforce on every long-running task.
 - **Source specification:** Report completed, active, blocked, and next; update only on a material state, ETA, decision, or blocker change.
-- **Decisions / final artifact / verification:** Pending.
+- **Reuse scan:**
+  - The live Claude Code source of truth says to track multi-step work and give a high-level summary at each step, but it does not define a compact status shape or material-only cadence.
+  - `executing-tickets-with-subagents` already owns detailed durable ledgers and a material-only update cadence for bundled and unattended runs. Its handoff reports completed, active, blocked, pending decisions, and next action.
+  - `done` owns final readiness rather than ongoing progress and should not absorb this rule.
+- **Concrete gap:** Ordinary long-running work outside bundled or unattended execution still encourages per-step narration and has no standard `Completed / Active / Blocked / Next` projection.
+- **Authority boundary:** `~/.claude/CLAUDE.md` is the live source of truth. `~/.codex/AGENTS.md` is already a symlink to it. `reference/CLAUDE.md` is a repository reference copy with unrelated pre-existing divergence, so R13 should make the same surgical Task Management edit there without wholesale synchronization. Other agent targets remain outside scope because `sync-agent-setups` is user-invoked only.
+- **Architecture hypothesis:** Replace the existing per-step narration clause with one short global material-state rule. Require a durable ledger only when compaction, handoff, or multiple agents are plausible; do not add a skill, template, or evaluator.
+- **Decision:** For long-running work, report `Completed`, `Active`, `Blocked`, and `Next`. Send an update only when one of those fields changes materially, a decision changes, or the ETA changes. Keep the same four fields in one durable ledger only when compaction, handoff, or multiple agents are plausible.
+- **Implementation shape:** Replace the existing global per-step narration clause with the compact rule in `~/.claude/CLAUDE.md`; verify the Codex symlink exposes it; apply only the matching surgical edit to `reference/CLAUDE.md`. Add no skill, template, evaluator, or unrelated synchronization.
+- **Open design tree:** Empty; the user confirmed the complete design.
+- **Final artifact:** `~/.claude/CLAUDE.md` is authoritative; `~/.codex/AGENTS.md` consumes it through the existing symlink; `reference/CLAUDE.md` carries the same surgical reference-copy edit.
+- **Verification:** Exact wording appears once in the live Claude source, Codex symlink surface, and repository reference; the superseded per-step narration clause appears nowhere on those surfaces. The repository verifier passed across 26 skills and 60 Markdown files with only the pre-existing ignored `license` warning in `git-commit`. Swift Foundation read all four affected Markdown surfaces, `git diff --check` passed, and the added-comment scan was clean. The focused review and one affected-area recheck ended with zero Critical and zero Serious findings; the proportional simplify pass found no actionable simplification. TypeScript, runtime, browser, database, and CI checks are not applicable to these instruction-only Markdown changes.
 
 ### R14 — Evidence reuse and ownership
 
 - **Priority:** P1
 - **Proposed destination:** Global rules
-- **Status:** `pending`
+- **Status:** `researching`
 - **Rationale:** Universal guardrail against redundant subagents and reviewer churn.
 - **Source specification:** Never assign the same scope to two agents; treat completed reviewer output as valid until the diff changes.
 - **Decisions / final artifact / verification:** Pending.
@@ -800,3 +822,11 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Applied the final R11 simplify repairs: one explicit readiness exception, a non-circular non-PR commit transition, authoritative base resolution in `done`, one candidate-diff accounting gate, sharper README invocation guidance, and mutation preflight before GitHub writes. R11 remains `verifying`; R12 remains pending.
 - Repaired the final two R11 execution findings by reading integration candidates directly from remote heads and splitting publication into independently gated push and PR-create mutations with authoritative read-back between them. R11 remains `verifying`; R12 remains pending.
 - Closed R11 after the final affected-area recheck reported zero Critical and zero Serious findings and all applicable structural, alternate-index, Markdown, and diff checks passed. Advanced R12 to `researching`.
+- Completed the R12 overlap scan. Existing workflows run checks or diagnose failures but none owns proactive interactive/non-interactive parity, workspace-runner traversal, dependent-output evidence, and bypass-cost accounting. Advanced R12 to `grilling`.
+- User declined R12 after reviewing its purpose and proportionality. Recorded that one narrow historical wrapper failure does not justify a permanent proactive skill; existing diagnostic workflows remain the fallback if the problem recurs. Advanced R13 to `researching`.
+- Completed the R13 overlap scan. Detailed material-state reporting already exists for unattended execution, while the global rule still encourages per-step narration. Advanced R13 to `grilling` with one proportionality decision: when the four-field status also needs durable persistence.
+- Recorded the recommended R13 contract: four-field material-state updates with a durable ledger only when continuity risk warrants it. The grill frontier is empty pending confirmation.
+- User confirmed the complete R13 design. Advanced R13 to `implementing` with `writing-for-agents` governing the two surgical global-rule edits.
+- Implemented the confirmed R13 rule in the Claude Code source of truth and repository reference copy. Verified that the existing Codex symlink exposes the exact rule and advanced R13 to `verifying`.
+- The focused R13 review found a stale aggregate status and ambiguous material-change grammar. Corrected the count to `1 verifying` and made materiality apply only to the four progress fields; decision and ETA changes remain explicit update triggers.
+- Closed R13 after exact live/source/symlink checks, structural Markdown verification, focused review, one clean affected-area recheck, and a proportional simplify pass. Advanced R14 to `researching`.

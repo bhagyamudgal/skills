@@ -137,7 +137,8 @@ The `/done` skill is the single source of truth for completion verification. It 
 
 ## Task Management
 
-- Track multi-step work with the todo tool; confirm the plan before implementation — don't build on shaky assumptions. Give a high-level summary of changes at each step.
+- Track multi-step work with the todo tool; confirm the plan before implementation — don't build on shaky assumptions.
+- **Material-state progress:** For long-running work, report **Completed**, **Active**, **Blocked**, and **Next**. Send a progress update only when one of those fields changes materially, a decision changes, or the ETA changes. When compaction, handoff, or multiple agents are plausible, keep the same four fields in one durable ledger.
 - After completing changes: update the project's README.md and CLAUDE.md if conventions, exports, or workflows changed.
 - After ANY correction from me: turn it into a rule that prevents the same mistake — in the project CLAUDE.md if project-specific, or in the global CLAUDE.md / a skill if universal.
 - When I ask for findings, reports, audits, or lists to review: deliver a hosted HTML artifact (Artifact tool), not a raw markdown file. I review first; destructive follow-ups only after my explicit go-ahead.
