@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R11 — Merge-readiness evidence card`
-- **NEXT ACTION:** Inventory `done`, review, and completion-report evidence ownership, then grill the smallest unresolved R11 design frontier.
-- **Progress:** 9 complete; 1 declined; 1 researching; 7 pending.
+- **Current item:** `R12 — Non-interactive tooling canary`
+- **NEXT ACTION:** Inventory existing shell, package-manager, and workspace-runner canary behavior, then grill the smallest unresolved R12 design frontier.
+- **Progress:** 10 complete; 1 declined; 1 researching; 6 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 14 August 2026
@@ -52,8 +52,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R08 | P1 | Structured decision ledger | Skill | `declined` | Decision recorded | Declined as disproportionate |
 | R09 | P1 | Ticket evidence preservation | Skill | `complete` | `skills/audit-ticket/references/ticket-evidence.md` | Complete |
 | R10 | P1 | Artifact lifecycle manager | Skill | `complete` | `skills/manage-report-lifecycle/` | Complete |
-| R11 | P1 | Merge-readiness evidence card | Skill | `researching` | TBD | Resolve overlap |
-| R12 | P1 | Non-interactive tooling canary | Skill | `pending` | TBD | Start after R11 closes |
+| R11 | P1 | Merge-readiness evidence card | Skill | `complete` | `skills/done/` and `skills/file-pr/` | Complete |
+| R12 | P1 | Non-interactive tooling canary | Skill | `researching` | TBD | Resolve overlap |
 | R13 | P1 | Material-state progress updates | Global rules | `pending` | TBD | Start after R12 closes |
 | R14 | P1 | Evidence reuse and ownership | Global rules | `pending` | TBD | Start after R13 closes |
 | R15 | P0 | GSM3 operating facts | Project rules | `pending` | TBD | Start after R14 closes |
@@ -586,17 +586,60 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `researching`
+- **Status:** `complete`
 - **Rationale:** Directly answers recurring “are we good?”, “what is left?”, and “no regression?” loops.
 - **Source specification:** Map each request item to implementation; list tests, browser, database, CI, and review evidence; separate verified, assumed, deferred, and pending; state the exact next action.
 - **Known overlap to resolve:** `done` correctness accounting and completion reporting.
-- **Decisions / final artifact / verification:** Pending.
+- **Reuse scan:**
+  - `done` already owns the final cross-surface verdict, six acceptance lanes, direct boundary evidence, `verified`/`assumed`/`deferred`/`blocked`/`not-applicable` states, an evidence ceiling, and the exact next action.
+  - `file-pr` already requires a verified `done` report before opening a PR and must not invent a replacement verdict. Its PR body can still compress or omit evidence because it does not require a request-item map or named evidence facets.
+  - `parallel-review` and `converge-reviews` own review findings, coverage, dispositions, and convergence; browser QA, database read-back, and CI are evidence suppliers rather than readiness owners.
+  - `review-pr` reports PR review state but does not map the originating request to implementation or prove tests, browser, database, and CI together.
+- **Concrete gaps:**
+  - `done` maps requested outcomes to lanes but its final card has only one row per lane, so it does not prove every request item has an implementation and acceptance observation.
+  - Tests and review are buried in the Code lane, database is implicit, and CI is unnamed; the user cannot scan those five evidence facets in one place.
+  - `pending` is missing. Current states distinguish intentional postponement (`deferred`) and unavailable/failed verification (`blocked`), but not ordinary unfinished work or evidence that has not yet run.
+  - `file-pr` can turn the richer completion evidence into a lossy new summary unless it consumes the request map and evidence index directly.
+- **Architecture hypothesis:** Deepen `done` as the sole readiness-card producer and make `file-pr` consume that card. Do not add a second merge-readiness skill, ledger, or shared schema file unless the card proves too large to keep in the two always-used workflows.
+- **Open design tree:**
+  1. Should R11 deepen `done` and its `file-pr` handoff, deepen `done` alone, or create a separate readiness skill? **Resolved:** deepen `done` as the sole readiness-card producer and require `file-pr` to consume that card; add no separate skill or ledger.
+  2. After ownership is settled, what exact request-item rows and evidence facets belong in the card? **Resolved:** add two compact tables to `done`: a request-coverage table with `Request item | Implementation/deliverable | Acceptance evidence | State | Gap/next action`, and an evidence index with fixed `Tests | Browser | Database | CI | Review` rows carrying exact observations or artifacts, state, and gap. Keep the existing six-lane table as the acceptance-boundary authority rather than duplicating it.
+  3. After card shape is settled, how should `pending` differ from `deferred`, `blocked`, and `assumed`? **Resolved:** `pending` means required work or evidence is waiting on an unmet prerequisite or has not been attempted; `deferred` means intentionally postponed with a named owner and resume condition; `blocked` means a prerequisite-ready action was attempted and failed or cannot proceed; `assumed` means only indirect evidence exists; `verified` requires direct acceptance evidence; `not-applicable` is genuinely outside scope.
+  4. After states are settled, what makes overall readiness verified and what exact next action is reported otherwise? **Resolved:** subject only to the bounded `ready-to-publish` exception in decision 7, readiness is `ready` only when every request item and required acceptance lane is `verified` and every evidence-index facet is `verified` or `not-applicable`. Any required `pending`, `assumed`, `deferred`, or `blocked` row otherwise makes it `not ready`. Report the first dependency-ready unresolved action as the exact next action.
+  5. After readiness semantics are settled, how must `file-pr` reuse the card without restating or weakening its evidence? **Resolved:** require the request-coverage table, evidence index, lane table, verdict, and exact next action from the current `done` run. Derive `What changed` from verified request rows and `How to verify` from exact evidence-index observations. A missing, stale, or non-ready card returns to `done`; `file-pr` does not invent evidence or attach the full internal card verbatim.
+  6. After the handoff is settled, what exact request and repository snapshot binds the card so `file-pr` can reject stale evidence? **Resolved:** record the originating request summary, base commit, current head, and working-tree/diff hash. `file-pr` recomputes them; any changed request scope, head, or diff makes the card stale and returns to `done`.
+  7. Acceptance review exposed a circular gate: `done` cannot give a final ready verdict before PR publication and PR-only CI/review evidence exist, while `file-pr` cannot publish until it receives a ready card. What bounded pre-publication state may `file-pr` consume, and how does publication return to `done` for the final verdict? **Resolved:** `done` may issue `ready-to-publish` only when every pre-publication requirement is verified and the unresolved required rows depend solely on the PR existing. `file-pr` may consume that bounded state, publish and authoritatively re-fetch the remote branch and PR, then return to `done`; only the post-publication `done` run may issue final `ready` after CI, review, and every other applicable row resolve.
+- **Decisions:**
+  1. **Ownership:** `done` remains the single authority for readiness and produces the richer evidence card. `file-pr` consumes its request coverage and evidence index rather than reconstructing readiness. Review, browser, database, and CI workflows remain evidence suppliers. Add no merge-readiness skill, ledger, or shared schema file.
+  2. **Card shape:** Add one request-coverage row per originating request item and one fixed evidence-index row for each of Tests, Browser, Database, CI, and Review. Each row names direct evidence, state, and its gap or next action. Preserve the six-lane table as the only acceptance-surface map.
+  3. **States:** Use `pending` for required work or evidence waiting on an unmet prerequisite or not yet attempted. Reserve `deferred` for intentional postponement with an owner and resume condition, `blocked` for a prerequisite-ready action that failed or cannot proceed, `assumed` for indirect evidence, `verified` for direct acceptance evidence, and `not-applicable` for a surface outside scope.
+  4. **Verdict:** Derive readiness from the tables. Subject only to decision 7's bounded `ready-to-publish` exception, every request item and required lane must be `verified` and every evidence facet must be `verified` or `not-applicable` for final `ready`. Any required `pending`, `assumed`, `deferred`, or `blocked` row otherwise yields `not ready`. Name the first dependency-ready unresolved action as the exact next action.
+  5. **PR handoff:** `file-pr` requires the current `done` request table, evidence index, lane table, verdict, and exact next action. It derives `What changed` from verified request rows and `How to verify` from exact evidence observations. Missing, stale, or non-ready evidence returns to `done`; the PR workflow neither reconstructs evidence nor copies the full internal card into every PR.
+  6. **Currency:** Bind the card to the originating request summary, base commit, current head, and working-tree/diff hash. `file-pr` recomputes those values and returns to `done` whenever request scope, head, or diff changed.
+  7. **Publication transition:** The sole exception to decision 4's final-ready rule is `ready-to-publish`, a bounded handoff rather than a completion verdict. It is allowed only when all pre-publication rows are verified and every unresolved required row is explicitly PR-dependent. `file-pr` publishes, verifies the remote branch and PR from authoritative read-back, and returns the evidence to `done`; final `ready` still requires CI, review, publication, and all other applicable rows to satisfy the strict verdict.
+- **Proposed implementation shape:** Amend `done` in place with the request-coverage table, fixed evidence index, expanded state vocabulary, strict row-derived verdict, exact next action, and snapshot binding. Amend `file-pr` only at its completion precondition and body derivation steps so it consumes the card. Update README descriptions only if discovery wording changes; add no new skill, schema file, ledger, trigger cases, or evaluator.
+- **Shared-understanding confirmation:** Confirmed by the user on 14 August 2026. Grill complete.
+- **Final artifact:** `skills/done/SKILL.md` as the sole readiness-card authority and `skills/file-pr/SKILL.md` as its currency-checking consumer, with their README descriptions updated.
+- **Verification:**
+  - Acceptance review found one Critical circular publication gate and five Serious execution gaps: non-Git currency was undefined; snapshot commands were not executable; PR base currency was incomplete; commit ordering was underspecified; and row-state vocabulary was inconsistent.
+  - The confirmed repair adds a bounded `ready-to-publish` transition, external-target currency, safe alternate-index commands, refreshed PR-base and merge-base binding, exact append-only commit enumeration, and one state vocabulary. `file-pr` now returns authoritative remote-branch and PR evidence to a post-publication `done` run instead of claiming completion.
+  - The affected-area recheck found two remaining Serious currency gaps: the card did not bind the exact branch through push and PR read-back, and a successful commit transition did not prove the committed tree still matched the verified snapshot with a clean worktree.
+  - The repair records the exact branch and invalidates renames or switches, binds the push target and PR head to that branch, and requires the same clean-status and exact-tree content seal both before push and before final readiness.
+  - Mandatory review then found seven remaining gaps: `pending` and `blocked` were not exclusive; `file-pr` did not inspect the alternate-index diff hunk-by-hunk immediately before commit; mixed external currency was incomplete; base-tip currency was missing; multi-part evidence facets could hide their weakest subcheck; the card templates omitted their verdict fields; and non-PR Git carried ambiguous PR fields.
+  - The consolidation repair makes prerequisite readiness the pending/blocked boundary, adds reproducible candidate-diff accounting and last-moment currency validation, records mixed external targets and the remote base tip, aggregates evidence facets from preserved subchecks, completes both card templates, and marks PR currency not applicable for non-PR Git.
+  - The final simplify review found four blocking clarity gaps: the final-ready rule did not name its sole publication exception; a requested non-PR commit depended circularly on final readiness; base selection had no authoritative owner; and `file-pr` duplicated scope accounting across two gates. It also required the README usage line to state the handoff prerequisite and a mutation preflight before GitHub writes.
+  - The repair makes the exception explicit, validates non-PR commits before deriving final readiness, centralizes base election in `done`, keeps one candidate-diff accounting pass with snapshot invalidation, sharpens README discovery, and applies `preflight-mutations` immediately before push and PR creation.
+  - The final affected-area check found two execution blockers: base discovery still read cached remote-tracking branches, and one combined push-plus-PR preflight became a multi-step batch without an authorized durable home.
+  - The repair queries authoritative remote heads directly and uses two independent inline single-step mutation cards, verifying the landed branch before preflighting PR creation and preserving that partial-state evidence if the second card cannot proceed.
+  - The exact alternate-index sequence ran from the repository root and left the real index byte hash unchanged. The repository structural verifier passed across 26 skills and 60 Markdown files; its only warning is the pre-existing ignored `license` key in `git-commit` frontmatter.
+  - Swift Foundation parsed both changed skills, the README, and this ledger; `git diff --check` passed. Code, runtime, browser, database, CI, and network checks are not applicable to these agent-consumed Markdown changes. No new skill, schema, trigger, evaluator, commit, push, or PR was added.
+  - The final affected-area recheck reported zero Critical and zero Serious findings after authoritative remote-base discovery and independent push/PR-create preflights were added. R11 is complete.
 
 ### R12 — Non-interactive tooling canary
 
 - **Priority:** P1
 - **Proposed destination:** Skill
-- **Status:** `pending`
+- **Status:** `researching`
 - **Rationale:** A package-manager firewall wrapper broke non-interactive pnpm use and forced development workflows to bypass the workspace runner.
 - **Source specification:** Test interactive and non-interactive shells; exercise development, test, and workspace-build commands; verify dependent package outputs; document intentional bypasses and their cost.
 - **Decisions / final artifact / verification:** Pending.
@@ -741,3 +784,19 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Repaired the two R10 acceptance gaps by making source-set discovery authoritative and repeatable and adding the three missing exclusion cases. R10 remains `verifying`; R11 remains pending.
 - Repaired the mandatory R10 review findings by grounding canonical election in an existing hosted object, partitioning the complete publication plan by mutation domain, exhaustively binding competing authorities, invalidating closeout on discovery drift, and separating lifecycle identity from host-version identity. Deferred fixture-backed routing evidence as outside R10's no-evaluator scope. R10 remains `verifying`; R11 remains pending.
 - Closed R10 after the mandatory review and post-simplification delta checks both reported zero Critical and zero Serious findings and all applicable structural, YAML, Markdown, JSON, and diff checks passed. Advanced R11 to `researching`.
+- Completed the R11 overlap scan. `done` already owns readiness and `file-pr` already consumes its verdict; the missing behavior is request-item accounting, a named evidence index, a pending state, and lossless PR handoff. Advanced R11 to `grilling`.
+- Recorded R11 ownership: deepen `done` as the sole readiness-card producer and require `file-pr` to consume it; do not add a competing readiness skill or ledger.
+- Recorded R11 card shape: add a request-coverage table and a five-row evidence index while retaining the existing six-lane card as the acceptance-boundary authority.
+- Recorded R11 states: distinguish ordinary pending work from intentional deferral, blockers, indirect assumptions, direct verification, and genuinely inapplicable evidence.
+- Recorded R11 verdict: compute readiness strictly from request, lane, and evidence rows and surface the first dependency-ready unresolved action when not ready.
+- Recorded R11 PR handoff: `file-pr` derives its change and verification sections from the current `done` card and returns missing, stale, or non-ready evidence to `done`.
+- Recorded R11 currency: bind the readiness card to the originating request summary, base commit, current head, and working-tree/diff hash so changed scope or content invalidates it. The grill frontier is empty pending confirmation.
+- User confirmed the complete R11 design. Implemented request coverage, five named evidence facets, `pending`, row-derived readiness, deterministic content currency, the expected append-only completion-commit transition, and a `file-pr` recomputation gate. Advanced R11 to `verifying`; R12 remains pending.
+- Returned R11 to `grilling` after acceptance review found a circular gate between final readiness and PR publication. The pre-publication transition is open; five mechanical execution findings await the same repair pass.
+- Recorded the R11 publication transition: a bounded `ready-to-publish` card may authorize `file-pr`, which must re-fetch the remote branch and PR and return to `done` for the final readiness verdict. The corrected frontier is empty pending confirmation.
+- User confirmed the corrected R11 design. Repaired the circular publication gate and five execution findings with two-phase readiness, conditional external currency, executable snapshot and commit checks, refreshed PR-base binding, and authoritative publication read-back. Advanced R11 to `verifying`; R12 remains pending.
+- Repaired the two remaining R11 recheck findings by binding exact branch identity through push and PR read-back and sealing the committed content against the verified snapshot before publication and final readiness. R11 remains `verifying`; R12 remains pending.
+- Consolidated the mandatory R11 review findings into the existing card and handoff: exclusive states, exact candidate-diff accounting, mixed external and base-tip currency, weakest-subcheck evidence aggregation, complete verdict headers, and an explicit non-PR Git lane. R11 remains `verifying`; R12 remains pending.
+- Applied the final R11 simplify repairs: one explicit readiness exception, a non-circular non-PR commit transition, authoritative base resolution in `done`, one candidate-diff accounting gate, sharper README invocation guidance, and mutation preflight before GitHub writes. R11 remains `verifying`; R12 remains pending.
+- Repaired the final two R11 execution findings by reading integration candidates directly from remote heads and splitting publication into independently gated push and PR-create mutations with authoritative read-back between them. R11 remains `verifying`; R12 remains pending.
+- Closed R11 after the final affected-area recheck reported zero Critical and zero Serious findings and all applicable structural, alternate-index, Markdown, and diff checks passed. Advanced R12 to `researching`.

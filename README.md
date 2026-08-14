@@ -46,7 +46,7 @@ npx skills add bhagyamudgal/skills
 
 | Skill | Description |
 |-------|-------------|
-| `done` | MANDATORY surface-aware verification — infer six acceptance lanes, verify each at its user-facing boundary, and cap completion at the weakest required lane |
+| `done` | MANDATORY readiness verification — map every request item to implementation, verify six acceptance lanes and five evidence facets, and issue final readiness only after required publication evidence exists |
 | `parallel-review` | Build a reviewer roster, dispatch it in parallel over a local diff, and merge to one ranked list — the merge is not done while any reviewer is outstanding |
 | `review-pr` | Deep anti-slop review of a GitHub PR with critic-pass filtering, persistent multi-round state, and rolling-review posting — batch mode reviews multiple PRs via one subagent per PR with a consolidated report |
 | `fix-pr-review` | Triage and fix CodeRabbit / `review-pr` findings, then reply + resolve PR conversations |
@@ -69,7 +69,7 @@ npx skills add bhagyamudgal/skills
 | `sync-agent-setups` | Manually preview and sync Claude Code's user-authored behavioral setup outward to explicitly selected agents |
 | `resolving-merge-conflicts` | Resolve an in-progress git conflict without a **silent drop** — every hunk from both sides placed as kept, superseded, or dropped before you commit |
 | `git-commit` | Conventional commits from diff analysis — every file classified into exactly one commit; append-only, with a message-only mode |
-| `file-pr` | Open a PR a reviewer understands in one read — preconditions, base-branch discovery, a title naming the observed outcome rather than the mechanism, and a six-bar cold-read check before it opens |
+| `file-pr` | Publish a PR from a current `ready-to-publish` card, verify the remote branch and PR, then return their evidence to `done` |
 | `file-issue` | File one issue an assignee can act on unaided — two-vocabulary duplicate search, a title that survives a wrong diagnosis, a body carrying observation, reproduction, expectation and a checkable done condition |
 | `openclaw-backup` | Verified restore point for an OpenClaw install — official archive, `VACUUM INTO` SQLite snapshots, a raw archive covering the session transcripts the official tool drops, checksum manifest, and a per-install `RESTORE.md`. Manual-only via `disable-model-invocation`, so its description stays out of context until you invoke it |
 
@@ -109,7 +109,7 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 /sync-agent-setups     # Preview and sync Claude setup to selected agents
 /resolving-merge-conflicts         # Resolve merge/rebase conflicts safely
 /git-commit          # Conventional commit (or message-only)
-/file-pr             # Open the PR — readable title and body, cold-read checked
+/file-pr             # Publish a current ready-to-publish card, then return evidence to done
 /file-issue          # File one actionable issue — dedupe search, then the same bars
 /openclaw-backup     # Verified restore point for an OpenClaw install
 ```
