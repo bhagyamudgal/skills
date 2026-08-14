@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R15 — GSM3 operating facts`
-- **NEXT ACTION:** Locate the GSM3 repository and its authoritative project-rule source before opening the R15 grill.
-- **Progress:** 12 complete; 2 declined; 1 researching; 3 pending.
+- **Current item:** `R16 — Spanical landing conventions`
+- **NEXT ACTION:** Locate the Spanical repository and its authoritative project-rule source before opening the R16 grill.
+- **Progress:** 13 complete; 2 declined; 1 researching; 2 pending.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 14 August 2026
@@ -56,8 +56,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R12 | P1 | Non-interactive tooling canary | Skill | `declined` | Decision recorded | Declined as disproportionate |
 | R13 | P1 | Material-state progress updates | Global rules | `complete` | `~/.claude/CLAUDE.md` and `reference/CLAUDE.md` | Complete |
 | R14 | P1 | Evidence reuse and ownership | Global rules | `complete` | `~/.claude/CLAUDE.md` and `reference/CLAUDE.md` | Complete |
-| R15 | P0 | GSM3 operating facts | Project rules | `researching` | TBD | Locate project authority |
-| R16 | P1 | Spanical landing conventions | Project rules | `pending` | TBD | Start after R15 closes |
+| R15 | P0 | GSM3 operating facts | Project rules | `complete` | GSM3 PR [#5767](https://github.com/gastrosmart/GSM3/pull/5767) | Complete |
+| R16 | P1 | Spanical landing conventions | Project rules | `researching` | TBD | Locate project authority |
 | R17 | P1 | Fileseye skill-change canary | Project rules | `pending` | TBD | Start after R16 closes |
 | R18 | P2 | Fact-bound personal drafting | Decision log | `pending` | TBD | Start after R17 closes |
 
@@ -699,16 +699,28 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P0
 - **Proposed destination:** Project rules
-- **Status:** `researching`
+- **Status:** `complete`
 - **Rationale:** Board fields, estimate scale, runner policy, database fingerprints, module names, and migration permissions are repository-specific.
 - **Source specification:** Agent-assisted estimate anchors; owner-only board mutation; Blacksmith runner policy; database target preflight; module and release field vocabulary.
-- **Decisions / final artifact / verification:** Pending; requires the GSM3 repository's actual rule source and acceptance surface.
+- **Repository authority:** `/Users/bhagyamudgal/Desktop/MyFiles/Work/gastro-smart/GSM3/CLAUDE.md` is the tracked project source. At inventory time, no project `AGENTS.md` existed and the checkout was `dev`, 15 commits behind `origin/dev`, with the user's untracked `docs/release_25_1_todo_triage.html`; preserve it and use a safe branch/worktree for any committed change.
+- **Evidence inventory:**
+  - **Estimate anchors:** Missing. The repository defines no estimate unit, numeric scale, or named anchor tickets. The historical 232-hour total across 68 issues cannot reconstruct the calibration contract.
+  - **Owner-only board mutation:** Already authoritative globally. Do not duplicate it in GSM3; the project file separately requires assignees on agent-filed issues.
+  - **Blacksmith runner policy:** Every tracked workflow runner uses a Blacksmith 2/4/8-vCPU Ubuntu 24.04 label; `.github/actionlint.yaml` is the runner-label source. Reusable CI/deploy workflows use Blacksmith cache/build actions, but no project instruction preserves this policy.
+  - **Database target preflight:** Data claims are already SELECT-only and schema mutations require explicit permission, but no universal rule requires a redacted source/target identity read-back before a mutation or cross-environment sync. Snapshot age is currently cached in dated prose and should instead be measured each run.
+  - **Module and release vocabulary:** Existing Issue Hygiene rules already require the actual user-facing module in conventional issue titles, the next live Release iteration, `Next-Sprint` by default, live field/iteration re-query, and authoritative item read-back. A complete board Module-field option list is not evidenced and should not be invented or cached.
+- **Stable project additions:** Preserve Blacksmith by copying the closest workflow and using runner labels declared in `.github/actionlint.yaml`; require redacted database identity read-back, dry run where supported, and explicit per-use permission before database mutation or cross-environment sync; add `AGENTS.md -> CLAUDE.md` so Codex consumes the Claude project source. Add no new skill and no duplicate global ownership or board vocabulary.
+- **Estimate decision:** Before every board-estimate batch, confirm the estimate unit and 3–5 representative anchors; do not cache numeric anchors in project rules. The calibration workflow remains in `calibrate-board-mutations`.
+- **Implementation shape:** Make compact, surgical additions to GSM3's root `CLAUDE.md` for fresh estimate calibration, Blacksmith runner preservation, and redacted database target identity/preflight. Reuse the global owner-only mutation rule and existing project module/release vocabulary without duplicating them. Add a project `AGENTS.md -> CLAUDE.md` symlink so Codex reads the same project source. Add no new skill, module-option cache, dynamic board IDs, database secrets, or dated snapshot facts.
+- **Open design tree:** Empty; the user selected the complete recommended design.
+- **Final artifact:** GSM3 root `CLAUDE.md` plus project `AGENTS.md -> CLAUDE.md`, committed as `42a9db7a2d09c8ca559a3f9057eb03fb61057edd` on `bhagya/feat-agent-operating-facts` and published in [GSM3 PR #5767](https://github.com/gastrosmart/GSM3/pull/5767).
+- **Verification:** The diff adds only the three confirmed project facts and the source-sharing symlink. Exact symlink comparison, tracked-runner inventory, path checks, secret-pattern scan, Markdown parsing, and `git diff --check` passed. Focused review and all changed-line rechecks ended with zero Critical and zero Serious findings. The committed tree exactly matches the verified snapshot, the remote branch and PR head match the local commit, and the PR targets current `dev`. Malware and both Socket Security checks passed; CodeRabbit remains the normal pending human-review gate after publication. TypeScript, application tests, browser, database execution, and workflow execution are not applicable because code and workflows did not change. The original GSM3 checkout and its untracked report remain untouched.
 
 ### R16 — Spanical landing conventions
 
 - **Priority:** P1
 - **Proposed destination:** Project rules
-- **Status:** `pending`
+- **Status:** `researching`
 - **Rationale:** Stacked PR and Drizzle conventions should not burden unrelated projects.
 - **Source specification:** Main integration base; bottom-up stacked merges; exact-SHA lease checks; Drizzle migration convention; repository config over repeated CLI flags.
 - **Decisions / final artifact / verification:** Pending; requires the Spanical repository's actual rule source and acceptance surface.
@@ -847,3 +859,11 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Implemented the confirmed R14 rule in the Claude Code source of truth and repository reference copy. Verified that the existing Codex symlink exposes the exact rule and advanced R14 to `verifying`.
 - The focused R14 review found that target/task/lens ownership could permit two executors and that the exception did not clearly cover the existing explicit parallel-review contract. Tightened ownership to one execution owner per target/task and reserved lenses or explicit independent-review/recheck contracts for read-only reviewers.
 - Closed R14 after exact live/source/symlink checks, structural Markdown verification, focused review, one clean affected-area recheck, and a proportional simplify pass. Advanced R15 to `researching`.
+- Completed the R15 repository inventory. Ownership and board vocabulary already have authoritative homes; Blacksmith preservation, database target identity, and a project Claude-to-Codex symlink are evidence-backed additions. Advanced R15 to `grilling` with estimate calibration as the only unresolved decision.
+- Recorded the recommended R15 estimate policy: confirm the unit and 3–5 representative anchors before every batch rather than cache unsupported numbers. The grill frontier is empty pending confirmation.
+- User selected the complete recommended R15 design. Advanced R15 to `implementing`; the GSM3 change will use an isolated user-owned worktree so the existing dirty `dev` checkout remains untouched.
+- Implemented the confirmed R15 rules in an isolated current-`origin/dev` worktree: Blacksmith preservation, redacted live database identity preflight, per-batch estimate calibration, and `AGENTS.md -> CLAUDE.md`. Advanced R15 to `verifying`.
+- The focused R15 review found that database identity was not bound to the live endpoint, estimate anchors lacked approved values/rounding, and worktree creation had generated four untracked Husky shims. Added live endpoint read-back with a socket/proxy stop condition, required unit/scale/rounding plus ticket-to-estimate pairs, and moved the generated shims to `/tmp/r15-husky.P6camq/_` so only intended files remain.
+- Applied the R15 simplify findings: made redacted database endpoints distinguishable, removed action-version scope from the runner rule, collapsed estimate calibration to one batch-scoped invariant, and qualified volatile repository observations as inventory-time facts.
+- Repaired the final R15 wording edge by requiring identities for each applicable source or target, so single-database mutations do not invent a nonexistent source while cross-environment syncs still bind both endpoints.
+- Closed R15 after the final changed-line recheck reported zero Critical and zero Serious findings, all applicable instruction/symlink/security checks passed, and GSM3 PR #5767 published the exact verified commit. Advanced R16 to `researching`.
