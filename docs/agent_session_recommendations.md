@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R18 — Fact-bound personal drafting`
-- **NEXT ACTION:** Resolve whether R18 remains a narrow decision record or becomes an always-loaded personal-drafting rule.
-- **Progress:** 13 complete; 4 declined; 1 grilling.
+- **Current item:** None; all 18 recommendations are terminal.
+- **NEXT ACTION:** Review and merge skills PR #9 if the complete recommendation set is acceptable; do not start another recommendation from this ledger.
+- **Progress:** 13 complete; 5 declined.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 14 August 2026
@@ -59,7 +59,7 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R15 | P0 | GSM3 operating facts | Project rules | `complete` | GSM3 PR [#5767](https://github.com/gastrosmart/GSM3/pull/5767) | Complete |
 | R16 | P1 | Spanical landing conventions | Project rules | `declined` | Decision recorded | Declined as duplicate |
 | R17 | P1 | Fileseye skill-change canary | Project rules | `declined` | Decision recorded; PR [#42](https://github.com/hexleap/fileseye/pull/42) closed unmerged | Declined as unnecessary |
-| R18 | P2 | Fact-bound personal drafting | Decision log | `grilling` | Decision recorded or global `CLAUDE.md` | Confirm placement |
+| R18 | P2 | Fact-bound personal drafting | Decision log | `declined` | Decision recorded | Declined as unnecessary |
 
 ## Source record
 
@@ -766,7 +766,7 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P2
 - **Proposed destination:** Decision log
-- **Status:** `grilling`
+- **Status:** `declined`
 - **Rationale:** A personal-content draft invented motivations and public positioning, but this is narrow to personal copy work.
 - **Source specification:** Separate known facts from inferred narrative; ask before inventing motivations or disclosure intent; keep private experiments private unless explicitly authorized.
 - **Overlap inventory:**
@@ -775,9 +775,11 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
   - The installed `copywriting` skill asks for transformation, voice, emotion, and an about-page origin story; it forbids fabricated statistics and testimonials but does not distinguish known personal facts from invented motivations. `copy-editing` preserves the author's core message and flags unsupported claims, but it does not own new personal drafting.
   - The source evidence is one narrow personal-copy episode, and the retrospective itself proposed keeping this as a decision log rather than adding a skill or global rule.
 - **Architecture hypothesis:** Keep the exact fact-bound drafting invariant in this ledger without adding always-loaded context or editing broad marketing skills. If the failure recurs, promote a two-sentence rule scoped to first-person or personal copy: user-provided facts are authoritative; motivations, public positioning, disclosure intent, and private experiments require explicit authorization.
-- **Open design tree:**
-  1. Should R18 remain a decision record, add the two-sentence global personal-drafting rule now, or be declined entirely? **Open.**
-- **Decisions / final artifact / verification:** Pending placement decision.
+- **Open design tree:** Empty; the user declined the recommendation after reviewing its narrow evidence and overlap.
+- **Decision:** Add no global rule, skill, or copywriting amendment. The existing assumption guard covers the underlying behavior sufficiently for now; preserve the incident as evidence and reconsider a targeted first-person drafting rule only if it recurs.
+- **Shared-understanding confirmation:** Confirmed by the user on 14 August 2026.
+- **Final artifact:** Decision recorded in this ledger; no agent-consumed artifact changed.
+- **Verification:** The decision is reflected in the R18 detail, status board, terminal run counts, and final `NEXT ACTION`.
 
 ## Change log
 
@@ -911,3 +913,4 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Closed R17 after the Fileseye instruction and symlink checks passed and PR #42 published the exact verified commit. Advanced R18 to `researching`.
 - Completed the R18 overlap inventory. General assumption and claim-verification rules do not fully cover personal narrative, but the evidence is one narrow episode and the retrospective proposed a decision log. Advanced R18 to `grilling` with placement as the only decision.
 - The user reconsidered R17 and decided the Fileseye-specific rule was unnecessary. Closed PR #42 without merging or deleting its branch, changed R17 from `complete` to `declined`, and corrected the run totals; R18 remains the sole active item.
+- The user declined R18 because one narrow personal-copy incident did not justify another permanent rule. Recorded the recurrence threshold and closed the retrospective with all 18 recommendations terminal: 13 complete and 5 declined.
