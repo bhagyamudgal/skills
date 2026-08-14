@@ -7,7 +7,7 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
 - **Current item:** `R18 — Fact-bound personal drafting`
 - **NEXT ACTION:** Resolve whether R18 remains a narrow decision record or becomes an always-loaded personal-drafting rule.
-- **Progress:** 14 complete; 3 declined; 1 grilling.
+- **Progress:** 13 complete; 4 declined; 1 grilling.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 14 August 2026
@@ -58,7 +58,7 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R14 | P1 | Evidence reuse and ownership | Global rules | `complete` | `~/.claude/CLAUDE.md` and `reference/CLAUDE.md` | Complete |
 | R15 | P0 | GSM3 operating facts | Project rules | `complete` | GSM3 PR [#5767](https://github.com/gastrosmart/GSM3/pull/5767) | Complete |
 | R16 | P1 | Spanical landing conventions | Project rules | `declined` | Decision recorded | Declined as duplicate |
-| R17 | P1 | Fileseye skill-change canary | Project rules | `complete` | Fileseye PR [#42](https://github.com/hexleap/fileseye/pull/42) | Complete |
+| R17 | P1 | Fileseye skill-change canary | Project rules | `declined` | Decision recorded; PR [#42](https://github.com/hexleap/fileseye/pull/42) closed unmerged | Declined as unnecessary |
 | R18 | P2 | Fact-bound personal drafting | Decision log | `grilling` | Decision recorded or global `CLAUDE.md` | Confirm placement |
 
 ## Source record
@@ -739,7 +739,7 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P1
 - **Proposed destination:** Project rules
-- **Status:** `complete`
+- **Status:** `declined`
 - **Rationale:** A large prerequisite rewrite broke the skill it intended to improve, and review rounds expanded without convergence.
 - **Source specification:** Snapshot current behavior; run representative fixtures before and after; bound review rounds; block merge on behavior regression; preserve named user workflows.
 - **Repository authority:** `/Users/bhagyamudgal/Desktop/MyFiles/Work/hexleap/fileseye/CLAUDE.md` is the tracked project source; `skills/review-pr/` is explicitly the private product source of truth. At inventory time, no project `AGENTS.md` existed and the clean primary checkout was `main`; an unrelated dirty `.claude/worktrees/agent-ae05b74e71be179f5` remained untouched.
@@ -756,10 +756,11 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
   3. **Invocation boundary:** Independently record each version's expected skill-tree fingerprint, run it from a throwaway checkout with a project-scoped skill link, pass `--skill-dir`, and require the artifact fingerprint to equal the expected value with `pinned: true`.
   4. **Merge gate:** Score every artifact against the same benchmark and score options, run existing CI, and use a relevant existing test or instruction-path trace for a named workflow replay cannot exercise. Block merge on incomplete replay or scoring, invocation or fingerprint mismatch, replay format or count failure, candidate `REGRESSION` or `CANNOT CERTIFY` where the baseline certified, or loss of a named workflow.
   5. **Implementation shape:** Add one compact project rule and `AGENTS.md -> CLAUDE.md`; add no skill, evaluator, fixture registry, script, workflow, or duplicate review-round policy. Keep global setup repair outside R17 because `sync-agent-setups` is user-invoked only.
+  6. **Final disposition:** The user decided the Fileseye-specific rule was unnecessary and explicitly requested that PR #42 be closed. No R17 rule or symlink will land on `main`.
 - **Shared-understanding confirmation:** Confirmed by the user on 14 August 2026. Grill complete.
 - **Review findings and repairs:** The first review found that replay was not explicitly scored, fingerprint matching lacked an expected value, named workflows outside single-PR replay had no evidence path, representative selection was underspecified, and the prose exception was ambiguous. The final rule requires completed replay-and-score pairs, independently recorded expected fingerprints, preselected representative PRs, existing-test or instruction-trace evidence for unsupported named workflows, and a recorded non-semantic exception. Both affected-area rechecks reported zero Critical and zero Serious findings.
-- **Final artifact:** Fileseye PR [#42](https://github.com/hexleap/fileseye/pull/42), commit `c177b2eaba263d5f6873e3118359c4938fa45d7c`, containing `CLAUDE.md` and `AGENTS.md -> CLAUDE.md`.
-- **Verification:** Fileseye's installed Prettier checked `CLAUDE.md`; `AGENTS.md` is a relative symlink to `CLAUDE.md` and both paths returned identical bytes; `git diff --check` passed; the committed and remote branch SHAs matched; PR #42 was read back as open against `main` at the exact verified head. TypeScript checks, runtime tests, and live replay were not applicable because no code or review-skill bytes changed.
+- **Final artifact:** Decision recorded. Fileseye PR [#42](https://github.com/hexleap/fileseye/pull/42) was closed without merging; its branch remains available at commit `c177b2eaba263d5f6873e3118359c4938fa45d7c`.
+- **Verification:** GitHub read-back reported PR #42 `CLOSED`, `mergedAt: null`, and the unchanged head commit. `git ls-remote` confirmed the branch remains available. The earlier instruction, symlink, formatting, and review evidence is retained as implementation history, not as a claim that the rule landed.
 
 ### R18 — Fact-bound personal drafting
 
@@ -909,3 +910,4 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - The focused R17 review exposed missing scorer invocation, unbound expected fingerprints, uncheckable named-workflow evidence, and an overbroad prose exception. Tightened the single project rule and stopped after affected-area rechecks reported zero Critical and zero Serious findings.
 - Closed R17 after the Fileseye instruction and symlink checks passed and PR #42 published the exact verified commit. Advanced R18 to `researching`.
 - Completed the R18 overlap inventory. General assumption and claim-verification rules do not fully cover personal narrative, but the evidence is one narrow episode and the retrospective proposed a decision log. Advanced R18 to `grilling` with placement as the only decision.
+- The user reconsidered R17 and decided the Fileseye-specific rule was unnecessary. Closed PR #42 without merging or deleting its branch, changed R17 from `complete` to `declined`, and corrected the run totals; R18 remains the sole active item.
