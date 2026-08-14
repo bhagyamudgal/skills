@@ -5,9 +5,9 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 ## Run state
 
 - **Objective:** Process every recommendation in source order. For each item, finish a `grill-me` design tree, obtain explicit confirmation of shared understanding, write the agreed artifact with `writing-for-agents`, verify it at its acceptance surface, and update this ledger before advancing.
-- **Current item:** `R17 — Fileseye skill-change canary`
-- **NEXT ACTION:** Locate the Fileseye repository and inventory its existing skill-regression safeguards before opening the R17 grill.
-- **Progress:** 13 complete; 3 declined; 1 researching; 1 pending.
+- **Current item:** `R18 — Fact-bound personal drafting`
+- **NEXT ACTION:** Resolve whether R18 remains a narrow decision record or becomes an always-loaded personal-drafting rule.
+- **Progress:** 14 complete; 3 declined; 1 grilling.
 - **Canonical artifact:** `docs/agent_session_recommendations.md`
 - **Source artifact:** Agent Session Retrospective, local research artifact dated 12 August 2026, served at `http://127.0.0.1:4173/` when captured.
 - **Last updated:** 14 August 2026
@@ -58,8 +58,8 @@ This is the authoritative source and recovery map for turning the 12 August 2026
 | R14 | P1 | Evidence reuse and ownership | Global rules | `complete` | `~/.claude/CLAUDE.md` and `reference/CLAUDE.md` | Complete |
 | R15 | P0 | GSM3 operating facts | Project rules | `complete` | GSM3 PR [#5767](https://github.com/gastrosmart/GSM3/pull/5767) | Complete |
 | R16 | P1 | Spanical landing conventions | Project rules | `declined` | Decision recorded | Declined as duplicate |
-| R17 | P1 | Fileseye skill-change canary | Project rules | `researching` | TBD | Locate project authority |
-| R18 | P2 | Fact-bound personal drafting | Decision log | `pending` | TBD | Start after R17 closes |
+| R17 | P1 | Fileseye skill-change canary | Project rules | `complete` | Fileseye PR [#42](https://github.com/hexleap/fileseye/pull/42) | Complete |
+| R18 | P2 | Fact-bound personal drafting | Decision log | `grilling` | Decision recorded or global `CLAUDE.md` | Confirm placement |
 
 ## Source record
 
@@ -739,19 +739,44 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 
 - **Priority:** P1
 - **Proposed destination:** Project rules
-- **Status:** `researching`
+- **Status:** `complete`
 - **Rationale:** A large prerequisite rewrite broke the skill it intended to improve, and review rounds expanded without convergence.
 - **Source specification:** Snapshot current behavior; run representative fixtures before and after; bound review rounds; block merge on behavior regression; preserve named user workflows.
-- **Decisions / final artifact / verification:** Pending; requires the Fileseye repository's actual rule source and acceptance surface.
+- **Repository authority:** `/Users/bhagyamudgal/Desktop/MyFiles/Work/hexleap/fileseye/CLAUDE.md` is the tracked project source; `skills/review-pr/` is explicitly the private product source of truth. At inventory time, no project `AGENTS.md` existed and the clean primary checkout was `main`; an unrelated dirty `.claude/worktrees/agent-ae05b74e71be179f5` remained untouched.
+- **Existing safeguards:**
+  - Replay artifacts fingerprint the exact resolved skill tree; synthetic tests cover output grammar, truncation/loss, replay resolution, lens-map authority, and canonical prose conformance.
+  - The private harness scores frozen benchmark findings and exposes `REGRESSION` versus `CANNOT CERTIFY`; CI runs format, lint, typecheck, build, and tests with `skills/review-pr/**` in Turborepo inputs.
+  - `review-pr` and `converge-reviews` already own three-round convergence; do not restate another review cap.
+  - Named single-PR, batch, self-review, posting, local-only, and multi-round branches exist in the skill, but no separate workflow registry is justified.
+- **Concrete gap:** CI does not execute a changed candidate skill against representative PRs, corpus checks skip when `FILESEYE_BENCHMARK` is unset, and no project rule requires paired baseline/candidate replay. Fileseye currently resolves the installed global `review-pr` rather than its own source (`requested fingerprint 0480c11f04d4`, resolved fingerprint `10ad9c5ffa42`, `pinned: false`), so an unpinned replay can certify the wrong bytes.
+- **Architecture hypothesis:** Add one compact project rule for behavior-affecting `review-pr` or reference changes only. Require the same preselected merged PRs, pinned model/settings, baseline and candidate fingerprints, throwaway project-scoped links with `--skill-dir` proving `pinned: true`, existing CI, and a merge block on invocation mismatch, replay/count/format failure, candidate regression/cannot-certify where baseline certified, or loss of a named workflow in the request. Add `AGENTS.md -> CLAUDE.md`; add no new skill, fixture registry, script, workflow, evaluator, or duplicated round cap. Keep global installation repair outside R17 because `sync-agent-setups` is user-invoked only.
+- **Decisions:**
+  1. **Replay scope:** Gate behavior-affecting changes under `skills/review-pr/`; only a recorded non-semantic diff skips replay.
+  2. **Comparison contract:** Replay the baseline and candidate against the same merged PRs selected beforehand to represent the affected single-PR paths, with identical pinned model and settings.
+  3. **Invocation boundary:** Independently record each version's expected skill-tree fingerprint, run it from a throwaway checkout with a project-scoped skill link, pass `--skill-dir`, and require the artifact fingerprint to equal the expected value with `pinned: true`.
+  4. **Merge gate:** Score every artifact against the same benchmark and score options, run existing CI, and use a relevant existing test or instruction-path trace for a named workflow replay cannot exercise. Block merge on incomplete replay or scoring, invocation or fingerprint mismatch, replay format or count failure, candidate `REGRESSION` or `CANNOT CERTIFY` where the baseline certified, or loss of a named workflow.
+  5. **Implementation shape:** Add one compact project rule and `AGENTS.md -> CLAUDE.md`; add no skill, evaluator, fixture registry, script, workflow, or duplicate review-round policy. Keep global setup repair outside R17 because `sync-agent-setups` is user-invoked only.
+- **Shared-understanding confirmation:** Confirmed by the user on 14 August 2026. Grill complete.
+- **Review findings and repairs:** The first review found that replay was not explicitly scored, fingerprint matching lacked an expected value, named workflows outside single-PR replay had no evidence path, representative selection was underspecified, and the prose exception was ambiguous. The final rule requires completed replay-and-score pairs, independently recorded expected fingerprints, preselected representative PRs, existing-test or instruction-trace evidence for unsupported named workflows, and a recorded non-semantic exception. Both affected-area rechecks reported zero Critical and zero Serious findings.
+- **Final artifact:** Fileseye PR [#42](https://github.com/hexleap/fileseye/pull/42), commit `c177b2eaba263d5f6873e3118359c4938fa45d7c`, containing `CLAUDE.md` and `AGENTS.md -> CLAUDE.md`.
+- **Verification:** Fileseye's installed Prettier checked `CLAUDE.md`; `AGENTS.md` is a relative symlink to `CLAUDE.md` and both paths returned identical bytes; `git diff --check` passed; the committed and remote branch SHAs matched; PR #42 was read back as open against `main` at the exact verified head. TypeScript checks, runtime tests, and live replay were not applicable because no code or review-skill bytes changed.
 
 ### R18 — Fact-bound personal drafting
 
 - **Priority:** P2
 - **Proposed destination:** Decision log
-- **Status:** `pending`
+- **Status:** `grilling`
 - **Rationale:** A personal-content draft invented motivations and public positioning, but this is narrow to personal copy work.
 - **Source specification:** Separate known facts from inferred narrative; ask before inventing motivations or disclosure intent; keep private experiments private unless explicitly authorized.
-- **Decisions / final artifact / verification:** Pending.
+- **Overlap inventory:**
+  - The global `Think, Then Ask, Then Code` rule already forbids unsupported assumptions, but it is general and does not name first-person motivations, public positioning, or disclosure intent.
+  - `verify-claims` gates decision-driving inference, not creative first-person narrative.
+  - The installed `copywriting` skill asks for transformation, voice, emotion, and an about-page origin story; it forbids fabricated statistics and testimonials but does not distinguish known personal facts from invented motivations. `copy-editing` preserves the author's core message and flags unsupported claims, but it does not own new personal drafting.
+  - The source evidence is one narrow personal-copy episode, and the retrospective itself proposed keeping this as a decision log rather than adding a skill or global rule.
+- **Architecture hypothesis:** Keep the exact fact-bound drafting invariant in this ledger without adding always-loaded context or editing broad marketing skills. If the failure recurs, promote a two-sentence rule scoped to first-person or personal copy: user-provided facts are authoritative; motivations, public positioning, disclosure intent, and private experiments require explicit authorization.
+- **Open design tree:**
+  1. Should R18 remain a decision record, add the two-sentence global personal-drafting rule now, or be declined entirely? **Open.**
+- **Decisions / final artifact / verification:** Pending placement decision.
 
 ## Change log
 
@@ -879,3 +904,8 @@ Coverage was 6 April–12 August 2026. Raw files extended to 18 March, but earli
 - Closed R15 after the final changed-line recheck reported zero Critical and zero Serious findings, all applicable instruction/symlink/security checks passed, and GSM3 PR #5767 published the exact verified commit. Advanced R16 to `researching`.
 - Completed the R16 repository inventory. Main and bottom-up landing are evidenced, exact leases lack a project invariant, the cache intentionally has no migration tool, and repository config is a preference for repeated defaults rather than a flag ban. Advanced R16 to `grilling` with the evidence-correct translation as the only open decision.
 - User declined R16 after reviewing the evidence-correct translation. Recorded that existing CI, code/tests, CLI behavior, and shared exact-lease workflow already own the proposed conventions. Advanced R17 to `researching`.
+- Completed the R17 repository inventory. Existing structural tests and scoring harness do not require paired pinned baseline/candidate replay, so a changed skill can still regress behavior or test the wrong installed bytes. Advanced R17 to `grilling` with one compact project-rule decision.
+- Recorded the user's R17 confirmation and implemented the compact behavior-changing-only replay gate plus the project Claude-to-Codex symlink. Advanced R17 to `verifying`; R18 remains pending.
+- The focused R17 review exposed missing scorer invocation, unbound expected fingerprints, uncheckable named-workflow evidence, and an overbroad prose exception. Tightened the single project rule and stopped after affected-area rechecks reported zero Critical and zero Serious findings.
+- Closed R17 after the Fileseye instruction and symlink checks passed and PR #42 published the exact verified commit. Advanced R18 to `researching`.
+- Completed the R18 overlap inventory. General assumption and claim-verification rules do not fully cover personal narrative, but the evidence is one narrow episode and the retrospective proposed a decision log. Advanced R18 to `grilling` with placement as the only decision.
