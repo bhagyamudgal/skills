@@ -23,7 +23,7 @@ Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding
 | 5.5 | Convergence subagent: class completeness, inverse risk, new siblings | Per-fix verdicts; missing sites applied |
 | 6 | /done pipeline: fix-ts-errors → parallel-review → simplify | Clean code |
 | 7 | Reply + resolve on GitHub (skipped for local files) | Threads resolved |
-| 8 | Finalize: restore stash, report, NEEDS-INPUT triage, suppressions write, next actions | Final report |
+| 8 | Finalize: settle NEEDS-INPUT, restore stash, report, suppressions write, next actions | Final report |
 
 ### R-Rubric Summary (Phase 3 STEP 4 — first match wins)
 
@@ -459,9 +459,10 @@ For each FIX item in topological order:
 ```
 fix_status[idx] = ok | retried_ok | inconclusive | skipped | aborted | type_check_skipped
                 | reverted_inverse_risk | partial
+landed_fix_statuses = {ok, retried_ok, inconclusive, type_check_skipped}
 ```
 
-`reverted_inverse_risk` and `partial` are written by Phase 5.5, not Phase 5. This feeds the final report in Phase 8.
+`landed_fix_statuses` is the authoritative landed-fix set for later phases and the final report. `reverted_inverse_risk` and `partial` are written by Phase 5.5, not Phase 5.
 
 ---
 
@@ -563,6 +564,8 @@ If `done_remaining` is non-empty after 2 iterations, record it for the final rep
 
 **Moderate/Minor findings** are recorded in `done_remaining` without self-heal — user decides at commit time.
 
+When the pipeline satisfies `/done`, materialize its exact fix content as the `done_verified_snapshot` required by `git-commit`'s Verified content snapshot contract. Record the snapshot tree and included path manifest while the run-level stash is still untouched. A Phase 8 fix may update only its declared paths in this snapshot after that item's verification lands cleanly; build the replacement tree from the prior snapshot plus those verified bytes, never by recapturing the live worktree. If no valid `done_verified_snapshot` exists, Commit and Push are unavailable.
+
 ---
 
 ## Phase 7: Reply + resolve on GitHub (main)
@@ -571,7 +574,7 @@ If `done_remaining` is non-empty after 2 iterations, record it for the final rep
 
 Replying and resolving threads is this phase's entire GitHub footprint. The review's own `CHANGES_REQUESTED` state stays exactly as CodeRabbit left it — CodeRabbit clears it itself on its next auto-re-review, once the user pushes.
 
-**Skip this entire phase if the input was `./review.md`** or any local file — there are no GitHub threads to operate on. Phase 8 still produces the local final report.
+Define `has_github_surface[idx] = thread_id != null AND (can_reply OR can_resolve)`. Initialize every item without that surface to paired `not-applicable` states, regardless of input source. For `./review.md` or any other local-file input, all items meet that condition; initialize them, then skip the rest of this phase. Phase 8 still requires deterministic per-item state for its final report.
 
 ### Posting mechanics
 
@@ -581,14 +584,14 @@ Load `${CLAUDE_SKILL_DIR}/references/github-reply-resolve.md` now — it holds S
 
 ```
 gh_status[idx] = {
-  reply_state: landed | verified-existing | confirmed-absent | reconcile-required | skipped,
+  reply_state: landed | verified-existing | confirmed-absent | reconcile-required | skipped | not-applicable,
   reply_err:   <error message if any>,
-  resolve_state: resolved | already-resolved | confirmed-open | reconcile-required | skipped,
+  resolve_state: resolved | already-resolved | confirmed-open | reconcile-required | skipped | not-applicable,
   resolve_err: <error message if any>
 }
 ```
 
-Derive `reply_ok=true` from `reply_state ∈ {landed, verified-existing}` and `resolve_ok=true` from `resolve_state ∈ {resolved, already-resolved}` for the existing final-report renderer. Render `verified-existing` as an authoritative existing reply and `already-resolved` as an authoritative resolution no-op. Resolution alone never proves the reply. **Work through every item to the end of the batch.** After any confirmed failure or `reconcile-required` result, skip dependent actions and retire the batch card. Continue independent pending items only after `preflight-mutations` returns a new `ready` card that excludes the unresolved target. All failures surface together at the TOP of the final report.
+Derive `reply_ok=true` from `reply_state ∈ {landed, verified-existing, not-applicable}` and `resolve_ok=true` from `resolve_state ∈ {resolved, already-resolved, not-applicable}` for the existing final-report renderer. Use `not-applicable` for every item where `has_github_surface=false`; omit those entries from GitHub failure and reply/resolve sections. Use `skipped` only when `has_github_surface=true` and an applicable GitHub mutation was not attempted. Render `verified-existing` as an authoritative existing reply and `already-resolved` as an authoritative resolution no-op. Resolution alone never proves the reply. **Work through every item to the end of the batch.** After any confirmed failure or `reconcile-required` result, skip dependent actions and retire the batch card. Continue independent pending items only after `preflight-mutations` returns a new `ready` card that excludes the unresolved target. All failures surface together at the TOP of the final report.
 
 ---
 
@@ -596,28 +599,9 @@ Derive `reply_ok=true` from `reply_state ∈ {landed, verified-existing}` and `r
 
 *Report groups by R-classification (see the R-Rubric Summary table). Includes suppressions write (learning loop).*
 
-### 1. Restore WIP
+### 1. Settle NEEDS-INPUT
 
-If `STASH_PUSHED=true`:
-
-```bash
-git stash pop
-```
-
-On stash pop conflict: leave every conflict marker exactly as `git stash pop` left it — resolving the user's WIP is the user's call. The working tree will now contain:
-- Phase 5 fixes (applied, uncommitted)
-- Conflict markers from the popped stash
-- Untracked files from the stash
-
-Record `stash_restored: conflict` in the final report and print explicit guidance to the user.
-
-### 2. Print the final report
-
-Load `${CLAUDE_SKILL_DIR}/references/final-report.md` now and render the report from it. It holds the failure-first ordering, the full body template, and the rendering rules that decide which of the three fix subsections each `[F<n>]` lands in and how the `Test:` line is emitted.
-
-### 3. Interactive NEEDS-INPUT triage
-
-If any NEEDS-INPUT items exist in the final report, use AskUserQuestion:
+Keep the run-level stash untouched throughout this step. Build `needs_input_items` from current workflow state: every item still classified `NEEDS-INPUT` and every item Phase 5 or 5.5 routed there. Initialize `needs_input_status[idx]=pending` for each entry. For any entry lacking `gh_status`, initialize paired `not-applicable` states when `has_github_surface=false`; otherwise initialize paired `skipped` states with `NEEDS-INPUT not yet authorized`. Do not derive this count from a rendered report. If the count is nonzero, use AskUserQuestion:
 
    Question:
      header: "NEEDS-INPUT"
@@ -628,7 +612,7 @@ If any NEEDS-INPUT items exist in the final report, use AskUserQuestion:
        - label: "Skip for now"
          description: "Leave them unresolved — handle manually later"
 
-On "Triage now": for each NEEDS-INPUT item, use AskUserQuestion:
+On "Triage now": for each `needs_input_items` entry, use AskUserQuestion:
 
    Question:
      header: "Item N<idx>"
@@ -641,6 +625,8 @@ On "Triage now": for each NEEDS-INPUT item, use AskUserQuestion:
        - label: "Dismiss"
          description: "Not a real issue — post a DISMISS reply on GitHub"
 
+For every automatic `Other` freeform path in the batch prompt or an item prompt, honor an instruction that unambiguously maps named items to `Fix it`, `Defer`, `Dismiss`, or `Skip for now`. Preserve the exact freeform text with the item. If the mapping is ambiguous, set each affected item's `needs_input_status=skipped` and carry the text into its manual-handling reason. Do not leave it pending.
+
 On "Fix it": use a follow-up AskUserQuestion to collect guidance:
 
    Question:
@@ -652,19 +638,39 @@ On "Fix it": use a follow-up AskUserQuestion to collect guidance:
        - label: "I'll describe"
          description: "Let me type specific guidance for this fix"
 
-   On "Use reviewer's suggestion": apply the fix using the original comment's recommendation (same as Phase 5 per-fix loop) and post a FIX reply. On "I'll describe" or "Other": use the user's freeform text as the fix plan, apply inline, and post a FIX reply.
+   On "Use reviewer's suggestion": use the original comment's recommendation as the fix plan. On "I'll describe" or "Other", treat unambiguous fix guidance as the fix plan; honor an unambiguous defer, dismiss, or skip instruction through that action's branch. Preserve ambiguous text, set `needs_input_status=skipped`, and continue.
 
-Immediately before any chosen Fix, Defer, or Dismiss reply mutates GitHub, invoke `preflight-mutations` for that item's reply/resolve batch with the exact PR and current head SHA, target thread ID, final reply text, classification, and the per-item choice above. Apply its result contract before continuing.
+   Validate the complete FIX record through Phase 4 before editing. Derive `phase8_item_files[idx]` from every file declared by the validated fix plan, then capture each file's current content or authoritative absence in a dedicated `phase8_item_snapshot[idx]`. This snapshot includes all earlier landed fixes. It is separate from the run-level `preedit_snapshot`: nested Phases 5–6 neither read nor overwrite `preedit_snapshot`. Set `phase8_triage_context=true` only after this snapshot is complete. In this context, Phase 5 edits and retry agents may touch only `phase8_item_files[idx]`; expand and revalidate the plan and snapshot before any additional path becomes editable. Phase 5.5 may verify all sites but may apply a corrective edit only within those declared files.
 
-On "Defer": post a DEFER reply and resolve (skip GitHub ops for local file inputs — record classification in report only). On "Dismiss": post a DISMISS reply and resolve (same local file guard).
+   Apply the Phase 5 per-fix loop and run Phase 5.5 for that fix. Run the affected Phase 6 type-check, review, and simplify assessments in verification-only mode: do not apply type-fix, self-heal, or simplify edits. A Critical or Serious blocker, validation abort, edit failure, "Abort all" choice, exhausted retry, convergence stop, or Phase 6 failure aborts only this item. Restore every declared path from `phase8_item_snapshot[idx]`, including removing a path whose snapshot recorded authoritative absence; set `needs_input_status=failed`; record `fix_status` and `convergence`; and set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — GitHub mutation not attempted` otherwise. Continue with the next independent item without restoring the run-level stash, exiting the skill, or bypassing the renderer. Clear the context after the item settles. Ordinary Phase 5 and Phase 6 behavior remains unchanged when `phase8_triage_context` is false.
 
-On "Skip for now": continue to next actions.
+   When the fix and verification land cleanly, update `done_verified_snapshot` from the prior snapshot plus this item's verified declared-path bytes, then run the Phase 7 reply/resolve mechanics. Set `needs_input_status=fixed` only when `fix_status ∈ landed_fix_statuses` and both GitHub operations are successful or not applicable; set it to `reconcile-required` if either operation has that state, otherwise set it to `failed`. Preserve the final classification, `fix_status`, `convergence`, and `gh_status` before continuing.
 
-Skip this step entirely if the NEEDS-INPUT count is 0.
+Immediately before any chosen Fix, Defer, or Dismiss reply mutates GitHub, invoke `preflight-mutations` for that item's reply/resolve batch with the exact PR and current head SHA, target thread ID, final reply text, classification, and the per-item choice above. Apply its result contract before continuing. Record a blocked or confirmed failure as `needs_input_status=failed`, an indeterminate operation as `reconcile-required`, and the exact Phase 7 `gh_status`; then continue to the next independent item. Every branch rejoins report rendering.
 
-### 3.5. Offer to write suppressions (learning loop)
+On "Defer": set the classification to `DEFER` and run the Phase 7 reply/resolve mechanics. On "Dismiss": do the same with classification `DISMISS`. When `has_github_surface=false`, set both GitHub states to `not-applicable` without entering any GitHub report section. Map the final result for either branch: both required operations successful or not applicable → `needs_input_status` "deferred" or "dismissed"; either operation `reconcile-required` → `reconcile-required`; every other non-success or confirmed failure → `failed`. Preserve every authoritative outcome in `gh_status`, then continue.
 
-After the final report and NEEDS-INPUT triage, collect all DISMISS and DISAGREE items from the triage plan. If any exist, offer to persist them as suppressions for future reviews.
+On "Skip for now": mark each untouched entry `needs_input_status=skipped` and preserve its current classification, `gh_status`, and any freeform guidance for later handling.
+
+Skip the questions if the NEEDS-INPUT count is 0. Before leaving this step, require every `needs_input_items` entry to have a non-pending status. Convert an unexpected remaining `pending` entry to `skipped`, preserving its recorded choice and guidance as the manual-handling reason.
+
+### 2. Restore WIP
+
+Only after every NEEDS-INPUT item has settled, if `STASH_PUSHED=true`:
+
+```bash
+git stash pop
+```
+
+On stash pop conflict, leave every conflict marker exactly as `git stash pop` left it — resolving the user's WIP is the user's call. Record `stash_restored: conflict` for the final report. No edit, type-check, convergence check, Phase 6 check, commit, or push may run after this restoration. Expose conflict resolution as the only dependency-ready next action.
+
+### 3. Print the final report once
+
+Recompute every count from the final classification, `fix_status`, `convergence`, `needs_input_status`, and `gh_status` state. Load `${CLAUDE_SKILL_DIR}/references/final-report.md` now and render it exactly once. Its failure-first ordering includes every Phase 7 and Phase 8 GitHub outcome; its rendering rules decide which fix subsection each `[F<n>]` occupies and how the `Test:` line is emitted.
+
+### 4. Offer to write suppressions (learning loop)
+
+After the final report, collect all current DISMISS and DISAGREE items. If any exist, offer to persist them as suppressions for future reviews.
 
 Use AskUserQuestion:
 
@@ -695,9 +701,9 @@ Skip this step entirely if:
 - There are no DISMISS or DISAGREE items
 - The input was a local file from outside a git repo (no project root to write suppressions into)
 
-### 4. Post-completion next actions
+### 5. Post-completion next actions
 
-After printing the final report (and optional NEEDS-INPUT triage), use AskUserQuestion. Skip this prompt if all fixes were aborted (nothing was applied).
+After printing the final report and offering suppressions, use AskUserQuestion. Skip this prompt if all fixes were aborted (nothing was applied). When `stash_restored=conflict`, suppress this prompt and report `Resolve stash conflicts` as the sole dependency-ready next action; Commit and Push remain unavailable.
 
    Question:
      header: "Next"
@@ -712,8 +718,15 @@ After printing the final report (and optional NEEDS-INPUT triage), use AskUserQu
        - label: "Done"
          description: "Exit — I'll handle the rest manually"
 
-On "Commit changes": stage relevant files and commit with the suggested detailed commit message. On "Push to remote": commit first (same as above). Immediately before `git push`, invoke `preflight-mutations` with the exact remote and branch, local and upstream SHAs, commit range, PR base/head and dependent refs, and the user's "Push to remote" choice; apply its result contract before pushing. On "Re-run on remaining": if the original input was a local file, invoke `/fix-pr-review <original-file-path>` scoped to skipped/needs-input items; otherwise invoke `/fix-pr-review <url>` scoped to remaining items. On "Done": exit.
+On "Commit changes" or "Push to remote", require `stash_restored != conflict` and a valid `done_verified_snapshot`. Invoke `git-commit` in Verified content snapshot sealed-index mode with that snapshot; never stage or restage the live worktree. Require the created commit tree to equal the snapshot tree. Ordinary restored WIP remains in the worktree and outside the candidate commit. On "Push to remote", commit first, then require the commit tree to still equal the snapshot before freezing the push-attempt SHA. Freeze it only when the active symbolic ref equals the expected PR branch and that branch ref and `HEAD` resolve to the same SHA. Query the exact remote ref and record its SHA or authoritative absence; when present, require it to be an ancestor of the frozen SHA. Immediately before `git push`, invoke `preflight-mutations` with the exact remote, branch ref, frozen local SHA, expected remote SHA or absence, upstream state, commit range, PR base/head, dependent refs, and the user's choice. Include the active symbolic ref, branch-ref SHA, and `HEAD` in its guards and invalidators, then recheck them immediately before running the exact push and read-back:
 
-### 5. Exit
+```bash
+git push --force-with-lease="<exact-ref>:<expected-sha-or-empty>" "<preflighted-remote>" "<frozen-local-sha>:<exact-ref>"
+git ls-remote --heads "<preflighted-remote>" "<exact-ref>"
+```
+
+Require authoritative remote read-back to equal the frozen SHA. When a PR exists, require its `headRefOid` to equal that SHA too. Record an ambiguous command or read-back as `reconcile-required` and do not retry. On "Re-run on remaining": if the original input was a local file, invoke `/fix-pr-review <original-file-path>` scoped to skipped/needs-input items; otherwise invoke `/fix-pr-review <url>` scoped to remaining items. On "Done": exit.
+
+### 6. Exit
 
 Committing happens only on an explicit "Commit changes" or "Push to remote" choice in the post-completion prompt above. Otherwise leave the working tree as it stands — the report's suggested commit message is the hand-off.

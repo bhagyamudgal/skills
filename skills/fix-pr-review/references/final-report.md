@@ -1,12 +1,12 @@
 # Phase 8 final report template
 
-Loaded by main in Phase 8, at "Print the final report", before anything is printed. Render from this template rather than from memory — the `Test:` lines and the three-way fix partition are how the user decides what to re-test.
+Loaded by main in Phase 8 only after every NEEDS-INPUT item has a non-pending status and the run-level stash restoration has finished. Render exactly once from final workflow state — the `Test:` lines and the three-way fix partition are how the user decides what to re-test.
 
 ---
 
-## Failure section (TOP — only if any Phase 7 op failed)
+## Failure section (TOP — only if any Phase 7 or Phase 8 GitHub op failed)
 
-If any `gh_status[idx]` has `reply_ok == false` OR `resolve_ok == false`, print this section at the **top** of the report:
+If any applicable `gh_status[idx]` has `reply_ok == false` OR `resolve_ok == false`, print this section at the **top** of the report. Exclude entries whose reply and resolution states are both `not-applicable`:
 
 ```
 ## ⚠ GitHub operations needing attention (<count>)
@@ -66,15 +66,14 @@ Convergence: converged — all <F> fixes class-complete, inverse risk absent, no
                    forever after a failed refresh; fix reverted by inverting its own hunks
 
 # Rendering rules for this section:
-#   - Every [F<n>] item in the classifier plan MUST appear in exactly one of
-#     the three subsections above. Partition on fix_status alone, then split
-#     the landed set by change_class:
-#       fix_status ∈ {ok, retried_ok, inconclusive, type_check_skipped}
-#         — landed:  change_class=hardening     → Hardening-only
-#                    change_class=logic-change  → Logic-changing
-#       fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk}
-#         — not landed clean                    → Skipped / not landed clean
-#     The two sets are disjoint and cover the whole Phase 5 fix_status enum,
+#   - Every item whose final classification is FIX MUST appear in exactly one
+#     of the three subsections above. Partition on fix_status alone. Membership
+#     in Phase 5's authoritative `landed_fix_statuses` set is landed; split it
+#     by change_class:
+#       change_class=hardening     → Hardening-only
+#       change_class=logic-change  → Logic-changing
+#     Every other Phase 5 fix_status is not landed clean and renders under
+#     Skipped / not landed clean. The two sets cover the whole fix_status enum,
 #     so every item lands in exactly one subsection. fix_status carries the
 #     type-check result already (a type-check that failed twice ends the item
 #     as `skipped` or `aborted`), and it outranks that result — a fix that
@@ -110,6 +109,11 @@ Convergence: converged — all <F> fixes class-complete, inverse risk absent, no
 ## Disagree (<count>)
   [G1] src/api/routes.ts:55 — inlining is clearer here than extraction
 
+# Render a DEFER or DISMISS item under its classification only when its
+# required GitHub operations are successful or not applicable. An unsettled
+# item renders under NEEDS INPUT instead; an applicable GitHub failure also
+# renders in the top failure section.
+
 ## /done results
   /fix-ts-errors:   clean
   /parallel-review: 1 Moderate finding — consider extracting helper (see output above)
@@ -123,6 +127,10 @@ Convergence: converged — all <F> fixes class-complete, inverse risk absent, no
   [D2] posted ✓  resolved ✓  — src/auth/util.ts:12
   [E1] posted ✓  resolved ✓  — src/legacy/parser.ts:210
 
+# Omit every entry whose reply_state and resolve_state are both not-applicable;
+# `has_github_surface=false` means there is no GitHub acceptance surface,
+# regardless of whether the input came from GitHub or a local file.
+
 ## Promoted nitpicks — no GitHub thread (<count>)
   [F4] src/foo.ts:22 — promoted from nitpick (sanity scan caught a real issue)
        Fix applied. No inline thread to resolve. Mention in commit message;
@@ -133,6 +141,13 @@ Convergence: converged — all <F> fixes class-complete, inverse risk absent, no
        CodeRabbit: <short description>
        Why unclear: <reason from classifier>
        Re-triage: /fix-pr-review https://github.com/owner/repo/pull/123#discussion_r<id>
+
+# Render every entry whose final needs_input_status is skipped, failed, or
+# reconcile-required. Also render any DEFER or DISMISS whose required
+# GitHub operations did not settle, even if it entered Phase 7 directly.
+# Fixed, deferred, and dismissed entries render under their final
+# classification instead. Applicable failed or reconcile-required GitHub
+# states also render independently in the top failure section.
 
 ## Suggested commit message
 
@@ -156,7 +171,8 @@ Restored: <yes | no | conflict>
     • Phase 5 fixes (applied, not committed)
     • Conflict markers from your stashed WIP
     • Any untracked files from the stash
-  Resolve conflicts, then `git add` your intended set before committing.
+  Resolve stash conflicts before any commit or push; it is the only
+  dependency-ready next action.
   Your original stash is still available as `git stash list` entry
   `fix-pr-review auto-stash <timestamp>`.
 ```
