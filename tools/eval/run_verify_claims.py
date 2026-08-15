@@ -164,10 +164,16 @@ def evaluate_case(case, final_text, tool_calls, process_error):
 
 def run_case(case, budget, timeout):
     temporary_directory, repository = make_sandbox()
+    allowed_tools = ["Skill", "Read"]
+    if case["id"] in {"code-verified", "data-material-reversal"}:
+        allowed_tools.append("Bash")
+    if case["id"] == "data-material-reversal":
+        allowed_tools.extend(["Agent", "Task"])
     command = [
         "claude", "-p", case["prompt"],
         "--output-format", "stream-json", "--verbose",
         "--permission-mode", "dontAsk",
+        "--allowedTools", ",".join(allowed_tools),
         "--max-budget-usd", str(budget),
     ]
     try:

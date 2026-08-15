@@ -126,7 +126,7 @@ Heuristic: would a senior engineer be embarrassed if the user found a gap you di
 > This applies to ALL tasks — even single-line changes, trivial fixes, or "obvious" edits.
 > NEVER mark a task as complete without running `/done` first.
 
-The `/done` skill is the single source of truth for completion verification. It selects the acceptance surfaces affected by the task, runs the code pipeline only when code changed, verifies every other required lane at its user-facing boundary, and reports the evidence ceiling. Commit only after every required lane is verified.
+The `/done` skill is the single source of truth for completion verification. It selects the acceptance surfaces affected by the task, runs the code pipeline only when code changed, verifies every other required lane at its user-facing boundary, and reports the evidence ceiling. Commit only after every required pre-publication lane is verified. When only PR-dependent evidence remains pending, `/done` may issue `ready-to-publish`, which authorizes only `/file-pr`; final completion still requires every required lane to be verified by the post-publication `/done` run.
 
 **If you are tempted to skip `/done` because the change is small — that is exactly when bugs slip through. Run it.**
 

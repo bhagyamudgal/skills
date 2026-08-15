@@ -13,7 +13,7 @@ Run one authoritative host or workspace discovery query broad enough to find eve
 
 Fetch the rendered content and stable URL of every source and canonical candidate. For each, record its URL, title, write authority, current authority or supersession marker, and source-owned finding or item IDs with their direct evidence URLs. Preserve source-workflow IDs; when a report has none, assign artifact-scoped IDs without changing the source.
 
-Keep this working record inline or in an existing authorized ledger. Create no lifecycle registry.
+Keep this working record inline during read-only inventory and staging. Before the multi-write publication begins, persist it in an existing durable ledger that the user has authorized this workflow to write. Record its stable URL or path and require it to remain outside every canonical and predecessor publication target for the full run. If no such ledger exists, stop and name authorization of a suitable existing artifact as the next action. Create no lifecycle registry.
 
 **Gate:** the exact discovery query and every classified match are recorded; every source, canonical candidate, and source item appears once, write authority is known, and competing authority claims are explicit.
 
@@ -48,6 +48,10 @@ Select one disposition for every source item:
 
 `carried` and `merged` name an existing canonical destination ID. `dismissed` records a reason. `retained-by-reference` names the canonical anchor that keeps the original evidence reachable. Merge only genuinely equivalent items; preserve unique findings as distinct destinations or references rather than copying entire source reports.
 
+Finalize and validate the disposition map before rendering any publication payload. Require its source-item IDs to equal the inventory exactly, with no duplicate rows, and require every named canonical destination or anchor to exist in the staged canonical record.
+
+Render the complete canonical payload and every writable predecessor payload to separate immutable local staging paths, treating each path as write-once. Record each path and SHA-256 digest in the lifecycle ledger. Never overwrite or regenerate a frozen file: changed bytes require a new path, digest, preview, and preflight.
+
 **Gate:** an existing hosted writable canonical candidate and guard are known; every discovery match has its final classification; every noncanonical authority is bound as a predecessor; and the canonical payload, predecessor report-plus-marker payloads, and item map are fully staged with every source item assigned exactly one valid disposition.
 
 ## 3. Preflight the publication plan
@@ -55,7 +59,7 @@ Select one disposition for every source item:
 Build one complete logical publication plan containing:
 
 - the complete canonical payload and its current write guard;
-- every writable predecessor's complete preserved-report-plus-marker payload and guard;
+- every canonical and writable-predecessor payload's frozen local path, SHA-256 digest, and current write guard;
 - the artifact ID, canonical URL, source URLs, superseded list, and unwritable-predecessor record;
 - every source-item disposition and destination or rationale; and
 - the authoritative rendered-link and duplicate-status read-back plan;
@@ -69,7 +73,7 @@ Apply each card's `preflight-mutations` result contract in the previewed depende
 
 ## 4. Publish and reconcile
 
-Apply the staged canonical payload and predecessor report-plus-marker payloads without regenerating them. Follow `preflight-mutations`' execution and partial-state contract for each card while preserving the publication plan's dependency order and combined item ledger. After each write, authoritatively read back the landed body and guard. Require every predecessor's fetched content and attributed evidence to remain intact before recording its marker write as `landed`, and record the read-back guard as that target's expected post-write guard.
+Apply the staged canonical payload and predecessor report-plus-marker payloads without regenerating them. Immediately before each write, rehash its frozen file and require the digest to match the ledger and current mutation card; a mismatch invalidates that card before the write. Atomically transition that item from `pending` to `attempting` in the durable ledger and continue only when the transition succeeds from the expected state. Follow `preflight-mutations`' execution and partial-state contract for each card while preserving the publication plan's dependency order and combined item ledger. After each attempted write, authoritatively read back the body and guard, then atomically persist that item's result, read-back guard, and observed body digest in the durable ledger before the next write. An unavailable or ambiguous ledger transition stops the dependent remainder. Mark an item `landed` only when its complete read-back body matches the frozen bytes. Require every predecessor's fetched content and attributed evidence to remain intact before recording its marker write as `landed`, and record the read-back guard as that target's expected post-write guard.
 
 **Gate:** every publication-plan item has an authoritative result, every landed payload matches its staged content, and the canonical report plus each writable predecessor has an expected post-write guard from authoritative read-back.
 

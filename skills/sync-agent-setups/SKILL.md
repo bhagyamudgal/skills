@@ -39,6 +39,8 @@ Treat custom slash-workflow behavior as portable by default. Use `unsupported` o
 
 Before previewing an `adaptation`, render its complete target-native bytes into a safe local staging path outside every source and target setup root. Record the staged path, content checksum, target format, and exact semantic delta from the unchanged Claude source. A failed or ambiguous rendering is `blocked`, not a future write-time decision.
 
+Resolve the proposed backup without creating it: resolve every existing symlink component through the nearest existing ancestor, append any missing path components, and normalize the result. Require both the proposed path and resolved physical path to be outside every Claude-visible source root, resolved source root, target setup root, and resolved target root. A path equal to or beneath any such root is `blocked`. Record the resolved backup path and use only that path in confirmation, preflight, backup creation, the backup manifest, and recovery actions.
+
 Render a manifest before any write:
 
 ```markdown
@@ -47,7 +49,7 @@ Render a manifest before any write:
 - **Claude source roots:** <active Claude-visible roots>
 - **Detected targets:** <agent and setup roots>
 - **Excluded surfaces:** <surface and reason>
-- **Proposed backup:** <timestamped path>
+- **Proposed backup:** <timestamped path> → <resolved physical path>
 
 | ID | Target | Kind | Claude-visible source | Resolved source | Source checksum | Target path | Existing kind / checksum | Classification | Link target or staged path / checksum | Semantic delta | Planned action | Status / reason |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -68,15 +70,15 @@ Summarize per target: item counts by classification, paths to change, unsupporte
 
 Ask the user to select or confirm the target agents from the preview. Detection is not write authorization. A confirmation covers only the named targets, `ready` item IDs, backup path, exact-copy link targets, staged adaptation paths and checksums, semantic deltas, and proposed actions shown in the current manifest.
 
-Re-inventory after confirmation and rehash every staged adaptation. Any changed source checksum, target state, classification, path, selected target, staged bytes, or staged checksum invalidates that item and returns it to preview. Change confirmed `ready` items to `pending`; retain every `blocked`, `preserved-unsupported`, and `preserved-orphaned` row in the ledger.
+Re-inventory after confirmation, re-resolve the backup path, and rehash every staged adaptation. Any changed source checksum, target state, classification, path, selected target, resolved backup path, staged bytes, or staged checksum invalidates that item and returns it to preview. Change confirmed `ready` items to `pending`; retain every `blocked`, `preserved-unsupported`, and `preserved-orphaned` row in the ledger.
 
 **Gate:** every `pending` item belongs to an explicitly confirmed target and still matches its preview, while every non-ready item remains outside the mutation batch with its status and reason intact.
 
 ## 4. Preflight and back up
 
-Immediately before the first backup or target write, invoke `preflight-mutations` for only the selected `pending` items. Include their target agents, source and target paths, current checksums and link targets, staged adaptation paths and checksums, semantic deltas, confirmation source, shared-symlink risk, timestamped backup path, invalidators, per-item recovery, and post-write read-back. Reference the complete ledger for context, but do not put `blocked`, `preserved-unsupported`, or `preserved-orphaned` items into the mutation card's targets or batch items. Continue only when this independently ready mutation batch returns `ready` with unchanged guards.
+Immediately before the first backup or target write, invoke `preflight-mutations` for only the selected `pending` items. Include their target agents, source and target paths, current checksums and link targets, staged adaptation paths and checksums, semantic deltas, confirmation source, shared-symlink risk, resolved timestamped backup path, invalidators, per-item recovery, and post-write read-back. Reference the complete ledger for context, but do not put `blocked`, `preserved-unsupported`, or `preserved-orphaned` items into the mutation card's targets or batch items. Continue only when this independently ready mutation batch returns `ready` with unchanged guards.
 
-Create the confirmed timestamped backup before changing a target. Preserve for every affected path:
+Create the confirmed timestamped backup at the recorded resolved physical path before changing a target. Preserve for every affected path:
 
 - its original path and whether it was absent, a file, directory, or symlink;
 - symlink text without dereferencing it;

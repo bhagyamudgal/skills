@@ -166,10 +166,14 @@ the rendered `RESTORE.md` contains no remaining `<PLACEHOLDER>` tokens.
 A backup on the same disk as the thing it protects survives config mistakes, not disk loss.
 If the user wants a copy elsewhere:
 
-Immediately before `rsync`, invoke `preflight-mutations` with the exact source and
-destination host/path, included artifact inventory and credential sensitivity, recipient,
-retention/deletion path, current destination state, checksum read-back, and the user's
-off-box-copy approval. Apply its result contract before copying.
+Before `rsync`, verify from the receiving system that the destination is encrypted at rest,
+accessible only to the intended recipient accounts, and governed by a known retention period
+and tested deletion path. A destination missing any of those controls is blocked.
+
+Immediately before `rsync`, invoke `preflight-mutations` with that evidence, the exact source
+and destination host/path, included artifact inventory and credential sensitivity, recipient,
+retention/deletion path, current destination state, checksum and access-control read-back, and
+the user's off-box-copy approval. Apply its result contract before copying.
 
 ```bash
 rsync -avh --partial -e ssh <source> <destination>
@@ -185,8 +189,17 @@ sha256sum -c /tmp/check.sha256    # macOS: shasum -a 256 -c
 Confirm the checksum output covers a non-empty file list before reading it as a pass — a
 verifier fed an empty list reports success having checked nothing.
 
-**Gate:** every checked file reports `OK`. A mismatch fails the step; re-transfer that file.
-`--partial` makes a re-run resume.
+Re-read the receiving system's encryption and effective access controls after the copy. If
+either differs from the preflight evidence, preserve and report the copy as sensitive partial
+state. The copy approval does not authorize deletion. Render a separate compensating deletion
+card with the exact destination, observed failure, deletion action, and absence read-back;
+delete only after fresh explicit confirmation and a current `ready` preflight result.
+
+**Gate:** every checked file reports `OK`, encryption at rest remains enabled, effective access
+is restricted to the approved recipient accounts, and the retention/deletion path remains
+available. Re-transfer a file whose checksum mismatches; a failed security control blocks
+completion while the sensitive partial state is preserved or separately deleted. `--partial`
+makes a re-run resume.
 
 Omitting the official archive from the pull is reasonable — its contents are a subset of the
 raw archive. State that omission in the report.

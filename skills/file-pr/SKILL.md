@@ -13,8 +13,9 @@ Read the branch and the current `done` readiness card.
 
 - **Branch** — `git rev-parse --abbrev-ref HEAD` exactly equals **Branch** in the card and satisfies the branch-naming rule in `CLAUDE.md`. A rename or switch makes the card stale and returns to `done`.
 - **Readiness card** — require the current Git card defined by `done`, including its request, currency, coverage, lane, evidence, verdict, and next-action fields. Its verdict must be `ready-to-publish`, with this skill as the exact next action. A missing field or another verdict returns to `done`; do not reconstruct it here.
+- **Publication mode** — bind the expected PR state and draft mode to the user's publication request. When the request does not name draft publication, use `OPEN` and `isDraft: false`.
 
-**Gate:** branch and card presence each have a recorded result, and a failed one stops the PR.
+**Gate:** branch, card presence, expected state, and draft mode each have a recorded result, and a failed one stops the PR.
 
 ## 2. Validate the base and resolve the issue link
 
@@ -103,9 +104,13 @@ A bar you did not name is a bar you did not check. A failed bar is rewritten and
 
 ## 6. Commit and open it
 
-When **Existing PR URL** is present, skip commit, push, and create. Revalidate the remote branch at current `HEAD`, then resume at the existing-PR search and read-back below; only a separately preflighted title/body edit may mutate it.
+When **Existing PR URL** is present, skip commit, push, and create. Revalidate the remote branch at current `HEAD`, then read that exact URL directly with the `gh pr view` fields below before any list search. Reconcile its base, state, draft mode, head branch, and head SHA against the card and publication request; a mismatch stops or enters `done`'s explicit base-rebind path. Only a separately preflighted title/body edit may mutate it.
 
-For an initial publication, immediately before `git-commit`, or before push when no commit is needed, repeat the branch, head, refreshed base ref and SHAs, mixed external read-back, and alternate-index snapshot checks from sections 1–2. Reuse the completed hunk accounting only when the snapshot is unchanged; a changed snapshot returns to `done`. When the verified snapshot differs from `HEAD^{tree}`, invoke `git-commit` for the verified request rows and record every SHA it creates. Run the append-only transition commands defined by `done`; their ancestry, merge, and exact ordered-list criteria must all pass. A rebase, merge, or unrecorded commit returns to `done`. Add the exact ordered list to **Expected append-only commits** in the publication evidence returned with the card.
+```bash
+gh pr view "$existing_pr_url" --repo "$repository" --json url,title,body,baseRefName,baseRefOid,headRefName,headRefOid,state,isDraft
+```
+
+For an initial publication, immediately before `git-commit`, or before push when no commit is needed, repeat the branch, head, refreshed base ref and SHAs, mixed external read-back, and alternate-index snapshot checks from sections 1–2. Reuse the completed hunk accounting only when the snapshot is unchanged; a changed snapshot returns to `done`. When the verified snapshot differs from `HEAD^{tree}`, invoke `git-commit` for the verified request rows in sealed-index mode: pass **Verified content snapshot**, require the staged tree to equal it, and forbid another staging pass before commit. Record every SHA it creates. Run the append-only transition commands defined by `done`; their ancestry, merge, and exact ordered-list criteria must all pass. A rebase, merge, or unrecorded commit returns to `done`. Add the exact ordered list to **Expected append-only commits** in the publication evidence returned with the card.
 
 For an initial publication, before pushing, require the active branch to still equal **Branch**, freshly re-fetch every mixed external target, and require its currency to still match. Then run `done`'s post-commit content seal. Record the exact outputs of `git status --porcelain=v1 --untracked-files=all` and `git rev-parse HEAD^{tree}`. The status output must be empty and the tree SHA must exactly equal **Verified content snapshot**; otherwise return to `done`.
 
@@ -118,22 +123,26 @@ git ls-remote --heads origin "refs/heads/<card-branch>"
 
 On an initial publication, require the remote branch SHA to equal local `HEAD` and record the landed push before proceeding. On the existing-PR branch, the revalidation at the start of this section supplies the same remote-head evidence without another push.
 
-Write the final body to a file and record its SHA-256 digest. First search the exact head and base for an existing PR from an earlier attempt:
+Write the final body to a file and record its SHA-256 digest. Search the head branch across every base and state before deciding whether an earlier attempt exists:
 
 ```bash
-gh pr list --repo "$repository" --head "$head_branch" --base "$base" --state open --json url,title,body,baseRefName,baseRefOid,headRefName,headRefOid,state
+gh pr list --repo "$repository" --head "$head_branch" --state all --limit 100 --json url,title,body,baseRefName,baseRefOid,headRefName,headRefOid,state,isDraft
 ```
 
-Reconcile and reuse only one open candidate whose `headRefOid` equals local `HEAD`, base name equals the requested base, and state matches the publication request. Other candidates are historical or unrelated and do not count as the current attempt. Create only when this authoritative search confirms no current-attempt candidate exists. Use the same query when `gh pr create` returns no usable URL.
+Classify every returned candidate before create. Exactly 100 results means the search may be truncated: mark reconciliation `reconcile-required` and stop. When **Existing PR URL** is present, its direct read is the intended attempt; require its head name and SHA, base name, `state`, and `isDraft` to match the card and publication request before reuse.
 
-Immediately before creating the PR, invoke `preflight-mutations` with a new inline, single-item card. Its target is the exact repository; its action records the base, head branch and SHA, title, body path, and body digest; its guards include the verified remote branch, recorded base tip, and confirmed absence of an existing PR; and its read-back is the exact `gh pr view` query below. Apply this result independently under the same result contract. A changed title, body path, or digest invalidates the card; a non-ready PR card does not erase the landed push evidence.
+Without **Existing PR URL**, reconcile every `OPEN` candidate for the branch. One open candidate must match local `HEAD`, then either match the requested base, state, and draft mode or enter the explicit base-rebind or publication-decision path; record its URL and return to `done` to bind it before any edit. Multiple open candidates are `reconcile-required`. A `CLOSED` or `MERGED` candidate whose `headRefOid` differs from local `HEAD` is historical and does not block branch reuse. A closed or merged candidate at local `HEAD` requires an explicit reopen, new-branch, or no-publication decision. Create only when the unsaturated all-state search finds no open candidate and no closed or merged candidate at local `HEAD`. Use the same head-only query when `gh pr create` returns no usable URL.
+
+Immediately before creating the PR, invoke `preflight-mutations` with a new inline, single-item card. Its target is the exact repository; its action records the base, head branch and SHA, title, body path, body digest, expected `OPEN` state, and expected draft mode; its guards include the verified remote branch, recorded base tip, the unsaturated head-only search, and confirmed absence of an open candidate or same-head-SHA historical attempt; and its read-back is the exact `gh pr view` query below. Apply this result independently under the same result contract. A changed title, body path, digest, state, or draft mode invalidates the card; a non-ready PR card does not erase the landed push evidence.
+
+Append `--draft` to the create command exactly when the bound draft mode is `isDraft: true`.
 
 ```bash
-gh pr create --repo "$repository" --base "$base" --title "$title" --body-file "$body_path"
-gh pr view <pr-url> --repo "$repository" --json url,title,body,baseRefName,baseRefOid,headRefName,headRefOid,state
+gh pr create --repo "$repository" --base "$base" --title "$title" --body-file "$body_path" [--draft]
+gh pr view <pr-url> --repo "$repository" --json url,title,body,baseRefName,baseRefOid,headRefName,headRefOid,state,isDraft
 ```
 
-Require the PR `title` and `body` to equal the frozen values, `headRefName` to equal **Branch**, `headRefOid` to equal local `HEAD`, and `baseRefOid` to equal **Remote base-tip commit**; require its URL, base name, and state to match the publication request. Record the created URL as `landed` as soon as one PR is authoritatively identified. If only title or body differs while base and head still match, preflight an exact edit of that existing PR and read it back. A base mismatch enters `done`'s existing-PR rebind path with that URL and its observed values; never issue another create. After `done` verifies a superseding card against the observed base, reuse only **Existing PR URL** and preflight any still-required title/body edit as its own exact mutation. Record both single-step cards, the landed push, the PR observations, the ordered commit list, and the exact commands as publication evidence for the next `done` run. If authoritative search cannot identify whether a PR was created, mark the create `reconcile-required` and do not retry.
+Require the PR `title` and `body` to equal the frozen values, `headRefName` to equal **Branch**, `headRefOid` to equal local `HEAD`, and `baseRefOid` to equal **Remote base-tip commit**; require its URL, base name, `state`, and `isDraft` to match the publication request. Record the created URL as `landed` as soon as one PR is authoritatively identified. If only title or body differs while base, head, state, and draft mode still match, preflight an exact edit of that existing PR and read it back. A base mismatch enters `done`'s existing-PR rebind path with that URL and its observed values; never issue another create. A state or draft mismatch stops for an explicit publication decision; never silently reopen, close, convert, or create another PR. After `done` verifies a superseding card against the observed base, reuse only **Existing PR URL** and preflight any still-required title/body edit as its own exact mutation. Record both single-step cards, the landed push, the PR observations, the ordered commit list, and the exact commands as publication evidence for the next `done` run. If authoritative search cannot identify whether a PR was created, mark the create `reconcile-required` and do not retry.
 
 Print the URL and return to `done` for CI, review, publication-lane, and final row evaluation. Never merge. Opening the PR is a publication transition, not overall task completion.
 

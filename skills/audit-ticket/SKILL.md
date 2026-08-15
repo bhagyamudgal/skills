@@ -65,11 +65,9 @@ If zero requirements are extractable (ticket is a vague one-liner), ask the user
 
 ### Anchor the audit
 
-```bash
-git rev-parse --short HEAD
-```
+Run `git rev-parse HEAD` and `git rev-parse HEAD^{tree}` and record the full commit and tree IDs. Audit the committed tree: every code search, file read, and line citation must use snapshot-aware Git commands such as `git grep <pattern> <tree-id>` and `git show <tree-id>:<path>`, or an isolated checkout of that exact tree. Leave staged, unstaged, and untracked user content untouched and outside the audit; name it as unexamined rather than hashing it into the repository object database.
 
-Record the sha — every verdict in the report is "as of `<sha>`", so the audit stays meaningful after the next merge.
+Every verdict in the report is "as of `<full HEAD SHA>` at committed tree `<tree ID>`", so later commits and unrelated local work cannot silently change its evidence.
 
 ---
 
@@ -80,14 +78,16 @@ Dispatch **ONE `general-purpose` subagent PER requirement**, in parallel batches
 ### Subagent prompt
 
 ```
-You are verifying ONE requirement from a stale GitHub issue against the
-CURRENT codebase. The ticket is old — code may have shipped, changed, or
-made the requirement meaningless since it was written. Your job is a
+You are verifying ONE requirement from a stale GitHub issue against one
+frozen code snapshot. The ticket is old — code may have shipped, changed,
+or made the requirement meaningless since it was written. Your job is a
 verdict grounded in file:line evidence, not a guess.
 
 ## Ticket context
 Issue: #<n> — <title> (opened <createdAt>)
 Goal (1 sentence): <from body>
+HEAD: <full Phase 1 SHA>
+Content snapshot: <verified_content_snapshot tree hash>
 
 ## Requirement to verify
 <Rn>: <requirement text>
@@ -95,11 +95,11 @@ Source: <body | comment | image>
 <superseded_by note, if any>
 
 ## Your task
-1. Search the codebase (Grep, Glob, Read) for the feature/change this
-   requirement describes. Search by behavior keywords, not just the
-   exact names the ticket uses — code written later rarely matches the
-   ticket's vocabulary.
-2. Read the matches. Decide whether the requirement is implemented,
+1. Search only the recorded content snapshot with snapshot-aware Git
+   commands (`git grep <pattern> <tree>` and `git ls-tree -r <tree>`).
+   Search by behavior keywords, not just the exact names the ticket uses.
+2. Read matches with `git show <tree>:<path>` and derive line numbers from
+   those bytes. Decide whether the requirement is implemented,
    partially implemented, absent, or no longer applicable (the code it
    targeted was removed/rewritten, or a different approach shipped).
 
@@ -127,7 +127,7 @@ A failed or empty subagent doesn't stop the audit — mark that requirement `unv
 
 ## Phase 3: Report (main)
 
-Verify each returned `file:line` exists before printing (quick `Read` of the cited range) — drop fabricated citations and downgrade that verdict's confidence to `low`.
+Verify each returned `file:line` exists in the recorded content snapshot before printing by reading the cited range from `git show <verified_content_snapshot>:<path>` — drop fabricated citations and downgrade that verdict's confidence to `low`.
 
 Every `Rn` from Phase 1 appears exactly once in the table; N equals d + p + nd + o + u. A requirement with no returned verdict is `unverified`, not omitted. Put only evidence IDs in table cells, then render every complete `Rn → E<n>` edge in a block-form source map; code citations remain separate verdict evidence.
 
@@ -137,7 +137,7 @@ Then print:
 # Ticket Audit: <title> (#<n>)
 
 **State**: <open|closed> · opened <date> · last activity <date>
-**Audited against**: <sha> on <today>
+**Audited against**: <full HEAD SHA> at content snapshot <tree hash> on <today>
 **Requirements**: <N> — <d> done / <p> partial / <nd> not done / <o> obsolete / <u> unverified
 **Recommendation**: <one sentence — grounded in the verdict mix>
 
@@ -191,7 +191,9 @@ Phase 5 runs on the Phase 4 fate choice, and only on it — the report is always
 
 For any rewrite or split, reread `${CLAUDE_SKILL_DIR}/references/ticket-evidence.md` before composing issue bodies and again for its rendered closeout gate. The chosen fate cannot close while required source evidence is missing.
 
-Immediately before composing or freezing Phase 5 payloads, re-fetch the full issue body and comments and re-download every retained attachment. Compare `updatedAt`, body, comment IDs and content, attachment URLs, and attachment digests with Phase 1. When any source changed or currency cannot be established, rebuild the source map, retain matching evidence IDs, append IDs for new evidence, and rerun every affected requirement through Phases 2 and 3. Stop when required evidence is unavailable. Apply this currency gate again before the split flow's post-create render. A changed requirement, verdict, recommendation, successor scope, or fate returns to Phase 4 for fresh approval.
+Immediately before composing or freezing Phase 5 payloads, rerun `git rev-parse HEAD` and `git rev-parse HEAD^{tree}`, then compare both exact values with the Phase 1 commit and tree IDs. Leave the user's index and working tree untouched. When either value changed, identify every requirement whose code evidence or verdict the new committed bytes could affect, rerun those requirements through Phase 2 against the new tree, rebuild the Phase 3 report with both new identifiers, and return to Phase 4 for fresh approval. Rerun every requirement when the affected scope cannot be bounded.
+
+Then re-fetch the full issue body and comments and re-download every retained attachment. Compare `updatedAt`, body, comment IDs and content, attachment URLs, and attachment digests with Phase 1. When any source changed or currency cannot be established, rebuild the source map, retain matching evidence IDs, append IDs for new evidence, and rerun every affected requirement through Phases 2 and 3. Stop when required evidence is unavailable. Apply both the code and source currency gates again before the split flow's post-create render. A changed audit commit or tree, requirement, verdict, recommendation, successor scope, or fate returns to Phase 4 for fresh approval.
 
 Every frozen body or comment carries the `Rn → E<n>` mappings and block-form preserved excerpts for every requirement it mentions. Predecessor status, reasoning, edited-body, and split-comment payloads carry the complete map; a successor carries the map for its moved requirements.
 
@@ -201,7 +203,7 @@ For a split, bind non-repeatable create state to an existing durable ledger that
 
 First reconcile every `attempting`, `reconcile-required`, or `landed` entry. Render and preflight a create only from a `planned` entry with no prior non-repeatable attempt, after `file-issue`'s two-vocabulary duplicate search. Persist `attempting` immediately before `gh issue create`; an ambiguous result becomes `reconcile-required`, never a retry. Once authoritative read-back identifies the successor, fill its stable ID, URL, frozen payload digest, and guards, then mark the entry non-repeatable `landed` partial state. Every re-entry re-fetches and reuses that successor; it never targets create again.
 
-For each mutation card, record every payload path and SHA-256 digest, exact title or command options, fresh target guards, and per-step expected guard transition. Pass the exact targets, audit SHA, ordered actions, Phase 4 approval, and split metadata to `preflight-mutations` immediately before that card's first write. Before each later write, advance guards only from the prior write's authoritative read-back.
+For each mutation card, record every payload path and SHA-256 digest, exact title or command options, fresh target guards, and per-step expected guard transition. Pass the exact targets, audit commit and tree IDs, ordered actions, Phase 4 approval, and split metadata to `preflight-mutations` immediately before that card's first write. Before each later write, advance guards only from the prior write's authoritative read-back.
 
 After the successor lands, apply the source-currency gate, then render and freeze the predecessor comment with the real successor URL. Obtain fresh explicit approval for its exact bytes and digest, the current predecessor and successor guards, and the ordered comment → close actions with the expected comment guard transition. After authoritative read-back proves the exact comment landed, advance to the returned expected guard and permit close without reapproval. Any unexpected transition or changed external guard, source evidence, payload byte, scope, verdict, recommendation, or fate invalidates approval. Reconcile the landed successor through an explicit retain, edit, or close plan and return to Phase 4 when semantics changed; never restart successor creation.
 

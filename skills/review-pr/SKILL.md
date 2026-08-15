@@ -251,7 +251,7 @@ Comparing `last_run_sha` to `CURRENT_HEAD` selects one of three branches: replay
 
 After successful run, write result to `$CACHE_FILE` at end of Phase 4 (cache is local, independent of GitHub state).
 
-If `PRIOR_STATE.convergence` exists, invoke `converge-reviews` with the current request, base/head, diff hash, paths, and planned roster/lenses before Phase 2. Reuse a matching result without dispatch. When it returns `continue`, review only the invalidated coverage it names; apply any other result without starting another round.
+If `PRIOR_STATE.convergence` exists, invoke `converge-reviews` with the current request, base/head, diff hash, paths, and planned roster/lenses before Phase 2. Reuse a matching result without dispatch. When it returns `closure_check: available`, dispatch the one targeted check over only the named blocker IDs and changed sites. Keep the recorded round unchanged and reject any new finding or widened coverage from that check. Feed its evidence and updated blocker dispositions back through `converge-reviews`, persist the new result plus `closure_check: passed | failed`, then apply that result: a passing check may return `converged`; a failed check remains `blocked-at-cap` at the current round. When the initial result is `continue`, review only the invalidated coverage it names; apply any other result without starting another round.
 
 ### Compute shared-package repo map (for Q6)
 
@@ -1033,7 +1033,7 @@ Write a one-sentence approval reason grounded in the most important finding (or 
 
 ## Phase 4: Output
 
-Every Phase 4 path, including zero findings, self-review, keep-local, and posted-review paths, reaches **Convergence handoff** before exiting.
+Every Phase 4 path, including zero findings, self-review, keep-local, and posted-review paths, reaches **Convergence handoff** before exiting, except a self-review fix with `pending-publication` or `pending-input`. That path exits with its dependency-ready action and reaches convergence only after the action completes and the PR head, diff, class sites, and finding state are refreshed.
 
 ### Print this block to terminal, always
 
@@ -1146,7 +1146,8 @@ options:
 ```
 
 On "Fix now":
-1. Write findings to `/tmp/review-pr-<num>-findings.md` with explicit field labels (NOT the summary table — `/fix-pr-review` parses these labels):
+1. Follow `references/finding-state-schema.md` "Phase 4 — write back" for the current findings before invoking another skill. Persist the complete current-round finding state atomically, preserving any existing `convergence` block; this write establishes the finding IDs and statuses that the later fix and convergence steps reference. If the write fails, report it and stop before `/fix-pr-review` or convergence.
+2. Write findings to `/tmp/review-pr-<num>-findings.md` with explicit field labels (NOT the summary table — `/fix-pr-review` parses these labels):
    ```
    ## Findings
 
@@ -1165,8 +1166,18 @@ On "Fix now":
    `Inverse risk:` and `Class-sites:` are not optional here. `/fix-pr-review` keys its
    "seed, don't re-derive" path on exactly these two labels; drop them and it re-derives
    both from scratch, discarding the work steps 4.55 and 4.56 already did.
-2. Invoke `/fix-pr-review /tmp/review-pr-<num>-findings.md`.
-3. Skip post-review prompts — `/fix-pr-review` handles its own workflow.
+3. Invoke `/fix-pr-review /tmp/review-pr-<num>-findings.md`.
+4. After `/fix-pr-review` returns, refresh the authoritative PR head and full PR diff. Recheck every finding's stored `class_sites` against that published head; inspect the local diff only to distinguish an unpublished fix from an unchanged finding.
+5. Map every `/fix-pr-review` outcome into authoritative finding state:
+   - `FIX` whose fix is present on the published PR head and whose class sites are all handled → `resolved` with `commit_sha_resolved=<current PR head>`.
+   - `FIX` present only in local or otherwise unpublished work → `active`; set `last_message` to `fix pending publication — next action: publish the verified fix, then refresh the PR head and class sites`. An unchanged or partial FIX also stays `active` with its exact remaining work.
+   - `DISMISS` → `dismissed` with its reason and the current code condition in `depends_on`.
+   - `DISAGREE` → `wontfix` with its technical rationale in `dismissal_reason` and the rationale's current code condition in `depends_on`.
+   - `DEFER` → `wontfix` for this PR with the tracking reference in `dismissal_reason`, the current-PR scope boundary in `depends_on`, and convergence disposition `follow-up` with that tracking reference as the next action.
+   - `NEEDS-INPUT` → `active`; preserve `why_unclear` and the exact required user decision in `last_message`, and use convergence disposition `pending-input` with that decision as the next action.
+6. Atomically write the mapped finding state before convergence, preserving the existing `convergence` block. If any `pending-publication` or `pending-input` disposition remains, stop before convergence and return its first dependency-ready publication or user-decision action. Resume convergence only after refreshing the authoritative PR head, diff, class sites, and finding state when that action completes.
+7. Otherwise pass each finding's persisted status plus `resolved`, `dismissed`, `wontfix`, or `follow-up` disposition and exact next action into `converge-reviews`; its finding IDs and dispositions must match the state file. Never infer resolution from `/fix-pr-review` completion.
+8. Skip post-review prompts — `/fix-pr-review` handles its own workflow. Continue to **Convergence handoff** only when step 6 found no `pending-publication` or `pending-input` disposition; otherwise exit with that disposition's exact next action. Store convergence beside the finding state; never replace it with a convergence-only document.
 
 ### Select findings to post (multiSelect)
 
@@ -1229,7 +1240,7 @@ Write summary body to `/tmp/review-pr-<num>.md`, open in `${EDITOR:-vi}`, then p
 
 ### Convergence handoff
 
-Before any Phase 4 path exits, invoke `converge-reviews` with the PR request, base/current head and diff hash, reviewed paths, reviewer roster and lenses, current findings and dispositions, and `$STATE_FILE`. Store its `convergence` block in that existing state file without replacing `review-pr`'s finding state. Apply its result contract before recommending another review round or declaring the review converged.
+Before any Phase 4 path exits, invoke `converge-reviews` with the PR request, base/current head and diff hash, reviewed paths, reviewer roster and lenses, current findings and dispositions, and `$STATE_FILE`. The self-review `pending-publication` and `pending-input` exception exits first with its dependency-ready action and invokes convergence only after the required refresh. Store the resulting `convergence` block in that existing state file without replacing `review-pr`'s finding state. Apply its result contract before recommending another review round or declaring the review converged.
 
 ### Post-completion next actions (context-aware)
 

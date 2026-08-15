@@ -47,7 +47,7 @@ Otherwise ask the user for the unit and 3–5 anchors spanning the expected rang
 
 ## 3. Build and preview a representative sample
 
-Estimate 3–5 varied items before filling the batch. Cover the smallest, typical, and largest work; include an uncertainty edge and an umbrella when either exists. Ground each estimate in current ticket and implementation evidence.
+Estimate 3–5 varied items before filling the batch, or every eligible item when the scope contains fewer than three. Cover the smallest, typical, and largest work; include an uncertainty edge and an umbrella when either exists. Ground each estimate in current ticket and implementation evidence.
 
 Classify every umbrella exactly once:
 

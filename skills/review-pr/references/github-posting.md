@@ -94,7 +94,7 @@ If this is a re-review AND `posted_comments` cache exists:
 
    Immediately before the first `resolveReviewThread` mutation in this batch, invoke `preflight-mutations`. Pass the exact PR URL and current head SHA, the cached review and identified thread IDs to resolve, each finding's prior and current status, and the user's approved selected-finding set and posting choice. Apply its result contract before continuing.
 
-2. **Resolve their threads** on GitHub:
+2. **Resolve their threads** on GitHub. Immediately before each mutation, refresh the PR head and query the exact thread ID. If `isResolved: true`, record the thread as resolved from that authoritative read-back, skip the mutation, retire the current card, and preflight the remaining items without this thread before the next write. Otherwise compare the head, `isResolved`, and complete comment-ID set with the ready card. If any guard changed, re-run `preflight-mutations` for the pending remainder before writing:
 
    ```bash
    gh api graphql -f query='
@@ -106,11 +106,13 @@ If this is a re-review AND `posted_comments` cache exists:
    ' -f threadId="<thread_id>"
    ```
 
-3. **Track resolved findings** for the "Resolved since last review" line in the summary body. Use exact wording: `Resolved since last review: S1 (<file:line> <one-line issue>, round 4 commit <sha>), ...`. NEVER use "deferred", "fixed", or other ambiguous wording — use `resolved` with the commit SHA.
+3. **Reconcile every result** by querying that exact thread ID after the mutation, including when the mutation command failed or returned an ambiguous response. Mark the finding resolved only when the authoritative query returns `isResolved: true`. Record an authoritative `false` as `confirmed-open`; record a failed or inconclusive query as `reconcile-required`, preserve the exact settling query, and do not retry that thread. On either non-resolved result, retire the current card and preflight the remaining items without this unresolved thread before the next write.
 
-4. **Filter review comments**: only post comments for findings NEW or STILL ACTIVE — do NOT re-post findings already present from a previous round (they already have threads). A finding is "still present" if its `id` matches a cached `posted_comments` entry — skip the comment.
+4. **Track resolved findings** for the "Resolved since last review" line in the summary body only after the authoritative `isResolved: true` read-back. Use exact wording: `Resolved since last review: S1 (<file:line> <one-line issue>, round 4 commit <sha>), ...`. NEVER use "deferred", "fixed", or other ambiguous wording — use `resolved` with the commit SHA.
 
-5. **Error handling**: failed `resolveReviewThread` (already resolved, permission issue) is best-effort — log and continue. Never blocks posting.
+5. **Filter review comments**: only post comments for findings NEW or STILL ACTIVE — do NOT re-post findings already present from a previous round (they already have threads). A finding is "still present" if its `id` matches a cached `posted_comments` entry — skip the comment.
+
+6. **Continue the batch** only under the replacement `ready` card required after a non-resolved outcome. Carry `confirmed-open` and `reconcile-required` outcomes into the posting ledger and terminal report; neither may appear in the resolved summary line or any dependent publication state. Never execute later writes under a retired card.
 
 ---
 
@@ -377,7 +379,7 @@ When one or more entries are `confirmed-absent`, offer only `Attach confirmed-ab
 
 ### No pending review
 
-When Phase A reconciliation set `NO_PENDING_REVIEW=true`, use a distinct recovery prompt: `Post frozen monolithic review` or `Abort — keep local`. Before a post, refresh the PR guards and invoke `preflight-mutations` with the complete zero-match reconciliation evidence plus the exact frozen monolithic body and digest; then post without calling `cleanup_pending_review`. Reconcile an ambiguous post by exact author, head, verdict, and body before any retry. Abort performs no mutation. This branch ends here.
+When Phase A reconciliation set `NO_PENDING_REVIEW=true`, use a distinct recovery prompt: `Post frozen monolithic review` or `Abort — keep local`. Before a post, refresh the PR guards and invoke `preflight-mutations` with the complete zero-match reconciliation evidence plus the exact frozen monolithic body and digest; then post without calling `cleanup_pending_review`. Reconcile every result by exact author, head, verdict, and complete body before any retry. Abort performs no mutation. After one exact match, run the monolithic publication write-back below before convergence; this branch ends only after that write-back succeeds or its failure is reported.
 
 ### Pending review exists
 
@@ -433,7 +435,9 @@ cleanup_pending_review() {
 
 The cleanup result is authoritative only when the exact pending review node is absent. A surviving node, failed read-back, or changed review remains `reconcile-required`; preserve its IDs and stop without fallback posting.
 
-**On "Post as monolithic"**: require `cleanup_pending_review` to confirm absence, refresh the PR guard, then invoke a new preflight for the exact frozen monolithic body before `gh pr review <url> <verdict-flag> --body-file /tmp/review-pr-<num>-monolithic.md`. Reconcile an ambiguous monolithic post by exact author, head, verdict, and body before any retry.
+**On "Post as monolithic"**: require `cleanup_pending_review` to confirm absence, refresh the PR guard, then invoke a new preflight for the exact frozen monolithic body before `gh pr review <url> <verdict-flag> --body-file /tmp/review-pr-<num>-monolithic.md`. Reconcile every result by exact author, head, verdict, and complete body before any retry. After one exact match, run the monolithic publication write-back below before convergence.
+
+**Monolithic publication write-back**: freeze the authoritative match as `publication_evidence` with the exact review database and node IDs, author, head SHA, GitHub state, verdict, complete-body SHA-256, selected finding IDs, and verification timestamp. Merge it into `$CACHE_FILE` as `last_posted_review_id`, `last_posted_review_node_id`, `last_posted_verdict`, `last_posted_at`, `last_posted_finding_ids`, and `publication_evidence`; preserve existing `posted_comments` because a monolithic review creates no per-finding threads. Follow `references/finding-state-schema.md` "Phase 4 — write back" for every selected finding, then merge the same `publication_evidence` as a top-level `publication` block in `$STATE_FILE`, preserving its `findings` and `convergence` blocks. Write both files atomically. A failed write-back is reported and blocks convergence; publication already landed, so never repost it.
 
 **On "Abort"**: require authoritative cleanup read-back, then stop. Report `reconcile-required` instead of claiming an abort when cleanup is unresolved.
 
@@ -488,7 +492,9 @@ The only part specific to posting: `github_thread_id` (from 8b) and `github_comm
 
 ### 8d. Resolve threads for findings now in `status: resolved`
 
-For each finding transitioning to `resolved` this round (a fix shipped between rounds and the state file records it — see the writer caveat in `references/finding-state-schema.md`; that transition is currently made by hand), call:
+For each finding transitioning to `resolved` this round (a fix shipped between rounds and the state file records it — see the writer caveat in `references/finding-state-schema.md`; that transition is currently made by hand), first refresh the current PR head, review ID/state/body, and every target thread's exact `isResolved` value and complete comment-ID set. Invoke `preflight-mutations` immediately before this resolution batch with those current guards, exact thread IDs, prior/current finding states, and the posting authorization. This is a fresh card: Steps 4–6 changed publication and review state, so the posting card is stale.
+
+Immediately before each resolution write, refresh the PR head and thread. If `isResolved: true`, record the thread as resolved from that authoritative read-back, skip the mutation, retire the current card, and preflight the remaining items without this thread before the next write. Otherwise compare the current guards with the fresh card and re-run preflight for the pending remainder when a guard changed. Then call:
 
 ```bash
 gh api graphql -f query='
@@ -498,7 +504,7 @@ gh api graphql -f query='
 ' -f threadId="<github_thread_id>"
 ```
 
-Failures here are best-effort — log and continue. Don't block posting on thread-resolution errors.
+After every mutation attempt, query the exact thread ID. Record `resolved` only when the authoritative result has `isResolved: true`; record an authoritative `false` as `confirmed-open`, and a failed or inconclusive query as `reconcile-required` with the exact settling query. Do not retry an indeterminate thread. On either non-resolved result, retire the current card and preflight the remaining items without this unresolved thread before the next write. Report every non-resolved outcome and exclude it from claims that GitHub resolution completed; never execute later writes under a retired card.
 
 ---
 

@@ -85,7 +85,19 @@ Unavailable boundary evidence creates an evidence ceiling. It never becomes `ver
 
 ## 4. Build the readiness card
 
-For Git work, compute a deterministic content snapshot without changing the user's index. From the repository root, create a temporary directory and use a nonexistent index path inside it for every index operation:
+For Git work, first enumerate the content the snapshot would stage without changing the user's index:
+
+```bash
+git diff --name-status -z HEAD --
+git ls-files --others --exclude-standard -z
+git diff --no-ext-diff --find-renames HEAD --
+```
+
+Draft the originating-request rows described below before snapshot construction. Normalize the tracked status records, including both paths for every rename or copy, and union them with the non-ignored untracked paths. Bind every path in that set to at least one verified request row. Then read the full tracked diff. For each untracked path, inspect its filesystem kind before reading it: use the link text for a symbolic link, the complete bytes for a regular file, and fail closed for any other file kind. Bind every changed hunk or logical change to a verified request row, including separate changes that share one file. Treat a binary-file delta as a logical change and record the evidence used to scope it. An unbound path, hunk, or logical change is unrelated content: stop, report it, and do not record a verified snapshot. An empty or incomplete path, diff, kind, or content inventory also fails closed.
+
+Seal that approved candidate as a complete manifest of paths, Git modes, and prospective blob IDs, computed without writing objects. Immediately after creating the snapshot below, derive the same manifest from its immutable tree and require an exact match before accepting the tree hash. A path, mode, or blob mismatch means content changed after scope accounting: discard the snapshot result and restart this section from the new bytes.
+
+After the reverse scope check passes, compute a deterministic content snapshot. From the repository root, create a temporary directory and use a nonexistent index path inside it for every index operation:
 
 ```bash
 create_verified_snapshot() (
@@ -116,9 +128,9 @@ if ! verified_content_snapshot=$(create_verified_snapshot); then
 fi
 ```
 
-Record `$verified_content_snapshot`. Every index operation uses the isolated temporary index, so the real index remains untouched. The command fails closed if setup, staging, tree creation, or cleanup fails; its exit trap removes the temporary index on both success and failure. The snapshot includes tracked changes and non-ignored new files. External-only work uses its target currency and read-back ledger instead of a Git snapshot.
+Record `$verified_content_snapshot` only after the reverse scope check passes for every staged tracked and non-ignored untracked path and every changed hunk or logical change within them. Every index operation uses the isolated temporary index, so the real index remains untouched. The command fails closed if setup, staging, tree creation, or cleanup fails; its exit trap removes the temporary index on both success and failure. The snapshot includes tracked changes and non-ignored new files. External-only work uses its target currency and read-back ledger instead of a Git snapshot.
 
-Map every originating request item exactly once, in request order, and name all lanes that apply to it:
+Render the drafted mapping with every originating request item exactly once, in request order, and name all lanes that apply to it:
 
 ```markdown
 | Request item | Applicable lanes | Implementation/deliverable | Acceptance evidence | State | Gap/next action |
@@ -215,6 +227,6 @@ git rev-parse HEAD^{tree}
 
 The status output must be empty and the tree SHA must exactly equal **Verified content snapshot**. Record both observations; any remaining or newly introduced content makes the card stale.
 
-For Git work with no PR publication, set PR base ref, remote base tip, and merge base to `not-applicable`. When a commit is requested, leave only that request row `pending` after every other request row and required lane is `verified` and every evidence facet is `verified` or `not-applicable`. Set the exact next action to `git-commit`, invoke it, record its SHAs as **Expected append-only commits**, and require the ordered transition plus clean-status and exact-tree content seal to pass. Then mark the commit request row `verified` and derive final readiness. When repository policy calls for an unrequested discrete-unit commit, use the same transition without adding a request row. No post-publication run applies. External-only work never creates a commit through `done`.
+For Git work with no PR publication, set PR base ref, remote base tip, and merge base to `not-applicable`. When a commit is requested, leave only that request row `pending` after every other request row and required lane is `verified` and every evidence facet is `verified` or `not-applicable`. Set the exact next action to `git-commit` and pass **Verified content snapshot** into its sealed-index mode. Require its staged tree to equal that snapshot before it commits without restaging, record its SHAs as **Expected append-only commits**, and require the ordered transition plus clean-status and exact-tree content seal to pass. Then mark the commit request row `verified` and derive final readiness. When repository policy calls for an unrequested discrete-unit commit, use the same transition without adding a request row. No post-publication run applies. External-only work never creates a commit through `done`.
 
 **Done:** card currency is recorded, every request item appears once with every applicable lane, all six lanes and five evidence facets are reported, the exact next action is dependency-ready, and the verdict does not exceed the weakest required row. `ready-to-publish` hands off to `file-pr`; only `ready` permits reporting task completion.

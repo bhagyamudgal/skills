@@ -581,14 +581,14 @@ Load `${CLAUDE_SKILL_DIR}/references/github-reply-resolve.md` now — it holds S
 
 ```
 gh_status[idx] = {
-  reply_ok:    true | false | skipped,
+  reply_state: landed | already-resolved | confirmed-absent | reconcile-required | skipped,
   reply_err:   <error message if any>,
-  resolve_ok:  true | false | skipped,
+  resolve_state: resolved | already-resolved | confirmed-open | reconcile-required | skipped,
   resolve_err: <error message if any>
 }
 ```
 
-**Work through every item to the end of the batch.** An individual reply or resolve that fails is recorded in `gh_status[idx]` and the loop moves on; the failures surface together at the TOP of the final report.
+Derive `reply_ok=true` from `reply_state ∈ {landed, already-resolved}` and `resolve_ok=true` from `resolve_state ∈ {resolved, already-resolved}` for the existing final-report renderer. Render `already-resolved` as an authoritative no-op success, not as a posted reply. **Work through every item to the end of the batch.** After any confirmed failure or `reconcile-required` result, skip dependent actions and retire the batch card. Continue independent pending items only after `preflight-mutations` returns a new `ready` card that excludes the unresolved target. All failures surface together at the TOP of the final report.
 
 ---
 
