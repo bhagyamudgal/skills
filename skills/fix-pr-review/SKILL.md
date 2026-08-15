@@ -394,13 +394,20 @@ Build an execution order from `dependencies:` fields with a simple topological s
 
 ### Pre-edit snapshots (revert mechanism — Edit tool has no undo)
 
-Before the first `Edit` touches any file in Phase 5, `Read` its full contents and cache them:
+Bind Phase 5's state source before the first edit:
+
+| Context | `active_snapshot` | `active_baseline_errors` | Abort scope |
+|---------|-------------------|--------------------------|-------------|
+| Ordinary Phase 5 | `perfix_snapshot[idx]` | Phase 1 `baseline_errors` | Current fix |
+| Phase 8 item `<idx>` | `phase8_item_snapshot[idx]` | `phase8_item_baseline_errors[idx]` | Current item only |
+
+In ordinary Phase 5, before the first `Edit` touches a file anywhere in the run, cache its full contents or authoritative absence in the run-level abort snapshot:
 
 ```
 preedit_snapshot[path] = <full file content from Read>
 ```
 
-Revert a single file = `Write(path, preedit_snapshot[path])`. Revert-all = iterate over every snapshotted path and Write back. Within Phase 5 that snapshot is an *exact* revert — one fix at a time, nothing else applied yet — so every `Edit` here runs against a file that was cached first.
+Immediately before each ordinary fix, capture every declared path's then-current content or authoritative absence in `perfix_snapshot[idx]`; it includes all earlier landed fixes and becomes `active_snapshot` for Retry and Skip. `preedit_snapshot` is used only by Abort-all. In Phase 8 context, `active_snapshot` must already contain every declared path and no nested branch may read from or write to either ordinary snapshot. Restoring from an active snapshot writes back recorded content and removes paths recorded as authoritatively absent. Abort-all alone restores every run-level `preedit_snapshot` entry; a Phase 8 item restores only `phase8_item_files[idx]`, preserving earlier landed fixes.
 
 ### Per-fix loop
 
@@ -421,16 +428,16 @@ For each FIX item in topological order:
        - label: "Skip remaining"
          description: "Stop here — skip all remaining fixes"
 
-   On "Apply fix": continue with steps 2-7. On "Skip": mark `fix_status[idx] = skipped`, skip to next item. On "Skip remaining": mark all remaining items as `skipped`, jump to Phase 6. On "Other": treat as freeform instruction (e.g., "modify the fix plan for this item").
+   On "Apply fix": continue with steps 2-7. In ordinary Phase 5, "Skip" marks `fix_status[idx] = skipped` and advances to the next fix; "Skip remaining" marks every remaining fix `skipped` and jumps to Phase 6. In Phase 8 context, "Skip" restores every declared path from `active_snapshot`, sets `fix_status[idx]=skipped`, `needs_input_status[idx]=skipped`, and `convergence[idx]=not-run — user skipped before edit`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — user skipped before edit` otherwise. Phase 8 "Skip remaining" performs that same restore and settlement for the current item and gives every not-yet-run fix in it the same skipped and convergence statuses; earlier landed fixes remain untouched. Both choices clear `phase8_triage_context`, terminate the nested Phase 5 path immediately, bypass Phases 5.5–6, and rejoin Phase 8 at the next independent item. On "Other": treat as freeform instruction (e.g., "modify the fix plan for this item").
 
-2. For every file listed in `fix_plan`: if not already in `preedit_snapshot`, `Read` and cache.
+2. In ordinary context, first add any never-edited declared path to `preedit_snapshot`, then capture every declared path in `perfix_snapshot[idx]` and bind it as `active_snapshot` before editing. In Phase 8 context, require every declared path in `active_snapshot`; a missing entry violates the declared-path gate, so stop the item and use Phase 8's expansion rule to append that new path and baseline before editing while existing entries remain immutable.
 3. Apply the change(s) via `Edit` tool.
 4. **Narrow type-check (this file only)**:
    - Detect project type: if `turbo.json` exists → turborepo mode; else if `tsconfig.json` exists → plain TS mode; else → skip the check.
    - Turborepo: route through `turbo run` — `bun turbo run check-types --filter=<package>` (or `pnpm turbo run check-types --filter=<package>` if the repo uses pnpm), targeting the workspace package containing the edited file. The `turbo run` form is what carries `--filter` through; `bun` alone drops unknown flags instead of forwarding them to the underlying script.
    - Plain TS: `bunx tsc --noEmit` or `npx tsc --noEmit`.
    - No TS tooling: skip the check with a one-line note, and let `/done` in Phase 6 catch what it would have caught.
-5. **Compare against Phase 1 baseline**: the narrow type-check is **failed ONLY if the error set on the edited file is a strict superset** of the baseline set for that file. Classifications:
+5. **Compare against the active baseline**: the narrow type-check is **failed ONLY if the error set on the edited file is a strict superset** of `active_baseline_errors` for that file. Ordinary Phase 5 uses the Phase 1 run baseline; a Phase 8 item uses the baseline captured immediately before that item's edits. Classifications:
    - **pass** — no errors on this file, or same error count as baseline.
    - **inconclusive — preexisting errors** — baseline already had errors on this file; we can't cleanly tell whether the fix added more. Continue.
    - **failed** — strict superset of baseline errors on this file (genuinely new errors).
@@ -447,22 +454,22 @@ For each FIX item in topological order:
          description: "Revert and re-dispatch to a fresh subagent with error context (max 2 retries)"
        - label: "Skip this fix"
          description: "Revert this fix, mark as NEEDS-INPUT, continue with remaining fixes"
-       - label: "Abort all"
-         description: "Revert ALL Phase 5 edits, restore stash, and exit"
+       - label: "<Abort all | Abort item>"
+         description: "Ordinary: revert all run-level edits and exit | Phase 8: restore only this item"
 
-   On "Retry fix": `Write` the pre-edit snapshot back (revert), re-dispatch the fix plan to a fresh `general-purpose` subagent with the new-errors context, loop (max 2 retries; on 3rd failure, auto-treat as "Skip this fix").
-   On "Skip this fix": revert via snapshot `Write`, mark `fix_status[idx] = skipped`, mark `[<idx>] NEEDS-INPUT`, skip reply + resolve for this item in Phase 7.
-   On "Abort all": revert ALL Phase 5 edits via pre-edit snapshots, restore stash, exit non-zero.
+   On "Retry fix": restore the fix's declared paths from `active_snapshot`, re-dispatch the fix plan to a fresh `general-purpose` subagent with the new-errors context, loop (max 2 retries; on 3rd failure, auto-treat as "Skip this fix").
+   In ordinary context, "Skip this fix" restores the current `perfix_snapshot[idx]`, marks `fix_status[idx]=skipped` and `[<idx>] NEEDS-INPUT`, skips its Phase 7 reply/resolve, and continues with the remaining fixes. In Phase 8 context, it restores every `phase8_item_files[idx]` path, sets `fix_status[idx]=skipped`, `needs_input_status[idx]=skipped`, and `convergence[idx]=not-run — user skipped after type-check failure`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — user skipped after type-check failure` otherwise. Clear `phase8_triage_context`, terminate before Phases 5.5–6, and rejoin Phase 8 at the next independent item.
+   Present "Abort all" only in ordinary context and "Abort item" only in Phase 8 context. On "Abort all", restore every run-level path, restore the stash, and exit non-zero. On "Abort item", restore only `phase8_item_files[idx]`, set `fix_status[idx]=aborted`, `needs_input_status[idx]=failed`, and `convergence[idx]=not-run — user aborted after type-check failure`, then set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — user aborted after type-check failure` otherwise. Clear `phase8_triage_context`, terminate before Phases 5.5–6, and rejoin Phase 8 at the next independent item without touching the stash or earlier fixes.
 
 ### Fix execution tracking
 
 ```
 fix_status[idx] = ok | retried_ok | inconclusive | skipped | aborted | type_check_skipped
-                | reverted_inverse_risk | partial
+                | reverted_inverse_risk | partial | restored_failed
 landed_fix_statuses = {ok, retried_ok, inconclusive, type_check_skipped}
 ```
 
-`landed_fix_statuses` is the authoritative landed-fix set for later phases and the final report. `reverted_inverse_risk` and `partial` are written by Phase 5.5, not Phase 5.
+`landed_fix_statuses` is the authoritative landed-fix set for later phases and the final report. `reverted_inverse_risk` and `partial` are written by Phase 5.5; `restored_failed` means Phase 8 restored the item's snapshot after a failure and is always non-landed.
 
 ---
 
@@ -510,20 +517,20 @@ Handling:
   sites, and surface them in Phase 8. Do not loop a third time — like the narrow
   type-check retry (max 2) and the self-heal loop (max 2), this loop is capped.
 - `inverse_risk_present: yes` → the suggestion was wrong; applying it anyway ships a worse
-  defect. Revert it — but **not** via `preedit_snapshot[path]` by default. Phase 5.5 runs
-  after ALL fixes, and `preedit_snapshot[path]` holds the file's PRE-PHASE-5 content, so
-  writing it back also erases every other fix that touched that file. Revert in this order:
+  defect. In Phase 8 context, restore every declared path from `active_snapshot`, including
+  authoritative absence, and abort only the current item. In ordinary context,
+  `preedit_snapshot` remains reserved for Abort-all; Phase 5.5 reverts an item in this order:
     1. **Invert this fix's own hunks.** Take `git diff HEAD -- <file>`, isolate the hunks
        belonging to THIS fix (Phase 5 applied fixes one at a time, so the hunks are
        attributable), and apply their inverse. This is the default path.
-    2. **Pre-edit snapshot** — only when no other fix touched any of this fix's files.
-       Check the other FIX items' file lists before using it.
+    2. **Per-fix active snapshot** — only when no later fix touched any of this fix's files;
+       it preserves earlier fixes. Check later FIX items' file lists before using it.
     3. **Neither is clean** → do NOT revert. Leave the working tree as-is, mark
        `fix_status[idx] = reverted_inverse_risk` with a `revert: not attempted` note,
        route the item to NEEDS-INPUT, and say plainly in the Phase 8 report that the
        risky fix is STILL APPLIED and why it could not be safely undone.
-  On a successful revert (1 or 2), mark `fix_status[idx] = reverted_inverse_risk` and route
-  to NEEDS-INPUT.
+  On a successful Phase 8 active-snapshot restore or ordinary revert (1 or 2), mark
+  `fix_status[idx] = reverted_inverse_risk` and route to NEEDS-INPUT.
 - `new_siblings` → treat as part of the same fix and handle it now.
 
 Record the outcome per fix as `convergence[idx]`; Phase 8 renders it, plus one converged /
@@ -640,9 +647,13 @@ On "Fix it": use a follow-up AskUserQuestion to collect guidance:
 
    On "Use reviewer's suggestion": use the original comment's recommendation as the fix plan. On "I'll describe" or "Other", treat unambiguous fix guidance as the fix plan; honor an unambiguous defer, dismiss, or skip instruction through that action's branch. Preserve ambiguous text, set `needs_input_status=skipped`, and continue.
 
-   Validate the complete FIX record through Phase 4 before editing. Derive `phase8_item_files[idx]` from every file declared by the validated fix plan, then capture each file's current content or authoritative absence in a dedicated `phase8_item_snapshot[idx]`. This snapshot includes all earlier landed fixes. It is separate from the run-level `preedit_snapshot`: nested Phases 5–6 neither read nor overwrite `preedit_snapshot`. Set `phase8_triage_context=true` only after this snapshot is complete. In this context, Phase 5 edits and retry agents may touch only `phase8_item_files[idx]`; expand and revalidate the plan and snapshot before any additional path becomes editable. Phase 5.5 may verify all sites but may apply a corrective edit only within those declared files.
+   Validate the complete FIX record through Phase 4 before editing. Derive `phase8_item_files[idx]` from every file declared by the validated fix plan, then capture each file's current content or authoritative absence in a dedicated `phase8_item_snapshot[idx]`. This snapshot includes all earlier landed fixes. Immediately after the snapshot and before any edit, run the affected Phase 5 narrow type-check against that state and record its parsed errors as `phase8_item_baseline_errors[idx]`; when the applicable tooling is unavailable, record the baseline as unavailable and preserve the existing skipped-check behavior. Both item stores are append-only and separate from the run-level `preedit_snapshot` and `baseline_errors`: nested Phases 5–6 neither read nor overwrite the run-level stores. Set `phase8_triage_context=true` only after the snapshot and item baseline are complete.
 
-   Apply the Phase 5 per-fix loop and run Phase 5.5 for that fix. Run the affected Phase 6 type-check, review, and simplify assessments in verification-only mode: do not apply type-fix, self-heal, or simplify edits. A Critical or Serious blocker, validation abort, edit failure, "Abort all" choice, exhausted retry, convergence stop, or Phase 6 failure aborts only this item. Restore every declared path from `phase8_item_snapshot[idx]`, including removing a path whose snapshot recorded authoritative absence; set `needs_input_status=failed`; record `fix_status` and `convergence`; and set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — GitHub mutation not attempted` otherwise. Continue with the next independent item without restoring the run-level stash, exiting the skill, or bypassing the renderer. Clear the context after the item settles. Ordinary Phase 5 and Phase 6 behavior remains unchanged when `phase8_triage_context` is false.
+   In Phase 8 context, Phase 5 edits and retry agents may touch only `phase8_item_files[idx]`. When the plan expands, revalidate it and derive only the newly declared paths absent from `phase8_item_snapshot[idx]`; preserve every existing snapshot and baseline entry byte-for-byte. Before any new path is edited, append that path's current content or authoritative absence and its isolated per-path baseline to the item stores. Never recapture an existing path or rerun its baseline after an edit. If earlier item edits make a trustworthy per-path baseline for a new path impossible, fail closed: restore every path already present in the append-only item snapshot, leave the new path unedited, set `fix_status[idx]=restored_failed`, `needs_input_status[idx]=failed`, and `convergence[idx]=not-run — unsafe expansion baseline for <new-path>; snapshotted paths restored and new path left unedited`, then set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — unsafe expansion baseline` otherwise. Clear `phase8_triage_context` and continue with the next independent item. Phase 5.5 may verify all sites but may apply a corrective edit only within declared, snapshotted files.
+
+   Apply the Phase 5 per-fix loop. When it returns a settled `skipped` or `aborted` item, preserve its `fix_status`, `needs_input_status`, `convergence`, and `gh_status`, then rejoin Phase 8 immediately; Phase 5.5 and Phase 6 are barred from running or reapplying it. Otherwise run Phase 5.5 for that fix. If its resulting `fix_status` is not in `landed_fix_statuses` — including `partial`, `reverted_inverse_risk`, `skipped`, or `aborted` — record that status as `pre_restore_fix_status[idx]`, restore every declared path from `phase8_item_snapshot[idx]`, set `fix_status[idx]=restored_failed` and `needs_input_status[idx]=failed`, and preserve the original convergence evidence with an appended `restored item snapshot after <pre_restore_fix_status>` disposition. Set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — convergence rejected and item restored` otherwise. Clear `phase8_triage_context` and rejoin Phase 8 at the next independent item. Only a status in `landed_fix_statuses` proceeds to the affected Phase 6 type-check, review, and simplify assessments in verification-only mode; do not apply type-fix, self-heal, or simplify edits.
+
+   A Critical or Serious blocker, validation abort, edit failure, exhausted retry, or Phase 6 failure aborts only this item. Before restoring, record the exact triggering error or blocker as `phase8_failure_reason[idx]`. Restore every declared path from `phase8_item_snapshot[idx]`, including removing a path whose snapshot recorded authoritative absence; set `fix_status[idx]=restored_failed` and `needs_input_status[idx]=failed`. Preserve existing convergence evidence and append `restored item snapshot after <phase8_failure_reason>`; when convergence never ran, set `convergence[idx]=not-run — <phase8_failure_reason>; item snapshot restored`. Set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — <phase8_failure_reason>; item restored` otherwise. Clear the context and continue with the next independent item without restoring the run-level stash, exiting the skill, or bypassing the renderer. Ordinary Phase 5 and Phase 6 behavior remains unchanged when `phase8_triage_context` is false.
 
    When the fix and verification land cleanly, update `done_verified_snapshot` from the prior snapshot plus this item's verified declared-path bytes, then run the Phase 7 reply/resolve mechanics. Set `needs_input_status=fixed` only when `fix_status ∈ landed_fix_statuses` and both GitHub operations are successful or not applicable; set it to `reconcile-required` if either operation has that state, otherwise set it to `failed`. Preserve the final classification, `fix_status`, `convergence`, and `gh_status` before continuing.
 
@@ -718,14 +729,22 @@ After printing the final report and offering suppressions, use AskUserQuestion. 
        - label: "Done"
          description: "Exit — I'll handle the rest manually"
 
-On "Commit changes" or "Push to remote", require `stash_restored != conflict` and a valid `done_verified_snapshot`. Invoke `git-commit` in Verified content snapshot sealed-index mode with that snapshot; never stage or restage the live worktree. Require the created commit tree to equal the snapshot tree. Ordinary restored WIP remains in the worktree and outside the candidate commit. On "Push to remote", commit first, then require the commit tree to still equal the snapshot before freezing the push-attempt SHA. Freeze it only when the active symbolic ref equals the expected PR branch and that branch ref and `HEAD` resolve to the same SHA. Query the exact remote ref and record its SHA or authoritative absence; when present, require it to be an ancestor of the frozen SHA. Immediately before `git push`, invoke `preflight-mutations` with the exact remote, branch ref, frozen local SHA, expected remote SHA or absence, upstream state, commit range, PR base/head, dependent refs, and the user's choice. Include the active symbolic ref, branch-ref SHA, and `HEAD` in its guards and invalidators, then recheck them immediately before running the exact push and read-back:
+On "Commit changes" or "Push to remote", require `stash_restored != conflict` and a valid `done_verified_snapshot`. Invoke `git-commit` in Verified content snapshot sealed-index mode with that snapshot; never stage or restage the live worktree. Require the created commit tree to equal the snapshot tree. Ordinary restored WIP remains in the worktree and outside the candidate commit.
+
+On "Push to remote", commit first, then require the commit tree to still equal the snapshot before freezing the push-attempt SHA. Freeze it only when the active symbolic ref equals the expected PR branch and that branch ref and `HEAD` resolve to the same SHA. Resolve the intended publication target before binding `<preflighted-remote>`. For GitHub PR input, read the current PR's `headRepository.id` and `nameWithOwner`; that head identity is the target and remains independent of the input/base repository. Enumerate configured remotes and validate every endpoint in each ordered complete fetch/push set. Auto-select the only remote whose every endpoint matches the PR head identity; when multiple match, immediately use AskUserQuestion with concrete `<remote> — <nameWithOwner> (<id>)` options and pagination when needed; when none match, stop with `Configure a remote whose complete endpoint sets resolve to the current PR head repository, then choose Push to remote again.` The selected match becomes `<preflighted-remote>`.
+
+For local-file or other no-current-PR input, immediately follow the "Push to remote" choice with AskUserQuestion. Inventory every configured remote; capture without printing its ordered complete fetch and push endpoint sets, normalize and resolve every endpoint independently through authenticated `gh repo view ... --json id,nameWithOwner`, and retain a remote only when every endpoint resolves to the same repository ID and `nameWithOwner`. Show each retained remote as a concrete option labelled `<remote> — <nameWithOwner> (<id>)`; list rejected remotes with the failing endpoint or set mismatch but never make them selectable. If the option limit cannot hold every retained remote, paginate disjoint sets of concrete options with a `Show next remotes` choice until the user selects one. That selection freezes both complete sets, sets `<preflighted-remote>` and the explicit intended publication target, and joins the preflight authorization and guards. If no remote is valid, stop with: `Configure a remote whose complete fetch and push endpoint sets resolve to one authenticated GitHub repository, then choose Push to remote again.`
+
+Capture without printing the ordered complete sets from `git remote get-url --all <preflighted-remote>` and `git remote get-url --push --all <preflighted-remote>`, then normalize every endpoint to a credential-free URL identity. Preserve transport class, host, port, and owner/repository while treating equivalent spellings such as scp-like versus `ssh://`, default ports, trailing slash, and `.git` suffix alike. Independently resolve every normalized endpoint through authenticated `gh repo view ... --json id,nameWithOwner`; require every endpoint ID and `nameWithOwner` to equal the intended publication target. Retain only the ordered normalized sets or their digests and resolved IDs, never credentials. Record the remote name, both complete endpoint sets, and intended target; any addition, removal, reorder, resolution failure, or repository mismatch is `reconcile-required`. The named-remote push may target its configured complete push set only while that frozen set still matches.
+
+Query the exact remote ref and record its SHA or authoritative absence; when present, require it to be an ancestor of the frozen SHA. Immediately before `git push`, invoke `preflight-mutations` with the exact remote, both ordered complete endpoint sets and repository IDs, intended publication target, branch ref, frozen local SHA, expected remote SHA or absence, upstream state, commit range, dependent refs, and the user's choice. Include PR base/head and head repository ID only when a PR exists. Include the active symbolic ref, branch-ref SHA, `HEAD`, and complete selected-remote identity in its guards and invalidators, then re-enumerate and compare both endpoint sets before running the exact push:
 
 ```bash
 git push --force-with-lease="<exact-ref>:<expected-sha-or-empty>" "<preflighted-remote>" "<frozen-local-sha>:<exact-ref>"
 git ls-remote --heads "<preflighted-remote>" "<exact-ref>"
 ```
 
-Require authoritative remote read-back to equal the frozen SHA. When a PR exists, require its `headRefOid` to equal that SHA too. Record an ambiguous command or read-back as `reconcile-required` and do not retry. On "Re-run on remaining": if the original input was a local file, invoke `/fix-pr-review <original-file-path>` scoped to skipped/needs-input items; otherwise invoke `/fix-pr-review <url>` scoped to remaining items. On "Done": exit.
+After every attempted push, including a nonzero or ambiguous exit, re-enumerate both complete endpoint sets and run the exact `git ls-remote` read-back once. Accept the push as landed only when the authoritative remote SHA equals the frozen SHA, the ordered sets are unchanged, and every endpoint still equals the intended publication target. An old or unexpected SHA, unavailable read-back, added, removed, reordered, unresolved, or mismatched endpoint is `reconcile-required`; stop that push and never retry from the command result alone. When a PR exists, read `headRefOid` and `headRepository.id` and require them to equal the frozen SHA and intended publication target ID. On "Re-run on remaining": if the original input was a local file, invoke `/fix-pr-review <original-file-path>` scoped to skipped/needs-input items; otherwise invoke `/fix-pr-review <url>` scoped to remaining items. On "Done": exit.
 
 ### 6. Exit
 
