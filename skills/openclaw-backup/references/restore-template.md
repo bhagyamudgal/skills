@@ -54,24 +54,30 @@ the file tree, then overwrite the databases from `sqlite/`**.
 
 Steps 1-3 are reversible. Step 4 is the commit point.
 
-In the restore shell, compute one exact move-aside path before preflight and persist its value
-in the mutation ledger. Use that same value for the move, rollback, and final deletion; never
-recompute its timestamp.
+Make namespace reservation the first restore mutation. Give it a separate reversible card
+whose target is one unique mode-`0700` child of `<STATE_DIR>`'s parent. On a current `ready`
+verdict, allocate the child atomically, derive the move-aside path inside it, and persist both
+exact paths plus the creation read-back in the mutation ledger.
 
 ```
-BROKEN_STATE_DIR="<STATE_DIR>.broken-$(date +%Y%m%d-%H%M%S)"
+umask 077
+RESTORE_RESERVATION_DIR="$(mktemp -d "<STATE_DIR>.restore-XXXXXXXX")"
+chmod 0700 "$RESTORE_RESERVATION_DIR"
+BROKEN_STATE_DIR="$RESTORE_RESERVATION_DIR/original-state"
+test -d "$RESTORE_RESERVATION_DIR"
+test "$(find "$RESTORE_RESERVATION_DIR" -prune -type d -perm 0700 -print)" = "$RESTORE_RESERVATION_DIR"
 test ! -e "$BROKEN_STATE_DIR"
-printf '%s\n' "$BROKEN_STATE_DIR"
+printf '%s\n%s\n' "$RESTORE_RESERVATION_DIR" "$BROKEN_STATE_DIR"
 ```
 
 Before Step 1, build the complete ordered restore plan and partition it into mutation cards
-where `preflight-mutations` requires different reversibility or confirmation. Name the service
-transition, state move, archive extraction, every database replacement and sidecar deletion,
-optional service-definition copy, restart, and final broken-state deletion as separate batch
-items with current guards, expected post-write guards, rollback, and authoritative read-back.
-The final deletion belongs to its own irreversible card. Record the rollback's restored-state
-deletion, move-aside reversal, and service restart as contingent mutation-ledger items with
-their guards and read-backs before the first restore write.
+where `preflight-mutations` requires different reversibility or confirmation. Name the namespace
+reservation, service transition, state move, archive extraction, every database replacement and
+sidecar deletion, optional service-definition copy, restart, and final reservation deletion as
+separate batch items with current guards, expected post-write guards, rollback, and authoritative
+read-back. The final deletion belongs to its own irreversible card. Record the rollback's
+restored-state deletion, exact child reversal, empty-reservation removal, and service restart as
+contingent mutation-ledger items with their guards and read-backs before the reservation write.
 
 Invoke each card immediately before its first write. Immediately before every later write in
 that card, authoritatively re-read and compare the item's current guards, advancing an expected
@@ -146,24 +152,31 @@ process that is up is not the same as a gateway that works.
 
 ### 7. Only once verified
 
-Obtain the final deletion card's explicit confirmation, re-read the move-aside target guard,
-and continue only on a current `ready` verdict.
+Obtain the final deletion card's explicit confirmation. Re-read the persisted reservation root
+and move-aside child, prove the root is mode `0700` and contains exactly that child with no other
+entries, and continue only on a current `ready` verdict.
 
 ```
-rm -rf -- "$BROKEN_STATE_DIR"
+test "$BROKEN_STATE_DIR" = "$RESTORE_RESERVATION_DIR/original-state"
+test -d "$BROKEN_STATE_DIR"
+test "$(find "$RESTORE_RESERVATION_DIR" -prune -type d -perm 0700 -print)" = "$RESTORE_RESERVATION_DIR"
+test "$(find "$RESTORE_RESERVATION_DIR" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" = "1"
+test "$(find "$RESTORE_RESERVATION_DIR" -mindepth 1 -maxdepth 1 -print)" = "$BROKEN_STATE_DIR"
+rm -rf -- "$RESTORE_RESERVATION_DIR"
 ```
 
-Authoritatively confirm that the exact move-aside target no longer exists. An indeterminate
+Authoritatively confirm that the exact reservation root no longer exists. An indeterminate
 result remains `reconcile-required` and must not be retried.
 
 ## Rolling back a failed restore
 
 Activate the recorded rollback items, apply the same preflight and per-write ledger contract,
-and use the persisted `BROKEN_STATE_DIR` value.
+and use the persisted reservation root and child values.
 
 ```
 rm -rf <STATE_DIR>
 mv "$BROKEN_STATE_DIR" <STATE_DIR>
+rmdir "$RESTORE_RESERVATION_DIR"
 <SERVICE_CTL> start <SERVICE_NAME>
 ```
 

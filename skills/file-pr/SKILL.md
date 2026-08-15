@@ -114,14 +114,22 @@ For an initial publication, immediately before `git-commit`, or before push when
 
 For an initial publication, before pushing, require the active branch to still equal **Branch**, freshly re-fetch every mixed external target, and require its currency to still match. Then run `done`'s post-commit content seal. Record the exact outputs of `git status --porcelain=v1 --untracked-files=all` and `git rev-parse HEAD^{tree}`. The status output must be empty and the tree SHA must exactly equal **Verified content snapshot**; otherwise return to `done`.
 
-For an initial publication, immediately before pushing, invoke `preflight-mutations` with one inline, single-item card. Its action is the exact local head SHA pushed to `origin` at `refs/heads/<card-branch>`; its guards include the current remote SHA or confirmed absence, and its read-back is the exact `git ls-remote` query below. The authorized `file-pr` invocation under the global rule is the authorization source. Apply the result independently: continue only on `ready` while invalidators match; present `confirmation-required`; stop on `blocked`.
+For an initial publication, query `refs/heads/<card-branch>` directly and require exactly one current remote SHA or authoritative absence. When it exists, require that SHA to be an ancestor of local `HEAD`; this keeps the lease-guarded push fast-forward-only. Immediately before pushing, invoke `preflight-mutations` with one inline, single-item card. Its action is the exact local head SHA pushed to that ref; its guards include the exact remote SHA or confirmed absence, and its read-back is the exact `git ls-remote` query below. The authorized `file-pr` invocation under the global rule is the authorization source. Apply the result independently: continue only on `ready` while invalidators match; present `confirmation-required`; stop on `blocked`.
 
 ```bash
-git push -u origin <card-branch>
+git push --force-with-lease="refs/heads/<card-branch>:<expected-remote-sha-or-empty>" origin "<exact-local-head-sha>:refs/heads/<card-branch>"
 git ls-remote --heads origin "refs/heads/<card-branch>"
 ```
 
-On an initial publication, require the remote branch SHA to equal local `HEAD` and record the landed push before proceeding. On the existing-PR branch, the revalidation at the start of this section supplies the same remote-head evidence without another push.
+On an initial publication, require the remote branch SHA to equal local `HEAD` and record the landed push before changing local upstream configuration. Re-read the branch's current symbolic upstream and its SHA, then preflight a separate binding of `<card-branch>` to `origin/<card-branch>` guarded by the branch, local head, landed remote SHA, and exact observed upstream state. An already-matching upstream is an authoritative no-op. Otherwise bind and read it back:
+
+```bash
+git branch --set-upstream-to="origin/<card-branch>" "<card-branch>"
+git rev-parse --abbrev-ref --symbolic-full-name "<card-branch>@{upstream}"
+git rev-parse "<card-branch>@{upstream}"
+```
+
+Require the symbolic upstream to equal `origin/<card-branch>` and its SHA to equal local `HEAD`. If binding or read-back fails after the remote push landed, record `remote landed / upstream not bound` with both observed states and continue reconciliation without retrying the push. On the existing-PR branch, the revalidation at the start of this section supplies the remote-head evidence without another push.
 
 Write the final body to a file and record its SHA-256 digest. Search the head branch across every base and state before deciding whether an earlier attempt exists:
 

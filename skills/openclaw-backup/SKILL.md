@@ -189,6 +189,15 @@ sha256sum -c /tmp/check.sha256    # macOS: shasum -a 256 -c
 Confirm the checksum output covers a non-empty file list before reading it as a pass — a
 verifier fed an empty list reports success having checked nothing.
 
+A checksum mismatch retires that transfer card. Preserve its `failed` result and the observed
+destination partial state as immutable history; if the transfer or read-back is ambiguous, mark
+it `reconcile-required` and resolve that exact file before planning another write. Before each
+retry, re-read the exact source file and destination partial file plus the receiving system's
+encryption, effective access, retention, and tested deletion controls. Create a new card scoped
+to that one mismatched file and one resumable `rsync --partial` transfer, with the current guards
+and expected checksum read-back. Retry only on a current `ready` verdict, then retire that card
+with its authoritative result before any later attempt.
+
 Re-read the receiving system's encryption and effective access controls after the copy. If
 either differs from the preflight evidence, preserve and report the copy as sensitive partial
 state. The copy approval does not authorize deletion. Render a separate compensating deletion
@@ -197,9 +206,9 @@ delete only after fresh explicit confirmation and a current `ready` preflight re
 
 **Gate:** every checked file reports `OK`, encryption at rest remains enabled, effective access
 is restricted to the approved recipient accounts, and the retention/deletion path remains
-available. Re-transfer a file whose checksum mismatches; a failed security control blocks
-completion while the sensitive partial state is preserved or separately deleted. `--partial`
-makes a re-run resume.
+available. A mismatched file clears the gate only through the fresh-card retry contract above;
+a failed security control blocks completion while the sensitive partial state is preserved or
+separately deleted. `--partial` makes the new transfer resume.
 
 Omitting the official archive from the pull is reasonable — its contents are a subset of the
 raw archive. State that omission in the report.

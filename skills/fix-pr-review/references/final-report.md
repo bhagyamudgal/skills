@@ -9,17 +9,20 @@ Loaded by main in Phase 8, at "Print the final report", before anything is print
 If any `gh_status[idx]` has `reply_ok == false` OR `resolve_ok == false`, print this section at the **top** of the report:
 
 ```
-## ⚠ GitHub operations that FAILED (<count>)
+## ⚠ GitHub operations needing attention (<count>)
 
   [<idx>] <file:line>
-    reply:   <err>
-    resolve: <err>
-    thread:  <html_url>
-
-These threads are still open on GitHub. Retry manually, or re-run the skill
-scoped to the specific comment:
-  /fix-pr-review <html_url>
+    reply:       <reply_state> — <reply_err or authoritative observation>
+    resolution:  <resolve_state> — <resolve_err or authoritative observation>
+    disposition: <state-specific next action>
+    thread:      <html_url>
 ```
+
+Render reply and resolution independently. For `confirmed-absent` plus
+`already-resolved`, report that the thread is resolved, the frozen reply is absent, and no
+automatic retry is authorized. Reserve "thread is still open" for `confirmed-open` or an
+authoritative open-thread read-back. For `reconcile-required`, name the indeterminate operation
+and its exact settling query; authorize no retry until that query settles the state.
 
 ## Main body
 
