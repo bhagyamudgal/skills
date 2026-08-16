@@ -24,7 +24,8 @@ Each one is loaded only on the branch that reaches it — some by main, some by 
 - `references/cross-cutting-prompt.md` — the whole Subagent 3 prompt. Loaded by **main** at the Phase 2 dispatch when `SIZE_MODE` is `parallel-chunked` or `parallel-chunked-confirm`; the unchunked modes never dispatch Subagent 3.
 - `references/q5-type-coercion.md` — the Q5 type-coercion scan: coercion methods, how to decide a field is numeric, severity. Loaded by **Subagent 1** while answering Q5 when the diff contains a DB insert/update or an API payload construction.
 - `references/class-sweep-and-inverse-risk.md` — reviewer-prompt steps 5 and 6: blast-radius search order, the `class_completeness:` and `Inverse risk:` field rules, the worked inverse-risk examples. Loaded by **Subagent 1** as soon as any finding proposes a code change.
-- `references/q6-reusability-search.md` — Phase 1 repo-map shell + STEP A enumeration + STEP B search algorithm + Q6 control-flow gap. Loaded by **main** in Phase 1 when `packages/` or `apps/` exists, and by **Subagent 1** when the diff has 1+ new top-level definitions.
+- `references/repo-map.md` — the `repo_map_files` / `repo_map_exports` shell, local and cross-repo modes. The one copy in the repo; `/fix-pr-review` and `/harden-plan` load it from here too. Loaded by **main** in Phase 1 when `packages/` or `apps/` exists.
+- `references/q6-reusability-search.md` — STEP A enumeration + STEP B search algorithm + Q6 control-flow gap. Loaded by **Subagent 1** when the diff has 1+ new top-level definitions.
 - `references/finding-output-format.md` — the per-finding field block, the `class_completeness:` audit shape, and the run-level closing block. The one copy of the finding shape. Loaded by **Subagent 1**, **Subagent 3** and **V3** before they write any finding.
 - `references/schema-design-checks.md` — Q7 (overlap), Q8 (1:1 consolidation), Q9 (cross-table FK) checks. Loaded by **Subagent 1** when `INCLUDE_SCHEMA_CHECKS = true`, and by **V3** when the gap check covers Q7–Q9.
 - `references/verification-subagents.md` — V1/V2/V3 dispatch conditions + the exact prompt each is given. Loaded by **main** in Phase 3 at the first of steps 4.55 / 4.9 / 6 that fires.
@@ -259,7 +260,7 @@ If `PRIOR_STATE.convergence` exists, invoke `converge-reviews` with the current 
 
 ### Compute shared-package repo map (for Q6)
 
-If `packages/` or `apps/` exists, load `${CLAUDE_SKILL_DIR}/references/q6-reusability-search.md` and run its "Phase 1 — compute the shared-package repo map" section: it holds both shell blocks (the cross-repo `gh api` tree fetch and the local `bash -c` find/grep pair, each truncating at 500 lines) and stashes `repo_map_files` + `repo_map_exports` for Subagent 1's prompt.
+If `packages/` or `apps/` exists, load `${CLAUDE_SKILL_DIR}/references/repo-map.md` and run the block for the mode you are in: it holds both shell blocks (the cross-repo `gh api` tree fetch and the local `bash -c` find/grep pair, each truncating at 500 lines) and stashes `repo_map_files` + `repo_map_exports` for Subagent 1's prompt. It is the one copy of that shell, shared with `/fix-pr-review` and `/harden-plan`.
 
 If neither directory exists, skip the shell: set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false` — Subagent 1 reroutes greps to `src/`.
 

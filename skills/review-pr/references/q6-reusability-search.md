@@ -1,57 +1,8 @@
-# Q6a Reusability — repo map, search algorithm, and audit format
+# Q6a Reusability — search algorithm and audit format
 
-Two loaders, both on the Q6 path:
+Loaded by **Subagent 1**, when the diff has 1+ new top-level definitions, for STEP A onward. The main SKILL.md keeps only the Q6a header + reporting format. This reference explains HOW to search.
 
-- **Main, in Phase 1** — when `packages/` or `apps/` exists, for the repo-map computation below. The map has exactly one consumer (Q6), so it lives beside the search that reads it.
-- **Subagent 1** — when the diff has 1+ new top-level definitions, for STEP A onward. The main SKILL.md keeps only the Q6a header + reporting format. This reference explains HOW to search.
-
----
-
-## Phase 1 — compute the shared-package repo map (main)
-
-Inventory shared packages AND apps so the Phase 2 reviewer can cross-check new additions. Scan BOTH `packages/` and `apps/` — a helper in `apps/web` may duplicate one in `apps/cli`, and monorepos split reusable code across both.
-
-**Branch on `CROSS_REPO_MODE`**:
-
-```bash
-if [ "$CROSS_REPO_MODE" = "true" ]; then
-  HEAD_BRANCH=$(gh pr view <url> --json headRefName -q .headRefName)
-  gh api "repos/<owner>/<repo>/git/trees/${HEAD_BRANCH}?recursive=1" \
-    --jq '.tree[] | select(.type == "blob" and (.path | test("^(packages|apps)/.*\\.(ts|tsx)$")) and (.path | test("node_modules|dist|build|\\.test\\.|\\.spec\\.") | not)) | .path' \
-    | awk 'NR<=500{print} END{if(NR>500)print "[truncated at 500 of " NR " lines]"}'
-  repo_map_files="<output>"
-  repo_map_exports="N/A (cross-repo mode — fetch via 'gh api repos/<owner>/<repo>/contents/<path>?ref=<sha>' on-demand)"
-fi
-```
-
-Local mode (default) — wrap globs in `bash -c '...'` (zsh aborts on `packages/*/src` before `2>/dev/null` can suppress):
-
-```bash
-# Repo map files
-bash -c '
-if [ -d packages ] || [ -d apps ]; then
-  { [ -d packages ] && find packages -type f \( -name "*.ts" -o -name "*.tsx" \) \
-      -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
-      -not -name "*.test.*" -not -name "*.spec.*" 2>/dev/null
-    [ -d apps ] && find apps -type f \( -name "*.ts" -o -name "*.tsx" \) \
-      -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
-      -not -path "*/.next/*" -not -name "*.test.*" -not -name "*.spec.*" 2>/dev/null
-  } | awk "NR<=500{print} END{if(NR>500)print \"[truncated at 500 of \" NR \" lines]\"}"
-fi
-'
-# Repo map exports
-bash -c '
-if [ -d packages ] || [ -d apps ]; then
-  find packages apps 2>/dev/null -type d \( -name src -o -name lib -o -name source \) \
-    -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
-    -not -path "*/.next/*" 2>/dev/null \
-    | xargs -I{} grep -rhnE "^export (default (async )?function|function|const|class|type|interface|async function) \w+" {} 2>/dev/null \
-    | awk "NR<=500{print} END{if(NR>500)print \"[truncated at 500 of \" NR \" lines]\"}"
-fi
-'
-```
-
-Stash the two outputs as `repo_map_files` and `repo_map_exports`; both are passed into Subagent 1's prompt.
+STEP B searches against `repo_map_files` / `repo_map_exports`, which main computes in Phase 1 — that shell is in `${CLAUDE_SKILL_DIR}/references/repo-map.md`, the copy `/fix-pr-review` and `/harden-plan` share.
 
 ---
 
