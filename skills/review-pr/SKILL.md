@@ -446,8 +446,7 @@ Dispatch when `SIZE_MODE` is `parallel-chunked` or `parallel-chunked-confirm`. S
 - Scope: the WHOLE PR. It is the only reviewer permitted to report across file boundaries.
 
 The prompt lives in `${CLAUDE_SKILL_DIR}/references/cross-cutting-prompt.md` — load it at
-this dispatch. Only the two chunked branches reach it; the unchunked modes never dispatch
-Subagent 3 at all.
+this dispatch.
 
 ---
 

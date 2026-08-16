@@ -166,7 +166,7 @@ def check_frontmatter():
 # landed at 506 — 41% past the previous worst — and nothing caught it at review.
 MAX_DESCRIPTION_CHARS = 360
 
-# Set from the repo's own distribution: three skills sit past 10 KB with the
+# Set from the repo's own distribution: two skills sit past 10 KB with the
 # whole body in SKILL.md; every other skill that size splits into references/.
 MAX_SKILL_MD_BYTES = 10_000
 
@@ -530,10 +530,11 @@ def _containment(a, b):
 
 def check_near_duplicate_code_blocks():
     """Same intent as the byte-identical check, one step looser: the repo-map
-    bash triplicated across fix-pr-review, harden-plan and review-pr evades that
-    check because the copies differ by a leading comment, an indent, and one
-    awk string. Clusters are keyed on the longest member's normalized digest so
-    they can be allowlisted through DUPLICATE_ALLOWLIST like any other."""
+    bash, before it was given one home, was triplicated across fix-pr-review,
+    harden-plan and review-pr and evaded that check because the copies differed
+    by a leading comment, an indent, and one awk string. Clusters are keyed on
+    the longest member's normalized digest so they can be allowlisted through
+    DUPLICATE_ALLOWLIST like any other."""
     blocks = []
     for path in EVERY_MD:
         skill = rel(path).split("/")[0]

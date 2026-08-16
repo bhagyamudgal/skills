@@ -53,7 +53,7 @@ def make_sandbox():
 
 def parse_stream(output):
     final_text = ""
-    assistant_messages = []
+    last_assistant_message = ""
     tool_calls = []
     tool_calls_by_id = {}
     result_error = None
@@ -77,7 +77,7 @@ def parse_stream(output):
                     tool_calls.append(tool_call)
                     tool_calls_by_id[tool_call["id"]] = tool_call
             if any(text.strip() for text in message_text):
-                assistant_messages.append("\n".join(message_text))
+                last_assistant_message = "\n".join(message_text)
         elif event.get("type") == "user":
             for content in event.get("message", {}).get("content", []):
                 if content.get("type") != "tool_result":
@@ -102,8 +102,7 @@ def parse_stream(output):
                 ) or "result-error"
     # The `result` event carries the final assistant message; earlier messages are drafts, and
     # joining them lets a card be assembled field-wise across drafts the model retracted.
-    answer = final_text or (assistant_messages[-1] if assistant_messages else "")
-    return answer, tool_calls, result_error
+    return final_text or last_assistant_message, tool_calls, result_error
 
 
 def matches_observation(tool_call, observation):
@@ -149,12 +148,11 @@ def evaluate_case(case, final_text, tool_calls, process_error):
     failures = []
     if process_error:
         failures.append(process_error)
-    blocks = split_claim_blocks(final_text)
-    states = {normalize_state(parse_claim_card(block).get("state", "")) for block in blocks}
-    states &= CARD_STATES
+    cards = [parse_claim_card(block) for block in split_claim_blocks(final_text)]
+    states = {normalize_state(card.get("state", "")) for card in cards} & CARD_STATES
     if len(states) > 1:
         failures.append(f"conflicting claim cards: {', '.join(sorted(states))}")
-    claim_card = parse_claim_card(blocks[-1])
+    claim_card = cards[-1]
     for field in CARD_FIELDS:
         if not claim_card.get(field.lower()):
             failures.append(f"missing or empty claim-card field: {field}")
