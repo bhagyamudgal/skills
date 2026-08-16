@@ -1,6 +1,6 @@
 ---
 name: simplify
-description: Reduce unnecessary complexity in a completed code or workflow diff without changing intended behavior. Use after implementation and review, when done requires its cleanup pass, or when a fix grew beyond the request. Do not use to redesign requirements or expand scope.
+description: Reduce unnecessary complexity in a completed code or workflow diff without changing intended behavior. Use after implementation and review, or when a fix grew beyond the request.
 ---
 
 # Simplify

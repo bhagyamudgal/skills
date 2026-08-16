@@ -1,6 +1,6 @@
 ---
 name: preflight-mutations
-description: Prepare or block a batch that will change shared or remote state, published Git history, production-like data, live services, or off-box copies. Use immediately before issue, PR, board, publication, production UI, service, or published-history mutations. Do not use for read-only work, isolated worktree edits, or unpublished local commits.
+description: Prepare or block a shared-state write. Use immediately before changing shared or remote state (issue, PR, board, publication), published Git history, production-like data or live services, or an off-box copy.
 ---
 
 # Preflight Mutations
