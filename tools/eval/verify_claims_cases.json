@@ -3,7 +3,7 @@
     {
       "id": "code-verified",
       "lane": "code behavior",
-      "prompt": "Use $verify-claims. Work read-only. Verify this decision-driving claim before recommending that we depend on it: `calculate_discount(100) returns 10.0`. Inspect tools/eval/verify-claims-fixture/code/discount.py and exercise its public function. Return the final claim card.",
+      "prompt": "Use $verify-claims. Work read-only. We are about to recommend that pricing depend on this claim: `calculate_discount(100) returns 10.0`. The implementation is at tools/eval/verify-claims-fixture/code/discount.py. Verify the claim before that recommendation goes out and return the final claim card.",
       "expected_state": "verified",
       "required_next_action_patterns": ["depend|rely|use"],
       "required_patterns": [
@@ -16,6 +16,11 @@
       "required_tool_patterns": ["^Skill$"],
       "required_observations": [
         {
+          "id": "skill-loaded",
+          "tool_pattern": "^Skill$",
+          "input_field_patterns": {"skill": "^verify-claims$"}
+        },
+        {
           "id": "source-code-read",
           "tool_pattern": "^Read$",
           "input_patterns": ["discount\\.py"],
@@ -25,14 +30,14 @@
           "id": "public-function-executed",
           "tool_pattern": "^Bash$",
           "input_patterns": ["calculate_discount"],
-          "result_patterns": ["10\\.0", "True"]
+          "result_patterns": ["10\\.0|\\bTrue\\b"]
         }
       ]
     },
     {
       "id": "external-mutation-missing-boundary",
       "lane": "external mutation",
-      "prompt": "Use $verify-claims. Work read-only. The user is about to be told `all board estimates were updated successfully`. The only available artifact is tools/eval/verify-claims-fixture/external/mutation_receipt.json; the board cannot be reached in this environment. Verify the claim and return the final claim card.",
+      "prompt": "Use $verify-claims. Work read-only. The user is about to be told `all board estimates were updated successfully` and the task closed on that basis. The run that issued those writes left tools/eval/verify-claims-fixture/external/mutation_receipt.json. Verify the claim and return the final claim card.",
       "expected_state": "basis-verified",
       "required_next_action_patterns": ["do (?:\\*\\*)?not|unconfirmed", "read.?back|read the GSM3 board|read every estimate-bearing"],
       "forbidden_next_action_patterns": ["definitive language is permitted", "safe to (?:announce|report).{0,30}(?:complete|success)"],
@@ -45,6 +50,11 @@
       "required_tool_patterns": ["^Skill$"],
       "required_observations": [
         {
+          "id": "skill-loaded",
+          "tool_pattern": "^Skill$",
+          "input_field_patterns": {"skill": "^verify-claims$"}
+        },
+        {
           "id": "mutation-receipt-read",
           "tool_pattern": "^Read$",
           "input_patterns": ["mutation_receipt\\.json"],
@@ -55,7 +65,7 @@
     {
       "id": "configuration-contradicted",
       "lane": "configuration or invocation",
-      "prompt": "Use $verify-claims. Work read-only. Verify the claim `verify-claims is available to users through the skill picker` before announcing the migration complete. Inspect tools/eval/verify-claims-fixture/config/registration.json and tools/eval/verify-claims-fixture/config/picker_result.json. Return the final claim card.",
+      "prompt": "Use $verify-claims. Work read-only. Verify the claim `verify-claims is available to users through the skill picker` before the migration is announced complete. Everything the rollout recorded is under tools/eval/verify-claims-fixture/config/. Return the final claim card.",
       "expected_state": "contradicted",
       "required_next_action_patterns": ["do (?:\\*\\*)?not announce|withdraw", "diagnose|re-verify"],
       "required_patterns": [
@@ -66,6 +76,11 @@
       ],
       "required_tool_patterns": ["^Skill$"],
       "required_observations": [
+        {
+          "id": "skill-loaded",
+          "tool_pattern": "^Skill$",
+          "input_field_patterns": {"skill": "^verify-claims$"}
+        },
         {
           "id": "registration-read",
           "tool_pattern": "^Read$",
@@ -95,6 +110,11 @@
       "required_tool_patterns": ["^Skill$", "^(Agent|Task)$"],
       "required_observations": [
         {
+          "id": "skill-loaded",
+          "tool_pattern": "^Skill$",
+          "input_field_patterns": {"skill": "^verify-claims$"}
+        },
+        {
           "id": "query-scope-read",
           "tool_pattern": "^Read$",
           "input_patterns": ["query\\.json"],
@@ -109,7 +129,7 @@
         {
           "id": "blind-independent-recheck",
           "tool_pattern": "^(Agent|Task)$",
-          "input_patterns": ["query\\.json", "final_ledger\\.csv", "counter-hypothesis"],
+          "input_patterns": ["query\\.json", "final_ledger\\.csv", "counter-hypothesis|strongest alternative"],
           "result_patterns": ["\\b12\\b", "bhagya"]
         }
       ],
