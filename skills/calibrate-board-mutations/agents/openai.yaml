@@ -2,3 +2,6 @@ interface:
   display_name: "Calibrate Board Mutations"
   short_description: "Calibrate board estimates before shared writes"
   default_prompt: "Use $calibrate-board-mutations for board-estimate batches that need calibration before shared-state writes."
+
+policy:
+  allow_implicit_invocation: false

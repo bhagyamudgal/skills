@@ -1,6 +1,6 @@
 ---
 name: converge-reviews
-description: Reconcile repeated code-review rounds against one scope and findings ledger. Use after a review-pr, parallel-review, or done review round; when deciding whether another review is warranted; or when review findings keep generating more review work.
+description: Reconcile repeated code-review rounds against one scope and findings ledger. Use after any review round, or when review findings keep generating more review work.
 ---
 
 # Converge Reviews

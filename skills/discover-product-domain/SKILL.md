@@ -1,6 +1,6 @@
 ---
 name: discover-product-domain
-description: Generate, mix and match, refine, and rank product or app names, then verify their exact standard-price .com domains. Use when mixing and matching app-name ideas, words, or fragments; naming an app, product, project, or early-stage idea; finding brandable .com names; checking a product-name shortlist and recommending its strongest available candidate; or refining a user-created name. Do not use for visual identity, marketing copy, product-market validation, SEO keyword planning, or domain registration.
+description: Generate, remix, and rank product or app names, then verify their exact standard-price .com domains. Use when naming an app or product, remixing name fragments or an existing name, or checking a name shortlist.
 ---
 
 # Discover Product Domains
