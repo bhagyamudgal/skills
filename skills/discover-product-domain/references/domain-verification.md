@@ -18,8 +18,9 @@ failure never proves availability.
 Every result records the exact domain, status, UTC check time, method, a public
 source URL or redacted endpoint identifier, response/result class, and error when
 present. Never record query strings, credentials, session tokens, or client IPs.
-Registrar results additionally record currency, first-year price, renewal price
-when shown, and premium label.
+Registrar results additionally record currency, standard first-year base price,
+each mandatory fee, standard first-year total, renewal price when shown, and
+premium label.
 
 ## 1. Derive and normalize the domain
 
@@ -66,14 +67,33 @@ domains and exposes availability plus premium pricing, but ordinary registration
 pricing requires separate evidence such as its documented pricing API. Redact all
 credential-bearing request URLs.
 
+For a Namecheap API shortlist, partition the normalized, deduplicated domains into
+batches of at most 50. Merge responses by exact normalized domain, map every
+original supplied entry to exactly one evidence record, and never duplicate a
+lookup result. After merging, assign `unknown` to every requested normalized
+domain that lacks exactly one valid response, including omissions, malformed
+entries, duplicates, and failed batches; do not omit it from the final accounting.
+
+For standard `.com` pricing from `namecheap.users.getPricing`, use the one-year
+`REGISTER` `RegularPrice` as the standard first-year base price. The effective
+final `Price`, account-specific `YourPrice`, and coupon-specific `CouponPrice` may
+be shown separately with those labels, but they never establish the standard
+price. Add every unavoidable ICANN or registrar fee exposed separately from
+`RegularPrice` to the displayed standard first-year total, recording each fee or
+an explicit zero separately. Treat
+`IsPremiumName=true`, a nonzero `PremiumRegistrationPrice`, or a nonzero `EapFee`
+as `premium_or_reserved`. If any mandatory fee is unavailable or ambiguous, keep
+the result `unknown` rather than assigning `registrar_confirmed_available`.
+
 Confirm all of these before assigning `registrar_confirmed_available`:
 
 - the result is for the exact `.com`;
 - it is offered for standard registration, not make-offer or aftermarket sale;
 - no premium or reserved label appears;
-- a standard first-year price is established by the registrar;
+- the standard first-year base price, mandatory fees, and total are established
+  by the registrar;
 - in a browser, a registration action is visible; with an API, documented
-  availability and pricing responses agree.
+  availability, premium, `RegularPrice`, and fee responses agree.
 
 Capture a page snapshot or exact visible text when browser tools permit. Do not
 click the registration action, add to cart, sign in, make an offer, or purchase.

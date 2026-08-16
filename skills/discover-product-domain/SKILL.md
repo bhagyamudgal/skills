@@ -180,11 +180,13 @@ more. For a verification-only shortlist, rank the registrar-confirmed survivors
 without inventing names to fill a quota. For each returned name, include:
 
 - spelling and pronunciation;
-- atom recipe and lens provenance;
 - why it fits and its strongest downside;
 - brand score out of 70;
-- registrar-confirmed domain evidence and prices;
-- two nearby remix directions.
+- registrar-confirmed domain evidence and prices.
+
+For generation, alternatives, remix, and refinement routes, also include the atom
+recipe, lens or user provenance, and two nearby remix directions. Verification-only
+results omit those generation artifacts.
 
 Name a winner when at least one name survives. When at least two survive, also
 name a runner-up and state the deciding trade-off in one sentence. When none
@@ -200,9 +202,15 @@ reject a supplied filename or slug when it is absolute or contains a path
 separator or `.`/`..` path segment. Resolve
 `docs/<slug>_domain_discovery.md` against the repository's resolved `docs/`
 directory and write only when the result's parent is that directory. Include the
-brief, atom bank, first 12, user reaction, remixes, rejected domains, finalists,
-evidence timestamps, a winner when one exists, and a runner-up only when at least
-two names survive.
+brief, entry route, supplied or generated candidate set, rejected domains,
+finalists or survivors, evidence timestamps, a winner when one exists, and a
+runner-up only when at least two names survive. Include route-produced artifacts:
+
+- **Greenfield:** atom bank, first 12, user or autonomous reaction, and remixes.
+- **Shortlist with alternatives:** supplied shortlist, its reaction, and remixes.
+- **Remix or refinement:** supplied seeds, atom bank, reaction, and remixes.
+- **Verification-only shortlist:** supplied shortlist; omit or mark the first 12,
+  reaction, and remixes as not applicable.
 
 ## Terminal states
 
