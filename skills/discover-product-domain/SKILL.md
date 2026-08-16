@@ -5,7 +5,7 @@ description: Generate, mix and match, refine, and rank product or app names, the
 
 # Discover Product Domains
 
-Turn a product idea into three memorable names whose exact `.com` domains are
+Turn a product idea into memorable names whose exact `.com` domains are
 confirmed at a registrar. Treat human combinations such as `Vids` + `Jar` as a
 core discovery mechanism, not an afterthought.
 
@@ -25,12 +25,13 @@ other external mutation. A local Markdown report is allowed only when requested.
 Choose the shortest route that preserves work the user already supplied:
 
 - **Greenfield:** run the full funnel from step 1.
-- **Supplied shortlist:** capture or default the brief, then skip steps 2–3. Score
+- **Supplied shortlist:** capture or default the brief, then skip step 3. Score
   and registry-filter every supplied name in step 4. If the user asked only for
   verification or ranking, proceed directly to registrar confirmation and return
-  the ranked survivors; do not force new-name generation or a remix turn. If the
-  user also requests alternatives, treat the supplied set as the human reaction
-  and continue to step 5 after scoring and filtering it.
+  the ranked survivors; do not force an atom bank, new-name generation, or a remix
+  turn. If the user also requests alternatives, build the step 2 atom bank from the
+  supplied names and the brief, treat the supplied set as the human reaction, and
+  continue to step 5 after scoring and filtering it.
 - **Remix or refinement:** treat the supplied names, fragments, or single name as
   the human reaction. Build an atom bank from them and the brief, then enter at
   step 5. The supplied material satisfies the guided-mode remix requirement.
@@ -67,8 +68,8 @@ Extract at least 12 distinct **atoms** across at least four semantic buckets fro
 `naming-lenses.md`. Mark each atom's source and type so later remixes preserve
 their provenance.
 
-**Complete when:** the atom bank has enough direct, metaphorical, emotional, and
-phonetic material for all three naming lenses.
+**Complete when:** the atom bank has enough direct, suggestive, metaphorical,
+emotional, and phonetic material for all three naming lenses.
 
 ### 3. Generate independently
 
@@ -131,11 +132,11 @@ produce:
 - **Invalid supplied spelling:** request the exact `.com` spelling and stop with
   **Input blocked** until the user resolves it. Record and exclude invalid generated
   candidates without treating them as evidence failures.
-- **Unknown evidence:** retry once using the backoff or documented alternate path
-  in `domain-verification.md`. Keep a nonessential generated unknown recorded and
-  exclude it when enough other candidates can meet the active gate. If an unknown
-  belongs to a supplied shortlist or prevents the active gate, stop with
-  **Evidence blocked**; do not spend naming rounds during an evidence outage.
+- **Unknown evidence:** retry once using the backoff in `domain-verification.md`.
+  Keep a nonessential generated unknown recorded and exclude it when enough other
+  candidates can meet the active gate. If an unknown belongs to a supplied
+  shortlist or prevents the active gate, stop with **Evidence blocked**; do not
+  spend naming rounds during an evidence outage.
 - **Unchecked viable candidates exist:** proceed to step 7.
 - **Fewer than three finalists and no unchecked viable candidate:** if the active
   route permits generation and fewer than two expansion rounds have run, dispatch
@@ -145,7 +146,8 @@ produce:
   registry-filter them, then apply these transitions again.
 - **Two expansion rounds exhausted:** ask which naming constraint to loosen—atom
   vocabulary, tone, maximum length, or compound complexity. Do not weaken the
-  exact standard-price `.com` gate.
+  exact standard-price `.com` gate. An answer resets the expansion counter once;
+  a declined or fruitless loosening stops with **Generation shortfall**.
 - **Verification-only supplied shortlist:** never expand; proceed until every
   viable supplied candidate has registrar evidence, then report the survivors.
 
@@ -166,8 +168,9 @@ If fewer than three finalists survive and the active route permits new names,
 return to step 6. For a verification-only supplied shortlist, report the shortfall
 without inventing replacements.
 
-**Complete when:** a generation route has three registrar-confirmed finalists; or
-every supplied domain in a verification-only shortlist has a terminal status:
+**Complete when:** a generation route has three registrar-confirmed finalists or a
+step 6 **Generation shortfall**; or every supplied domain in a verification-only
+shortlist has a terminal status:
 `registered`, `registrar_confirmed_available`, or `premium_or_reserved`. A
 `candidate_available_rdap` remains non-terminal until registrar confirmation.
 Identify the strongest survivor when one exists. Otherwise follow the step 6
@@ -176,8 +179,10 @@ transition that matches the current state.
 ### 8. Recommend
 
 For a generation route, return exactly three finalists unless the user asks for
-more. For a verification-only shortlist, rank the registrar-confirmed survivors
-without inventing names to fill a quota. For each returned name, include:
+more; when a **Generation shortfall** ended the funnel, return every survivor and
+report the shortfall instead of inventing replacements. For a verification-only
+shortlist, rank the registrar-confirmed survivors without inventing names to fill
+a quota. For each returned name, include:
 
 - spelling and pronunciation;
 - why it fits and its strongest downside;
@@ -194,10 +199,11 @@ survive, report the shortfall without recommending a name. Keep user preference
 separate from the numeric brand score. Warn that the workflow did not perform
 trademark clearance, social-handle verification, or legal review.
 
-Save a durable report only when requested. Derive a lowercase snake_case slug
-from the free-text idea label by replacing non-alphanumeric runs with `_`, then
-remove leading and trailing `_` characters and require the non-empty basename
-pattern `[a-z0-9]+(?:_[a-z0-9]+)*`. Never accept a caller-supplied output path;
+Save a durable report only when requested. Derive a snake_case slug from the
+free-text idea label in three ordered steps: lowercase the label, replace
+non-alphanumeric runs with `_`, then strip leading and trailing `_` characters.
+Require the whole slug to match the non-empty basename pattern
+`^[a-z0-9]+(?:_[a-z0-9]+)*$`. Never accept a caller-supplied output path;
 reject a supplied filename or slug when it is absolute or contains a path
 separator or `.`/`..` path segment. Resolve
 `docs/<slug>_domain_discovery.md` against the repository's resolved `docs/`
@@ -207,7 +213,8 @@ finalists or survivors, evidence timestamps, a winner when one exists, and a
 runner-up only when at least two names survive. Include route-produced artifacts:
 
 - **Greenfield:** atom bank, first 12, user or autonomous reaction, and remixes.
-- **Shortlist with alternatives:** supplied shortlist, its reaction, and remixes.
+- **Shortlist with alternatives:** supplied shortlist, atom bank, its reaction,
+  and remixes.
 - **Remix or refinement:** supplied seeds, atom bank, reaction, and remixes.
 - **Verification-only shortlist:** supplied shortlist; omit or mark the first 12,
   reaction, and remixes as not applicable.
@@ -215,6 +222,9 @@ runner-up only when at least two names survive. Include route-produced artifacts
 ## Terminal states
 
 - **Shortlist complete:** three registrar-confirmed finalists and a recommendation.
+- **Generation shortfall:** fewer than three registrar-confirmed finalists survive
+  after both expansion rounds and a declined or exhausted loosening; report every
+  survivor with its evidence and name the shortfall.
 - **Supplied shortlist verified:** every supplied name is accounted for and the
   strongest registrar-confirmed survivor is identified, if one exists.
 - **Evidence blocked:** required domain evidence remains `unknown` after the
@@ -231,12 +241,14 @@ runner-up only when at least two names survive. Include route-produced artifacts
 Finish only when every domain actually queried is accounted for. Greenfield guided
 mode includes one human remix round; remix/refinement routes preserve the supplied
 human remix; rapid mode records that the human remix was intentionally skipped.
-A generation route requires three finalists with current registrar evidence and
-an explicit winner-versus-runner-up trade-off. A verification-only shortlist route
-requires every supplied domain to be `registered`,
-`registrar_confirmed_available`, or `premium_or_reserved`;
+A generation route requires three registrar-confirmed finalists with current
+registrar evidence and an explicit winner-versus-runner-up trade-off, or a
+reported generation shortfall that names every survivor with its evidence. A
+verification-only shortlist route requires every supplied domain to be
+`registered`, `registrar_confirmed_available`, or `premium_or_reserved`;
 `candidate_available_rdap` never satisfies completion. Identify the strongest
 survivor when one exists, or report the shortfall without a recommendation when
-none survive. An `unknown` result returns **Evidence blocked**, and an
-`invalid_candidate` returns **Input blocked**, instead of declaring the discovery
-complete.
+none survive. An `unknown` returns **Evidence blocked** only when it belongs to a
+supplied shortlist or prevents the active gate, and an `invalid_candidate` returns
+**Input blocked** only for a supplied name; a generated `unknown` or
+`invalid_candidate` that was recorded and excluded does not block completion.
