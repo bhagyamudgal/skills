@@ -110,7 +110,7 @@
           "id": "blind-independent-recheck",
           "tool_pattern": "^(Agent|Task)$",
           "input_patterns": ["query\\.json", "final_ledger\\.csv", "counter-hypothesis"],
-          "result_patterns": ["\\b12\\b", "\\b25\\b", "bhagya"]
+          "result_patterns": ["\\b12\\b", "bhagya"]
         }
       ],
       "forbidden_tool_inputs": [

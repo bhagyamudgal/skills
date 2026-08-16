@@ -110,8 +110,8 @@
       "why": "NEGATIVE: a directly observable fact with no decision consequence stays outside the gate" },
 
     { "utterance": "Change the exported VERSION from 2 to 3.",
-      "expect": null,
-      "why": "NEGATIVE: a direct reversible edit carries no inference-backed claim" },
+      "forbid": "verify-claims",
+      "why": "NEGATIVE: a direct reversible edit carries no inference-backed claim. Forbid rather than expect-nothing — done fires legitimately at the end of an edit task, and the runner scores the first Skill call" },
 
     { "utterance": "formatUserLabel crashes when nickname is missing. Diagnose the bug.",
       "forbid": "verify-claims",
@@ -130,8 +130,8 @@
       "why": "COLLISION: producing UI boundary evidence belongs to browser-qa; done consumes it only for a completion verdict" },
 
     { "utterance": "No, VERSION is 2, not 3. Correct that factual mistake.",
-      "expect": null,
-      "why": "NEGATIVE: a harmless factual correction is not an inference-backed, decision-driving claim" },
+      "forbid": "verify-claims",
+      "why": "NEGATIVE: a harmless factual correction is not an inference-backed, decision-driving claim. Forbid rather than expect-nothing — done fires legitimately at the end of a correction, and the runner scores the first Skill call" },
 
     { "utterance": "I've approved changing issue 12's estimate on the shared project board to 5 hours. Run the mutation preflight, then make the change.",
       "expect": "preflight-mutations",
