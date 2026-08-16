@@ -169,25 +169,9 @@
       "expect": "verify-claims",
       "why": "COLLISION: post-write acceptance-boundary verification belongs to verify-claims, not preflight-mutations" },
 
-    { "utterance": "Estimate every issue assigned to me on this project board, preview a representative sample, then update the board.",
-      "expect": "calibrate-board-mutations",
-      "why": "primary branch: a multi-item estimate batch needs scope, anchors, sample approval, and a final ledger before shared writes" },
-
-    { "utterance": "Our board estimates used person-hours, but I meant agent-assisted elapsed hours. Recalibrate the remaining tickets before continuing.",
-      "expect": "calibrate-board-mutations",
-      "why": "recalibration branch: a changed unit invalidates the unexecuted estimate batch" },
-
-    { "utterance": "Resume the partially completed board-estimate batch and total only what actually landed.",
-      "expect": "calibrate-board-mutations",
-      "why": "reconciliation branch: partial board writes require authoritative item read-back and ledger-derived totals" },
-
     { "utterance": "Set issue 12's estimate to the exact value 5 hours; no other item is in scope.",
       "expect": "preflight-mutations",
       "why": "COLLISION: one explicitly valued board write needs shared-state preflight, not numerical calibration" },
-
-    { "utterance": "Read the project board and summarize its current estimates without changing anything.",
-      "forbid": "calibrate-board-mutations",
-      "why": "NEGATIVE: read-only board analysis does not prepare an estimate mutation batch" },
 
     { "utterance": "Review round two is complete. Reconcile the current findings ledger and tell me whether the unchanged scope warrants another round.",
       "expect": "converge-reviews",
@@ -216,30 +200,6 @@
     { "utterance": "I'm going to sleep. Work through the whole task list with subagents and tell me what is ready in the morning.",
       "expect": "executing-tickets-with-subagents",
       "why": "unattended multi-task branch: the orchestrator owns bounded scheduling and the morning ledger" },
-
-    { "utterance": "Consolidate these three hosted audit reports into one canonical report, preserve every unique finding, and mark the old reports superseded.",
-      "expect": "manage-report-lifecycle",
-      "why": "primary branch: explicit consolidation of existing hosted analytical reports needs lossless item accounting and one authority" },
-
-    { "utterance": "Replace this research report with the corrected hosted version and verify that the predecessor links to the new canonical URL.",
-      "expect": "manage-report-lifecycle",
-      "why": "replacement branch: an existing durable report is being superseded and needs reciprocal authority closeout" },
-
-    { "utterance": "Create a first research report about our authentication architecture.",
-      "forbid": "manage-report-lifecycle",
-      "why": "NEGATIVE: first-time report creation has no existing report lifecycle to reconcile" },
-
-    { "utterance": "Fix the typo in the executive summary of our current hosted audit report.",
-      "forbid": "manage-report-lifecycle",
-      "why": "NEGATIVE: a routine edit to one hosted report does not change lifecycle authority" },
-
-    { "utterance": "Split issue 12 into two successor tickets and link both back to the original issue.",
-      "forbid": "manage-report-lifecycle",
-      "why": "COLLISION: ticket provenance and restructuring stay with ticket workflows, not report lifecycle" },
-
-    { "utterance": "Mark finding S2 resolved in the PR review state after commit abc123.",
-      "forbid": "manage-report-lifecycle",
-      "why": "COLLISION: PR finding-state lifecycle remains owned by the review workflow" },
 
     { "utterance": "Name my desktop video downloader and find three memorable standard-price .com domains for it.",
       "expect": "discover-product-domain",
