@@ -167,9 +167,11 @@ return to step 6. For a verification-only supplied shortlist, report the shortfa
 without inventing replacements.
 
 **Complete when:** a generation route has three registrar-confirmed finalists; or
-a verification-only shortlist has registrar evidence for every viable supplied
-candidate and identifies the strongest survivor, if one exists. Otherwise follow
-the step 6 transition that matches the current state.
+every supplied domain in a verification-only shortlist has a terminal status:
+`registered`, `registrar_confirmed_available`, or `premium_or_reserved`. A
+`candidate_available_rdap` remains non-terminal until registrar confirmation.
+Identify the strongest survivor when one exists. Otherwise follow the step 6
+transition that matches the current state.
 
 ### 8. Recommend
 
@@ -184,15 +186,23 @@ without inventing names to fill a quota. For each returned name, include:
 - registrar-confirmed domain evidence and prices;
 - two nearby remix directions.
 
-Name one winner. When at least two names survive, also name a runner-up and state
-the deciding trade-off in one sentence. Keep user preference separate from the
-numeric brand score. Warn that the workflow did not perform trademark clearance,
-social-handle verification, or legal review.
+Name a winner when at least one name survives. When at least two survive, also
+name a runner-up and state the deciding trade-off in one sentence. When none
+survive, report the shortfall without recommending a name. Keep user preference
+separate from the numeric brand score. Warn that the workflow did not perform
+trademark clearance, social-handle verification, or legal review.
 
-Save a durable report only when requested. Use
-`docs/<idea>_domain_discovery.md`, lowercase snake_case, and include the brief,
-atom bank, first 12, user reaction, remixes, rejected domains, finalists, evidence
-timestamps, winner, and runner-up when one exists.
+Save a durable report only when requested. Derive a lowercase snake_case slug
+from the free-text idea label by replacing non-alphanumeric runs with `_`, then
+remove leading and trailing `_` characters and require the non-empty basename
+pattern `[a-z0-9]+(?:_[a-z0-9]+)*`. Never accept a caller-supplied output path;
+reject a supplied filename or slug when it is absolute or contains a path
+separator or `.`/`..` path segment. Resolve
+`docs/<slug>_domain_discovery.md` against the repository's resolved `docs/`
+directory and write only when the result's parent is that directory. Include the
+brief, atom bank, first 12, user reaction, remixes, rejected domains, finalists,
+evidence timestamps, a winner when one exists, and a runner-up only when at least
+two names survive.
 
 ## Terminal states
 
@@ -215,7 +225,10 @@ mode includes one human remix round; remix/refinement routes preserve the suppli
 human remix; rapid mode records that the human remix was intentionally skipped.
 A generation route requires three finalists with current registrar evidence and
 an explicit winner-versus-runner-up trade-off. A verification-only shortlist route
-requires every supplied domain to be neither `unknown` nor `invalid_candidate`,
-plus the strongest surviving candidate. When the active gate cannot be met, return
-the exact terminal state and unresolved constraint instead of declaring the
-discovery complete.
+requires every supplied domain to be `registered`,
+`registrar_confirmed_available`, or `premium_or_reserved`;
+`candidate_available_rdap` never satisfies completion. Identify the strongest
+survivor when one exists, or report the shortfall without a recommendation when
+none survive. An `unknown` result returns **Evidence blocked**, and an
+`invalid_candidate` returns **Input blocked**, instead of declaring the discovery
+complete.

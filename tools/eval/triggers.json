@@ -97,6 +97,10 @@
       "expect": null,
       "why": "NEGATIVE: general domain education does not require product naming or availability discovery" },
 
+    { "utterance": "Register this .com for me.",
+      "expect": null,
+      "why": "NEGATIVE: domain registration is an external mutation outside the read-only discovery skill" },
+
     { "utterance": "I have an idea for a local-first reading app and need help naming it.",
       "expect": "discover-product-domain",
       "why": "greenfield branch: a product-naming request should enter the guided discovery funnel even before the user mentions domains" },
