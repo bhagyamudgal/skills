@@ -85,19 +85,19 @@
       "expect": "discover-product-domain",
       "why": "primary branch: product naming and exact-domain discovery belong to the new skill" },
 
-    { "utterance": "Use /discover-product-domain to mix and match the useful words from these app-name ideas, then check the new .com combinations.",
+    { "utterance": "Mix and match the useful words in VidsJar, ClipHarbor and StashBay, then check the new .com combinations.",
       "expect": "discover-product-domain",
-      "why": "repository-native explicit invocation: the named skill must accept human-remix input and exact-domain verification" },
+      "why": "remix branch: a bare mix-and-match utterance carrying its own seeds should route here, with no skill named in the request" },
 
-    { "utterance": "Check which names in this product shortlist have normal-price .com domains and recommend the strongest one.",
+    { "utterance": "Check which of Loamly, Pagebound and Readnest have normal-price .com domains and recommend the strongest one.",
       "expect": "discover-product-domain",
-      "why": "verification branch: a supplied shortlist still needs registry filtering, registrar evidence, and a naming recommendation" },
+      "why": "verification branch: an inline shortlist still needs registry filtering, registrar evidence, and a naming recommendation" },
 
     { "utterance": "Explain how domain name registration works.",
       "expect": null,
       "why": "NEGATIVE: general domain education does not require product naming or availability discovery" },
 
-    { "utterance": "Register this .com for me.",
+    { "utterance": "Register vidsjar.com for me.",
       "expect": null,
       "why": "NEGATIVE: domain registration is an external mutation outside the read-only discovery skill" },
 
@@ -109,8 +109,8 @@
       "expect": "discover-product-domain",
       "why": "refinement branch: a user-created seed should enter the atom-remix route without restarting greenfield discovery" },
 
-    { "utterance": "Use /project-discovery to plan the requirements and technical architecture for a new inventory app before we write code.",
+    { "utterance": "I'm starting a new inventory app and need to plan its requirements and technical architecture before we write code.",
       "expect": "project-discovery",
-      "why": "explicit collision: non-naming project planning remains owned by project-discovery" }
+      "why": "collision: a bare new-app utterance asking for requirements and architecture stays with project-discovery rather than routing to naming" }
   ]
 }
