@@ -1,8 +1,8 @@
 # Domain verification
 
-Use an evidence ladder: registry lookup for fast filtering, then registrar evidence
-for finalists. A missing DNS record, blank website, timeout, or generic request
-failure never proves availability.
+Use an evidence ladder with two rungs: **screen** every candidate with a registry
+lookup, then **confirm** the survivors at a registrar. A missing DNS record, blank
+website, timeout, or generic request failure never proves availability.
 
 ## Status vocabulary
 
@@ -35,7 +35,7 @@ premium label.
   `invalid_candidate`; do not query them.
 - Check the exact `.com`; do not substitute prefixes, hyphens, or other TLDs.
 
-## 2. Filter with registry RDAP
+## 2. Screen with registry RDAP
 
 Discover the authoritative RDAP base through the
 [IANA DNS bootstrap](https://www.iana.org/assignments/rdap-dns/rdap-dns.xhtml).
