@@ -106,13 +106,7 @@ A bar you did not name is a bar you did not check. A failed bar is rewritten and
 
 Resolve `$repository` through authenticated `gh repo view ... --json id,nameWithOwner` and record it as the base repository. A **valid remote** has ordered complete fetch and push sets from `git remote get-url --all <remote>` and `git remote get-url --push --all <remote>` whose credential-free normalized endpoints all resolve through authenticated `gh repo view ... --json id,nameWithOwner` to one common repository ID and `nameWithOwner`. Retain only ordered normalized sets or their digests and resolved IDs, never credentials.
 
-When **Existing PR URL** is present, skip commit, push, and create. Read that exact URL before enumerating remotes; its `headRepository` establishes the required head repository identity:
-
-```bash
-gh pr view "$existing_pr_url" --repo "$repository" --json url,title,body,baseRefName,baseRefOid,headRefName,headRefOid,headRepository,state,isDraft
-```
-
-Require `headRepository.id` and `nameWithOwner` to be available. Enumerate configured valid remotes and keep only those matching that exact head identity. Auto-select one match; for multiple matches, use AskUserQuestion with concrete `<remote> — <nameWithOwner> (<id>)` options, paginating disjoint option sets when needed; zero matches stops with the exact next action `Configure a remote whose complete endpoint sets resolve to the existing PR head repository, then rerun file-pr.` Freeze the selected remote, revalidate its remote branch at current `HEAD`, and reconcile the PR's base, state, draft mode, head branch, and head SHA against the card and publication request. A mismatch stops or enters `done`'s explicit base-rebind path. Only a separately preflighted title/body edit may mutate it.
+When **Existing PR URL** is present, skip commit, push, and create, and load `${CLAUDE_SKILL_DIR}/references/existing-pr-reuse.md` before enumerating remotes — it holds that branch's `gh pr view` read of the existing URL, the head-identity remote match with its multiple- and zero-match dispositions, the freeze, revalidation and reconciliation requirements, what supplies the remote-head evidence without another push, and how the paginated candidate search below and any title/body edit behave on a superseding card.
 
 Without **Existing PR URL**, inspect the current branch's configured upstream before selecting a remote. A fully configured, resolvable upstream whose branch ref matches the publication branch selects its named remote only when that remote is valid; a malformed, partial, or unresolvable configured upstream is `reconcile-required`. When upstream is authoritatively absent, enumerate valid remotes: auto-select one, use AskUserQuestion with concrete `<remote> — <nameWithOwner> (<id>)` options and pagination when multiple remain, and stop with `Configure one valid publication remote or bind the branch upstream, then rerun file-pr.` when none remain. The selected valid remote establishes the head repository identity and `<head-owner>`; it may equal or differ from the base repository.
 
@@ -131,22 +125,7 @@ git ls-remote --heads "<push-remote>" "refs/heads/<card-branch>"
 
 After every push attempt, including a nonzero or ambiguous command result, recheck the selected-remote identity and run the exact `git ls-remote` read-back once. Record **landed-push SHA** only when that authoritative SHA equals **push-attempt SHA**. An old or unexpected SHA, unavailable read-back, or changed remote identity is `reconcile-required`: stop publication and never retry from the push command result alone.
 
-On an initial publication, recheck the active symbolic ref, branch-ref SHA, and `HEAD` against the frozen attempt; local movement invalidates the remaining publication even when the remote read-back succeeded. Before resolving the branch's current symbolic upstream and SHA, inspect both configuration keys:
-
-```bash
-git config --get "branch.<card-branch>.remote"
-git config --get "branch.<card-branch>.merge"
-```
-
-Both keys authoritatively absent means upstream state `ABSENT` and permits first binding. One key absent, an empty or malformed value, a configured remote/ref that cannot resolve, or any lookup failure other than authoritative absence is `reconcile-required`. A fully configured upstream is an authoritative no-op only when its configured remote equals `<push-remote>`, its symbolic name equals `<push-remote>/<card-branch>`, and its SHA equals **landed-push SHA**. Otherwise preflight a separate binding guarded by the local values, **landed-push SHA**, and that exact configured or `ABSENT` state, then bind and read it back:
-
-```bash
-git branch --set-upstream-to="<push-remote>/<card-branch>" "<card-branch>"
-git rev-parse --abbrev-ref --symbolic-full-name "<card-branch>@{upstream}"
-git rev-parse "<card-branch>@{upstream}"
-```
-
-Require the configured remote to equal `<push-remote>`, the symbolic upstream to equal `<push-remote>/<card-branch>`, and its SHA to equal **landed-push SHA**. If binding or read-back fails after the remote push landed, record `remote landed / upstream not bound` with both observed states and continue reconciliation without retrying the push. On the existing-PR branch, the revalidation at the start of this section supplies the remote-head evidence without another push.
+On an initial publication, recheck the active symbolic ref, branch-ref SHA, and `HEAD` against the frozen attempt; local movement invalidates the remaining publication even when the remote read-back succeeded. Then load `${CLAUDE_SKILL_DIR}/references/upstream-binding.md` — reached only on this initial-publication branch, it holds the two `git config` probes that resolve the branch's upstream state, the `ABSENT`, `reconcile-required`, and authoritative-no-op classification, the guarded binding command with its read-back, and the `remote landed / upstream not bound` disposition when binding fails after the push landed.
 
 Write the final body to a file and record its SHA-256 digest. Before deciding whether an earlier attempt exists, fetch every PR in the base repository through an authoritative paginated REST query:
 
@@ -154,11 +133,11 @@ Write the final body to a file and record its SHA-256 digest. Before deciding wh
 gh api --paginate --slurp "repos/$repository/pulls?state=all&per_page=100"
 ```
 
-Require every page to return successfully and parse completely; any page error, unavailable continuation, or partial pagination is `reconcile-required`. Filter the complete result locally by exact `head.repo.id == <selected-head-repository-id>` and `head.ref == <head-branch>`, then map the retained records to the existing candidate fields, deriving `MERGED` from non-null `merged_at` and otherwise preserving `OPEN` or `CLOSED`. When **Existing PR URL** is present, its direct read is the intended attempt; require its head repository ID, head name and SHA, base name, `state`, and `isDraft` to match the selected remote, card, and publication request before reuse.
+Require every page to return successfully and parse completely; any page error, unavailable continuation, or partial pagination is `reconcile-required`. Filter the complete result locally by exact `head.repo.id == <selected-head-repository-id>` and `head.ref == <head-branch>`, then map the retained records to the existing candidate fields, deriving `MERGED` from non-null `merged_at` and otherwise preserving `OPEN` or `CLOSED`.
 
 Without **Existing PR URL**, recheck the active symbolic ref, branch-ref SHA, and `HEAD` against **landed-push SHA**, then reconcile every retained candidate across all states. Any `OPEN` candidate with a wrong head SHA or multiple open candidates is `reconcile-required`, and creation stops. One valid open candidate either matches the requested base, state, and draft mode or enters the explicit base-rebind or publication-decision path; record its URL and return to `done` to bind it before any edit. A `CLOSED` or `MERGED` candidate at a different head SHA is historical and does not block branch reuse. A closed or merged candidate at **landed-push SHA** requires an explicit reopen, new-branch, or no-publication decision. Create only when the complete all-state result contains no open candidate and no closed or merged candidate for the current attempt. Use the same full paginated query and exact local filter when a create attempt returns no usable URL.
 
-Require authoritative repository metadata to show that the selected head is the base repository or belongs to its fork network; an unrelated head blocks creation. Freeze one creation lane before preflight: same-repository heads use `gh pr create --head <branch>`; a fork owned by the authenticated user uses the supported `<head-owner>:<branch>` form; an organization-owned fork uses GitHub's REST create-pull endpoint with the exact head repository identity and `head_repo` field when required. Determine owner type and the authenticated user's ownership from stable IDs, not name shape; any other ownership relation blocks. Immediately before creating the PR, invoke `preflight-mutations` with a new inline, single-item card. Its target is the exact base repository and selected head repository; its action records the frozen creation lane, base, head repository and branch, **landed-push SHA**, title, body path and digest, expected `OPEN` state, and expected draft mode. Its guards include both complete endpoint sets and their repository IDs, separate base/head repository IDs, the active symbolic ref, branch-ref SHA and `HEAD` still at **landed-push SHA**, the verified remote branch, recorded base tip, the complete paginated candidate result and exact filter, and confirmed absence of an open candidate or same-head-SHA current attempt; and its read-back is the exact `gh pr view` query below. Apply this result independently under the same result contract. A changed local ref, `HEAD`, endpoint set, base/head identity, creation lane, title, body path, digest, state, or draft mode invalidates the card; a non-ready PR card does not erase the landed push evidence.
+Require authoritative repository metadata to show that the selected head is the base repository or belongs to its fork network; an unrelated head blocks creation. Freeze one creation lane before preflight: same-repository heads use `gh pr create --head <branch>`; when the selected head repository is not the base repository, load `${CLAUDE_SKILL_DIR}/references/fork-creation-lanes.md` before freezing the lane — it holds the authenticated-user-owned and organization-owned fork lanes, the stable-ID owner-type and ownership determination that blocks any other relation, and the REST `head_repo` create form. Immediately before creating the PR, invoke `preflight-mutations` with a new inline, single-item card. Its target is the exact base repository and selected head repository; its action records the frozen creation lane, base, head repository and branch, **landed-push SHA**, title, body path and digest, expected `OPEN` state, and expected draft mode. Its guards include both complete endpoint sets and their repository IDs, separate base/head repository IDs, the active symbolic ref, branch-ref SHA and `HEAD` still at **landed-push SHA**, the verified remote branch, recorded base tip, the complete paginated candidate result and exact filter, and confirmed absence of an open candidate or same-head-SHA current attempt; and its read-back is the exact `gh pr view` query below. Apply this result independently under the same result contract. A changed local ref, `HEAD`, endpoint set, base/head identity, creation lane, title, body path, digest, state, or draft mode invalidates the card; a non-ready PR card does not erase the landed push evidence.
 
 Append `--draft` to the create command exactly when the bound draft mode is `isDraft: true`.
 
@@ -168,27 +147,15 @@ Same repository:
 gh pr create --repo "$repository" --base "$base" --head "$head_branch" --title "$title" --body-file "$body_path" [--draft]
 ```
 
-Authenticated-user-owned fork:
-
-```bash
-gh pr create --repo "$repository" --base "$base" --head "$head_owner:$head_branch" --title "$title" --body-file "$body_path" [--draft]
-```
-
-Organization-owned fork (build exact JSON from the frozen values and record its digest):
-
-```bash
-gh api --method POST "repos/$repository/pulls" --input "$create_request_json"
-```
-
 Read back every lane identically:
 
 ```bash
 gh pr view <pr-url> --repo "$repository" --json url,title,body,baseRefName,baseRefOid,headRefName,headRefOid,headRepository,state,isDraft
 ```
 
-The REST request carries exact `title`, `body`, `base`, qualified `head`, `draft`, and the selected head repository identity, including `head_repo` when required. Execute only the frozen lane; the other examples are not fallbacks after an ambiguous result.
+Execute only the frozen lane; the other examples are not fallbacks after an ambiguous result.
 
-Require the PR `title` and `body` to equal the frozen values, `headRepository.id` to equal the selected head repository ID, `headRefName` to equal **Branch**, `headRefOid` to equal **landed-push SHA**, and `baseRefOid` to equal **Remote base-tip commit**; require its URL, base name, `state`, and `isDraft` to match the publication request. Recheck the active symbolic ref, branch-ref SHA, and `HEAD` against **landed-push SHA** before accepting the publication. Record the created URL as `landed` as soon as one PR is authoritatively identified. If only title or body differs while repository, base, head, state, and draft mode still match, preflight an exact edit of that existing PR and read it back. A base mismatch enters `done`'s existing-PR rebind path with that URL and its observed values; never issue another create. A state or draft mismatch stops for an explicit publication decision; never silently reopen, close, convert, or create another PR. After `done` verifies a superseding card against the observed base, reuse only **Existing PR URL** and preflight any still-required title/body edit as its own exact mutation. Record both single-step cards, the landed push, the PR observations, the ordered commit list, and the exact commands as publication evidence for the next `done` run. If authoritative search cannot identify whether a PR was created, mark the create `reconcile-required` and do not retry.
+Require the PR `title` and `body` to equal the frozen values, `headRepository.id` to equal the selected head repository ID, `headRefName` to equal **Branch**, `headRefOid` to equal **landed-push SHA**, and `baseRefOid` to equal **Remote base-tip commit**; require its URL, base name, `state`, and `isDraft` to match the publication request. Recheck the active symbolic ref, branch-ref SHA, and `HEAD` against **landed-push SHA** before accepting the publication. Record the created URL as `landed` as soon as one PR is authoritatively identified. If only title or body differs while repository, base, head, state, and draft mode still match, preflight an exact edit of that existing PR and read it back. A base mismatch enters `done`'s existing-PR rebind path with that URL and its observed values; never issue another create. A state or draft mismatch stops for an explicit publication decision; never silently reopen, close, convert, or create another PR. Record both single-step cards, the landed push, the PR observations, the ordered commit list, and the exact commands as publication evidence for the next `done` run. If authoritative search cannot identify whether a PR was created, mark the create `reconcile-required` and do not retry.
 
 Print the URL and return to `done` for CI, review, publication-lane, and final row evaluation. Never merge. Opening the PR is a publication transition, not overall task completion.
 

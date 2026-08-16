@@ -1,6 +1,6 @@
 ---
 name: file-issue
-description: File one GitHub issue an assignee can act on without asking what you meant. Use when reporting a bug, requesting work, or capturing a finding as a ticket. Breaking a plan into several linked tickets belongs to to-tickets instead.
+description: File one GitHub issue an assignee can act on unaided. Use when reporting a bug, requesting work, or capturing a finding as a ticket.
 ---
 
 # File an Issue

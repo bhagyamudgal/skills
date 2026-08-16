@@ -28,6 +28,11 @@ CARD_FIELDS = [
     "Next action",
     "Independent recheck",
 ]
+CARD_STATES = {"hypothesis", "basis-verified", "verified", "contradicted", "blocked"}
+CARD_ANCHOR = re.compile(
+    r"^[ \t]*(?:#{1,6}[ \t]*Claim\b|(?:-[ \t]*)?\*\*Claim:\*\*)",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 def make_sandbox():
@@ -48,7 +53,7 @@ def make_sandbox():
 
 def parse_stream(output):
     final_text = ""
-    assistant_text = []
+    last_assistant_message = ""
     tool_calls = []
     tool_calls_by_id = {}
     result_error = None
@@ -58,9 +63,10 @@ def parse_stream(output):
         except json.JSONDecodeError:
             continue
         if event.get("type") == "assistant":
+            message_text = []
             for content in event.get("message", {}).get("content", []):
                 if content.get("type") == "text":
-                    assistant_text.append(content.get("text", ""))
+                    message_text.append(content.get("text", ""))
                 elif content.get("type") == "tool_use":
                     tool_call = {
                         "id": content.get("id", ""),
@@ -70,6 +76,8 @@ def parse_stream(output):
                     }
                     tool_calls.append(tool_call)
                     tool_calls_by_id[tool_call["id"]] = tool_call
+            if any(text.strip() for text in message_text):
+                last_assistant_message = "\n".join(message_text)
         elif event.get("type") == "user":
             for content in event.get("message", {}).get("content", []):
                 if content.get("type") != "tool_result":
@@ -92,12 +100,18 @@ def parse_stream(output):
                         detail or None,
                     ] if part
                 ) or "result-error"
-    return "\n".join(assistant_text) or final_text, tool_calls, result_error
+    # The `result` event carries the final assistant message; earlier messages are drafts, and
+    # joining them lets a card be assembled field-wise across drafts the model retracted.
+    return final_text or last_assistant_message, tool_calls, result_error
 
 
 def matches_observation(tool_call, observation):
     if not re.search(observation["tool_pattern"], tool_call["name"]):
         return False
+    for field, pattern in observation.get("input_field_patterns", {}).items():
+        value = tool_call["input"].get(field)
+        if not isinstance(value, str) or not re.search(pattern, value, re.IGNORECASE):
+            return False
     serialized_input = json.dumps(tool_call["input"], sort_keys=True)
     return (
         all(re.search(pattern, serialized_input, re.IGNORECASE | re.DOTALL)
@@ -105,6 +119,14 @@ def matches_observation(tool_call, observation):
         and all(re.search(pattern, tool_call["result"], re.IGNORECASE | re.DOTALL)
                 for pattern in observation.get("result_patterns", []))
     )
+
+
+def split_claim_blocks(text):
+    starts = [match.start() for match in CARD_ANCHOR.finditer(text)]
+    if not starts:
+        return [text]
+    bounds = starts + [len(text)]
+    return [text[bounds[index]:bounds[index + 1]] for index in range(len(starts))]
 
 
 def parse_claim_card(final_text):
@@ -126,7 +148,11 @@ def evaluate_case(case, final_text, tool_calls, process_error):
     failures = []
     if process_error:
         failures.append(process_error)
-    claim_card = parse_claim_card(final_text)
+    cards = [parse_claim_card(block) for block in split_claim_blocks(final_text)]
+    states = {normalize_state(card.get("state", "")) for card in cards} & CARD_STATES
+    if len(states) > 1:
+        failures.append(f"conflicting claim cards: {', '.join(sorted(states))}")
+    claim_card = cards[-1]
     for field in CARD_FIELDS:
         if not claim_card.get(field.lower()):
             failures.append(f"missing or empty claim-card field: {field}")
@@ -164,16 +190,21 @@ def evaluate_case(case, final_text, tool_calls, process_error):
 
 def run_case(case, budget, timeout):
     temporary_directory, repository = make_sandbox()
-    allowed_tools = ["Skill", "Read"]
+    tools = ["Skill", "Read"]
+    if case["id"] == "configuration-contradicted":
+        tools.append("Glob")
     if case["id"] in {"code-verified", "data-material-reversal"}:
-        allowed_tools.append("Bash")
+        tools.append("Bash")
     if case["id"] == "data-material-reversal":
-        allowed_tools.extend(["Agent", "Task"])
+        tools.extend(["Agent", "Task"])
+    # `--tools` restricts the built-in set, so Edit and Write never exist; `--allowedTools` is a
+    # permission allowlist, and under `dontAsk` an unlisted request is denied rather than asked.
     command = [
         "claude", "-p", case["prompt"],
         "--output-format", "stream-json", "--verbose",
         "--permission-mode", "dontAsk",
-        "--allowedTools", ",".join(allowed_tools),
+        "--tools", ",".join(tools),
+        "--allowedTools", ",".join(tools),
         "--max-budget-usd", str(budget),
     ]
     try:
@@ -227,10 +258,18 @@ def main():
     parser.add_argument("--case", help="run one case by id")
     parser.add_argument("--budget", type=float, default=1.50, help="per-case USD cap")
     parser.add_argument("--timeout", type=int, default=300, help="per-case seconds")
+    parser.add_argument("--repeat", type=int, default=1,
+                        help="runs per case. A twenty-assertion behavioral case is "
+                             "non-deterministic — a single run reports a coin flip as a "
+                             "fact. Use 3+ for anything you act on.")
     parser.add_argument("--output-dir", type=pathlib.Path)
     args = parser.parse_args()
+    if args.repeat < 1:
+        parser.error("--repeat must be at least 1")
 
     cases = json.loads(CASES.read_text())["cases"]
+    if not cases:
+        parser.error(f"no cases defined in {CASES}")
     if args.case:
         cases = [case for case in cases if case["id"] == args.case]
         if not cases:
@@ -249,29 +288,42 @@ def main():
     summaries = []
     for case in cases:
         print(f"[{case['id']}] ", end="", flush=True)
-        final_text, tool_calls, process_error, raw_output = run_case(
-            case, args.budget, args.timeout)
-        failures = evaluate_case(case, final_text, tool_calls, process_error)
-        verdict = "PASS" if not failures else "FAIL"
-        print(verdict)
-        (output_directory / f"{case['id']}.stream.jsonl").write_text(raw_output)
-        (output_directory / f"{case['id']}.md").write_text(final_text)
+        runs = []
+        for run_index in range(args.repeat):
+            final_text, tool_calls, process_error, raw_output = run_case(
+                case, args.budget, args.timeout)
+            failures = evaluate_case(case, final_text, tool_calls, process_error)
+            suffix = "" if args.repeat == 1 else f".run{run_index + 1}"
+            (output_directory / f"{case['id']}{suffix}.stream.jsonl").write_text(raw_output)
+            (output_directory / f"{case['id']}{suffix}.md").write_text(final_text)
+            runs.append({
+                "tools": [tool_call["name"] for tool_call in tool_calls],
+                "failures": failures,
+            })
+        hits = sum(not run["failures"] for run in runs)
+        verdict = "PASS" if hits == len(runs) else "FLAKY" if hits else "FAIL"
+        print(f"{verdict:<5} {hits}/{len(runs)}")
         summaries.append({
             "id": case["id"],
             "lane": case["lane"],
             "verdict": verdict,
-            "tools": [tool_call["name"] for tool_call in tool_calls],
-            "failures": failures,
+            "hits": hits,
+            "n": len(runs),
+            "runs": runs,
         })
 
     (output_directory / "summary.json").write_text(json.dumps(summaries, indent=2) + "\n")
-    failed = [summary for summary in summaries if summary["verdict"] == "FAIL"]
-    print(f"{len(summaries) - len(failed)}/{len(summaries)} passed")
+    misses = [summary for summary in summaries if summary["verdict"] != "PASS"]
+    print(f"{len(summaries) - len(misses)}/{len(summaries)} unanimous")
     print(f"Raw results: {output_directory}")
-    for summary in failed:
-        for failure in summary["failures"]:
-            print(f"  {summary['id']}: {failure}")
-    return 1 if failed else 0
+    for summary in misses:
+        occurrences = {}
+        for run in summary["runs"]:
+            for failure in run["failures"]:
+                occurrences[failure] = occurrences.get(failure, 0) + 1
+        for failure, count in sorted(occurrences.items(), key=lambda item: -item[1]):
+            print(f"  {summary['id']} [{count}/{summary['n']}]: {failure}")
+    return 1 if misses else 0
 
 
 if __name__ == "__main__":

@@ -8,13 +8,17 @@ lines of output-format spec out of the prompt. Count parity is not nesting.
 Two tiers:
   * repo-wide — every directory under ROOT that holds a SKILL.md. File-agnostic
     structure: fences, frontmatter, pointer form, reference existence, the
-    shared severity ladder, cross-skill duplication.
+    shared severity ladder, cross-skill duplication, the always-loaded context
+    budget.
   * pair-only — the review-pr <-> fix-pr-review field contracts. Those field
     chains exist in no other skill; running them repo-wide is pure noise.
 
+Plus one check on ROOT's sibling `reference/CLAUDE.md`, which claims to mirror a
+file living outside the repo entirely.
+
 A directory without a SKILL.md is bundled tooling, not a skill, and is skipped.
 """
-import hashlib, re, sys, pathlib
+import difflib, hashlib, re, sys, pathlib
 
 ROOT = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 \
     else pathlib.Path.home() / ".agents/skills"
@@ -22,7 +26,7 @@ RP = ROOT / "review-pr/SKILL.md"
 FP = ROOT / "fix-pr-review/SKILL.md"
 SCHEMA = ROOT / "review-pr/references/finding-state-schema.md"
 
-fails, warns = [], []
+fails, warns, notes = [], [], []
 
 
 def rel(p):
@@ -34,6 +38,7 @@ def rel(p):
 
 def fail(t, m): fails.append((t, m))
 def warn(t, m): warns.append((t, m))
+def note(t, m): notes.append((t, m))
 
 
 def read(p):
@@ -153,6 +158,135 @@ def check_frontmatter():
                 warn(skill.name, f"frontmatter key `{key}` is not one of "
                                  f"{sorted(KNOWN_FRONTMATTER_KEYS)} — the harness "
                                  f"ignores it")
+
+
+# --- always-loaded context budget (repo-wide, WARN) ------------------------
+
+# 360 is the repo's real ceiling today (harden-plan, 358). discover-product-domain
+# landed at 506 — 41% past the previous worst — and nothing caught it at review.
+MAX_DESCRIPTION_CHARS = 360
+
+# Set from the repo's own distribution: two skills sit past 10 KB with the
+# whole body in SKILL.md; every other skill that size splits into references/.
+MAX_SKILL_MD_BYTES = 10_000
+
+
+def _frontmatter_values(skill):
+    parsed = _parse_frontmatter(read(skill / "SKILL.md"))
+    return parsed[1] if parsed else {}
+
+
+def _description(values):
+    return values.get("description", "").strip().strip("\"'")
+
+
+def _is_model_invoked(values):
+    flag = values.get("disable-model-invocation", "").strip().strip("\"'")
+    return flag.lower() != "true"
+
+
+def description_budget():
+    """(chars always in context, model-invoked skills, opted-out skills)."""
+    total, invoked, opted_out = 0, 0, 0
+    for skill in SKILLS:
+        values = _frontmatter_values(skill)
+        if _is_model_invoked(values):
+            total += len(_description(values))
+            invoked += 1
+        else:
+            opted_out += 1
+    return total, invoked, opted_out
+
+
+def check_description_budget():
+    """A description is loaded on every turn of every session whether or not the
+    skill fires, which makes it the most expensive line in the repo. A skill
+    setting `disable-model-invocation: true` is never matched against, costs
+    nothing, and is excluded from the budget entirely."""
+    for skill in SKILLS:
+        values = _frontmatter_values(skill)
+        if not _is_model_invoked(values):
+            continue
+        size = len(_description(values))
+        if size <= MAX_DESCRIPTION_CHARS:
+            continue
+        warn(skill.name,
+             f"description is {size} chars, {size - MAX_DESCRIPTION_CHARS} over the "
+             f"{MAX_DESCRIPTION_CHARS}-char budget — every session pays for it on "
+             f"every turn, fired or not. Cut it back to the trigger, or set "
+             f"`disable-model-invocation: true` and make it user-invoked")
+
+
+# A skill name is matched whole, treating `-` as a word character: `review-pr`
+# must not hit inside `fix-pr-review`, and `simplify` must not hit `simplified`.
+def _whole_name(name):
+    return re.compile(rf"(?<![\w-]){re.escape(name)}(?![\w-])")
+
+
+REFERENCE_DIR = ROOT.parent / "reference"
+
+
+def _inbound_search_corpus():
+    """Everything another skill could reach a skill from. The repo README lists
+    every skill by name, so counting it would make the check vacuous — the
+    question is whether anything ROUTES to the skill, not whether it is
+    catalogued."""
+    paths = [p for p in sorted(ROOT.rglob("*")) if p.is_file()]
+    if REFERENCE_DIR.is_dir():
+        paths += [p for p in sorted(REFERENCE_DIR.rglob("*")) if p.is_file()]
+    corpus = []
+    for path in paths:
+        try:
+            corpus.append((path, path.read_text(encoding="utf-8")))
+        except (UnicodeDecodeError, OSError):
+            continue
+    return corpus
+
+
+def check_orphan_model_invocation():
+    """Model-invocation buys two kinds of reach — the agent recognising the
+    situation itself, and another skill routing to it — and a reference search
+    can only rule out the second. So this reports the fact and leaves the
+    verdict to a human: resolving-merge-conflicts has no caller anywhere and
+    must stay model-invoked, because the agent reaches it off `CONFLICT
+    (content)` with nobody naming it.
+
+    Narrowing it by description shape was tried and abandoned. `Use when the
+    user ...` opens project-discovery, which fires autonomously when the user
+    "seems unsure". Matching `only` scored 2/2 on the current tree and is an
+    accident: on calibrate-board-mutations it is matching inside `read-only`,
+    which is about data access, not invocation. A broad gate a human triages
+    beats a heuristic that demotes a skill silently."""
+    corpus = _inbound_search_corpus()
+    for skill in SKILLS:
+        values = _frontmatter_values(skill)
+        if not _is_model_invoked(values) or not _description(values):
+            continue
+        pattern, own = _whole_name(skill.name), f"{skill.name}/"
+        if any(pattern.search(text) for path, text in corpus
+               if not rel(path).startswith(own)):
+            continue
+        warn(skill.name,
+             f"model-invoked with no inbound reference from {ROOT.name}/ or "
+             f"{REFERENCE_DIR.name}/ — no other skill routes to it, so the "
+             f"always-loaded description is buying autonomous recognition and "
+             f"nothing else. Keep it if the agent must fire this off a situation "
+             f"the user will not name; if it only ever fires when the user asks "
+             f"for it, set `disable-model-invocation: true`")
+
+
+def check_progressive_disclosure():
+    """Past ~10 KB a SKILL.md carries detail most invocations never read, and
+    all of it loads the moment the skill fires. references/ is how the rest of
+    the repo separates the trigger path from the depth behind it."""
+    for skill in SKILLS:
+        size = (skill / "SKILL.md").stat().st_size
+        if size <= MAX_SKILL_MD_BYTES or (skill / "references").is_dir():
+            continue
+        warn(skill.name,
+             f"SKILL.md is {size:,} bytes with no references/ — every invocation "
+             f"loads all of it. Move the depth behind "
+             f"${{CLAUDE_SKILL_DIR}}/references/ and point at it from SKILL.md")
 
 
 # --- severity ladder (repo-wide) -------------------------------------------
@@ -361,6 +495,164 @@ def check_cross_skill_duplication():
              f"copy is deliberate")
 
 
+# Below 5 normalized lines a shell block is boilerplate that legitimately recurs
+# (`gh pr view ... --json`), and containment scores it 1.0 against anything that
+# happens to contain it.
+MIN_NEAR_DUPLICATE_LINES = 5
+
+# The repo-map cluster scores 0.889-1.0 and the next-closest unrelated pair
+# scores 0.611, so 0.85 sits in open space rather than on a knife edge.
+NEAR_DUPLICATE_CONTAINMENT = 0.85
+
+
+def _normalize_code(text):
+    """Strip comment-only lines and per-line indentation. A copied block picks
+    up a header comment naming its new caller and a different nesting depth,
+    and that alone is enough to defeat the byte-identical hash above."""
+    out = []
+    for l in text.split("\n"):
+        stripped = l.strip()
+        if not stripped or (stripped.startswith("#") and not stripped.startswith("#!")):
+            continue
+        out.append(stripped)
+    return out
+
+
+def _containment(a, b):
+    """Share of the SHORTER block's lines that also appear, in order, in the
+    longer one. SequenceMatcher's own ratio halves that when the two differ in
+    length, so a block pasted whole into a bigger one scores ~0.7 there and 1.0
+    here — and pasted-whole is exactly the case worth catching."""
+    matcher = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    matched = sum(block.size for block in matcher.get_matching_blocks())
+    return matched / min(len(a), len(b))
+
+
+def check_near_duplicate_code_blocks():
+    """Same intent as the byte-identical check, one step looser: the repo-map
+    bash, before it was given one home, was triplicated across fix-pr-review,
+    harden-plan and review-pr and evaded that check because the copies differed
+    by a leading comment, an indent, and one awk string. Clusters are keyed on
+    the longest member's normalized digest so they can be allowlisted through
+    DUPLICATE_ALLOWLIST like any other."""
+    blocks = []
+    for path in EVERY_MD:
+        skill = rel(path).split("/")[0]
+        for kind, line, _count, text in _blocks(path):
+            if kind != "code":
+                continue
+            normalized = _normalize_code(text)
+            if len(normalized) < MIN_NEAR_DUPLICATE_LINES:
+                continue
+            blocks.append((skill, f"{rel(path)}:{line}", normalized, _hash(text)))
+
+    parent = list(range(len(blocks)))
+
+    def root_of(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(len(blocks)):
+        for j in range(i + 1, len(blocks)):
+            a, b = blocks[i], blocks[j]
+            if a[0] == b[0] or a[3] == b[3]:
+                continue          # same skill, or already reported byte-identical
+            if _containment(a[2], b[2]) >= NEAR_DUPLICATE_CONTAINMENT:
+                parent[root_of(i)] = root_of(j)
+
+    clusters = {}
+    for i, block in enumerate(blocks):
+        clusters.setdefault(root_of(i), []).append(block)
+    for members in sorted(clusters.values(), key=lambda m: -max(len(b[2]) for b in m)):
+        skills = {m[0] for m in members}
+        if len(skills) < 2:
+            continue
+        longest = max(members, key=lambda m: len(m[2]))
+        digest = _hash("\n".join(longest[2]))
+        if digest in DUPLICATE_ALLOWLIST:
+            continue
+        sites = ", ".join(m[1] for m in sorted(members, key=lambda m: m[1]))
+        warn("duplication",
+             f"{len(longest[2])}-line code block [{digest}] is near-identical "
+             f"across {len(skills)} skills once comments and indentation are "
+             f"normalized: {sites} — the hash check above cannot see this one; "
+             f"allowlist it with a reason if the copy is deliberate")
+
+
+# --- global-rules mirror drift (WARN) --------------------------------------
+
+# reference/CLAUDE.md:1 says it is a copy of the live global config. It has
+# drifted silently twice. skills/simplify defers to its comment rule and
+# skills/file-issue cites its board-ownership boundary, so a stale copy sends
+# both to text that is no longer in force.
+GLOBAL_RULES_MIRROR = ROOT.parent / "reference/CLAUDE.md"
+LIVE_GLOBAL_RULES = pathlib.Path.home() / ".claude/CLAUDE.md"
+
+# The mirror opens with a blockquote saying it IS a mirror, plus a blank line.
+# The live file has no reason to carry that; everything after it must match.
+MIRROR_PREAMBLE_LINES = 2
+MAX_DRIFT_SECTIONS_REPORTED = 4
+
+_SECTION_HEADING = re.compile(r"^#{1,6}\s+(.*)$")
+
+
+def _mirror_body(lines):
+    preamble = lines[:MIRROR_PREAMBLE_LINES]
+    if (len(preamble) == MIRROR_PREAMBLE_LINES
+            and preamble[0].startswith(">") and not preamble[1].strip()):
+        return lines[MIRROR_PREAMBLE_LINES:]
+    return lines
+
+
+def _enclosing_heading(lines, index):
+    for l in reversed(lines[:min(index, len(lines)) + 1]):
+        m = _SECTION_HEADING.match(l)
+        if m:
+            return m.group(1).strip()
+    return "(above the first heading)"
+
+
+def check_global_rules_mirror_drift():
+    """The live file lives outside the repo, is machine-specific, and is absent
+    in CI and on every other contributor's machine — so its absence is a skip,
+    never a failure. Reports differing-line counts and the sections they land
+    in; a full diff belongs in `diff`, not in a verifier line."""
+    mirror = read(GLOBAL_RULES_MIRROR)
+    if mirror is None:
+        return
+    live = read(LIVE_GLOBAL_RULES)
+    if live is None:
+        note("reference/CLAUDE.md",
+             f"mirror drift check skipped — {LIVE_GLOBAL_RULES} is not on this "
+             f"machine. The live file is user-local, so this check only runs "
+             f"where it exists")
+        return
+    body = _mirror_body(mirror)
+    mirror_only, live_only, sections = 0, 0, []
+    matcher = difflib.SequenceMatcher(None, body, live, autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        mirror_only += i2 - i1
+        live_only += j2 - j1
+        heading = (_enclosing_heading(body, i1) if i2 > i1
+                   else _enclosing_heading(live, j1))
+        if heading not in sections:
+            sections.append(heading)
+    if not sections:
+        return
+    hidden = len(sections) - MAX_DRIFT_SECTIONS_REPORTED
+    shown = "; ".join(sections[:MAX_DRIFT_SECTIONS_REPORTED])
+    warn("reference/CLAUDE.md",
+         f"has drifted from {LIVE_GLOBAL_RULES}: {mirror_only} line(s) only in "
+         f"the mirror, {live_only} only in the live file, across "
+         f"{len(sections)} section(s) — {shown}"
+         f"{f' (+{hidden} more)' if hidden > 0 else ''}. Line 1 claims the file "
+         f"is a copy and other skills cite it as one")
+
+
 STATUS_ENUM = {"active", "resolved", "dismissed", "wontfix", "regression"}
 BANNED_STATUS = {"still-active", "deferred"}
 
@@ -562,6 +854,9 @@ def check_review_pr_severity_line():
             fail("review-pr", f"line {i}: severity ladder omits Critical — {l.strip()[:70]}")
 
 
+MARKERS = {"FAIL": "x", "WARN": "!", "INFO": "-"}
+
+
 def _emit(label, items):
     print(f"{label} ({len(items)}):")
     groups = {}
@@ -572,7 +867,7 @@ def _emit(label, items):
         print(f"\n  {group}")
         for tag, msg in groups[group]:
             where = tag[len(group) + 1:]
-            print(f"    {'x' if label == 'FAIL' else '!'} {where + ': ' if where else ''}{msg}")
+            print(f"    {MARKERS[label]} {where + ': ' if where else ''}{msg}")
     print()
 
 
@@ -592,12 +887,17 @@ def main():
         check_nested_prompt(p, ls)
 
     check_frontmatter()
+    check_description_budget()
+    check_orphan_model_invocation()
+    check_progressive_disclosure()
     check_pointer_form()
     check_severity_ladder_consistency()
     check_orphan_reference_files()
     check_reference_files_exist()
     check_dangling_refs()
     check_cross_skill_duplication()
+    check_near_duplicate_code_blocks()
+    check_global_rules_mirror_drift()
 
     check_status_values()
     check_banned_status_words()
@@ -612,12 +912,18 @@ def main():
     check_review_pr_ratio_naming()
     check_review_pr_severity_line()
 
+    chars, invoked, opted_out = description_budget()
     print(f"  {len(SKILLS)} skills, {len(EVERY_MD)} markdown files under {ROOT}")
+    print(f"  {chars:,} description chars always in context across {invoked} "
+          f"model-invoked skills; {opted_out} user-invoked "
+          f"(`disable-model-invocation: true`) cost nothing")
     print()
     if fails:
         _emit("FAIL", fails)
     if warns:
         _emit("WARN", warns)
+    if notes:
+        _emit("INFO", notes)
     if not fails and not warns:
         print("all checks pass")
         print()

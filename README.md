@@ -64,9 +64,9 @@ npx skills add bhagyamudgal/skills
 | `systematic-debugging` | Four-phase root-cause loop for mid-debugging discipline — no fix without an understood cause, every phase ends on a checkable bar, bandaid budget zero |
 | `verify-claims` | Gate inference-backed, decision-driving claims with a counter-hypothesis and paired evidence from their basis and user-facing acceptance boundary |
 | `preflight-mutations` | Resolve exact targets, authority, dependencies, reversibility, confirmation, and read-back before changing shared state |
-| `calibrate-board-mutations` | Calibrate board-estimate batches with anchors, representative previews, umbrella rules, and authoritative totals |
+| `calibrate-board-mutations` | Calibrate board-estimate batches with anchors, representative previews, umbrella rules, and authoritative totals. Manual-only via `disable-model-invocation`, so its description stays out of context until you invoke it |
 | `converge-reviews` | Reuse review evidence, track affected coverage, and cap stable review scopes at three rounds |
-| `manage-report-lifecycle` | Consolidate or supersede hosted analytical reports while preserving every source item, one canonical URL, and verifiable predecessor state |
+| `manage-report-lifecycle` | Consolidate or supersede hosted analytical reports while preserving every source item, one canonical URL, and verifiable predecessor state. Manual-only via `disable-model-invocation`, so its description stays out of context until you invoke it |
 | `executing-tickets-with-subagents` | Orchestrate bundled tickets or explicit away/keep-going work through a durable ledger, with one mutation owner per task and a bounded unattended worker pool |
 | `sync-agent-setups` | Manually preview and sync Claude Code's user-authored behavioral setup outward to explicitly selected agents |
 | `resolving-merge-conflicts` | Resolve an in-progress git conflict without a **silent drop** — every hunk from both sides placed as kept, superseded, or dropped before you commit |

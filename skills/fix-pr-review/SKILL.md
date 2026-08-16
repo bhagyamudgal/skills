@@ -61,6 +61,8 @@ Each carries its firing condition in the pointer at the point of use; load it th
 - `references/github-reply-resolve.md` — Steps 7a–7d posting/resolving mechanics. Loaded by main in Phase 7; never loaded for local-file input.
 - `references/final-report.md` — the Phase 8 report template and its rendering rules. Loaded by main in Phase 8 before printing.
 
+One reference is not bundled here: `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` holds the `repo_map_files` / `repo_map_exports` shell, the one copy this skill shares with `/review-pr` and `/harden-plan`. Loaded by main in Phase 1 when `packages/` or `apps/` exists.
+
 ## Usage
 
 ```
@@ -179,33 +181,7 @@ Define one parser for the whole run. For each diagnostic, key its file and build
 
 Inventory shared packages AND apps so the Phase 3 classifier can cross-check comments about reuse/extraction against what already exists. Scan BOTH `packages/` and `apps/` — cross-app helper duplication (e.g., `apps/backend/src/modules/v1/feature-a/helpers.ts` vs `feature-b/helpers.ts`) is common in NestJS-style monorepos and is invisible to a packages-only scan.
 
-**IMPORTANT**: wrap in `bash -c '...'` — raw `packages/*/src` globs abort under zsh with `zsh: no matches found` BEFORE `2>/dev/null` can catch it. Use `find` for layout robustness (`src/`, `lib/`, `source/`).
-
-```bash
-# Repo map files — inventory of TS/TSX in shared roots (capped 500 lines, truncation marked)
-bash -c '
-if [ -d packages ] || [ -d apps ]; then
-  { [ -d packages ] && find packages -type f \( -name "*.ts" -o -name "*.tsx" \) \
-      -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
-      -not -name "*.test.*" -not -name "*.spec.*" 2>/dev/null
-    [ -d apps ] && find apps -type f \( -name "*.ts" -o -name "*.tsx" \) \
-      -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
-      -not -path "*/.next/*" -not -name "*.test.*" -not -name "*.spec.*" 2>/dev/null
-  } | awk "NR<=500{print} END{if(NR>500)print \"[truncated at 500 of \" NR \" lines — use Glob directly for ground truth]\"}"
-fi
-'
-
-# Repo map exports — top-level exports across src/lib/source dirs (capped 500 lines, truncation marked)
-bash -c '
-if [ -d packages ] || [ -d apps ]; then
-  find packages apps 2>/dev/null -type d \( -name src -o -name lib -o -name source \) \
-    -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
-    -not -path "*/.next/*" 2>/dev/null \
-    | xargs -I{} grep -rhnE "^export (default (async )?function|function|const|class|type|interface|async function) \w+" {} 2>/dev/null \
-    | awk "NR<=500{print} END{if(NR>500)print \"[truncated at 500 of \" NR \" lines — grep packages/ apps/ directly for more]\"}"
-fi
-'
-```
+Load `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` and run its **Local mode** block — the one copy of this shell, shared with `/review-pr` and `/harden-plan`. It carries the `bash -c` wrapping the globs need to survive zsh, and caps each half at 500 lines with the truncation marked. Load it when `packages/` or `apps/` exists; when neither does there is nothing to run and the fallback below applies.
 
 Stash both outputs as `repo_map_files` and `repo_map_exports` for the Phase 3 subagent prompt. If neither `packages/` nor `apps/` exists (non-monorepo), set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false` — the classifier prompt uses this to reroute greps to `src/` and the repo root.
 

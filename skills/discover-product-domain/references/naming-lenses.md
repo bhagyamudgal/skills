@@ -76,7 +76,7 @@ and future-stretch siblings around it before returning to unrelated roots.
 
 ## Brand score (/70)
 
-Score names before applying the domain hard gate.
+Score names before applying the domain gate.
 
 | Dimension | Points | Test |
 |---|---:|---|
@@ -88,7 +88,7 @@ Score names before applying the domain hard gate.
 Prefer 5–10 characters and 2 syllables, but use those as heuristics rather than
 hard gates. Eliminate a name regardless of score when it has an unacceptable
 meaning, an impossible pronunciation, or a direct contradiction with the brief.
-Domain availability is a separate hard gate; do not award points for it.
+Domain availability is the domain gate; do not award points for it.
 
 ## First-pass presentation
 

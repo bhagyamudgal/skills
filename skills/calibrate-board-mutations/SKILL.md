@@ -1,6 +1,7 @@
 ---
 name: calibrate-board-mutations
-description: Calibrate and reconcile a batch of estimates on a shared project board. Use before estimating many board items, revising estimates after the unit or anchors change, or resuming a partially written estimate batch. Do not use for read-only analysis or a single write whose exact value the user already supplied.
+description: Calibrate and reconcile a batch of estimates on a shared project board.
+disable-model-invocation: true
 ---
 
 # Calibrate Board Mutations

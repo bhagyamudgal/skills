@@ -1,6 +1,7 @@
 ---
 name: manage-report-lifecycle
-description: Consolidate, replace, supersede, or canonicalize existing hosted reviews, research, audits, findings, or reports without losing evidence. Use only for explicit lifecycle work on durable analytical reports; exclude first creation, routine edits, temporary files, tickets, PR finding state, build outputs, screenshots, backups, and setup manifests.
+description: Consolidate, replace, or supersede hosted analytical reports without losing evidence.
+disable-model-invocation: true
 ---
 
 # Manage Report Lifecycle
