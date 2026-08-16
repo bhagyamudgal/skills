@@ -55,6 +55,7 @@ npx skills add bhagyamudgal/skills
 | `harden-plan` | Pre-code quality gate — grounds a written plan against the real codebase and runs 11 category checks before any code exists |
 | `grill-me` | Interview-style stress-test of a plan, one decision at a time, against an enumerated list — no "grill complete" until every decision has an answer |
 | `project-discovery` | Discovery interview before writing code on a new project — interrogate requirements and stack, then emit `CLAUDE.md`, `PATTERNS.md` and the `lib/` scaffolding |
+| `discover-product-domain` | Generate through independent naming lenses, remix with the user, and verify their exact standard-price `.com` domains |
 | `design-director` | Senior creative-director direction — 7 modes (brief simplify, logo, layout, typography, color, critique, brand identity) |
 | `browser-qa` | Drive a real browser through a UI flow with Playwright MCP — screenshot every step, check network and console, and account for every step with PASS or FAIL |
 | `reuse-first` | Search-first discipline before writing any new utility, type, schema, component, hook, or constant — 3-layer search you must print, reuse ladder, fork smells |
@@ -72,7 +73,7 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 | Folder | Purpose |
 |---|---|
 | `skills/coderabbit-config/` | `.coderabbit.yaml` template + persistent-learnings sidecar. Copy into a repo so CodeRabbit absorbs style + convention findings before `/review-pr` runs. See [`skills/coderabbit-config/README.md`](skills/coderabbit-config/README.md) for bootstrap instructions. |
-| `tools/verify_skills.py` | Structural verifier across all 18 skills — frontmatter, code fences, pointer form, severity-ladder consistency, dangling and orphan references, cross-skill duplication. Plus produce → validate → consume dataflow checks scoped to `review-pr` and `fix-pr-review`. Run `python3 tools/verify_skills.py ./skills`; exits non-zero on failure. |
+| `tools/verify_skills.py` | Structural verifier across all 19 skills — frontmatter, code fences, pointer form, severity-ladder consistency, dangling and orphan references, cross-skill duplication. Plus produce → validate → consume dataflow checks scoped to `review-pr` and `fix-pr-review`. Run `python3 tools/verify_skills.py ./skills`; exits non-zero on failure. |
 
 ## Usage
 
@@ -87,6 +88,7 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 /harden-plan         # Stress-test a written plan before coding
 /grill-me            # Interview-style plan/design refinement
 /project-discovery   # Plan a new project
+/discover-product-domain  # Generate, remix, and verify product .com names
 /design-director     # Design + branding direction
 /reuse-first         # Search-first check before writing new utilities/types/components
 /backend-perf        # Perf checklist for backend services and DB queries

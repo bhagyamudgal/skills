@@ -79,6 +79,38 @@
 
     { "utterance": "add a comment to the top of user.ts",
       "expect": null,
-      "why": "NEGATIVE: a trivial edit. `done` claims to fire after every task — this checks it does not pre-empt the work" }
+      "why": "NEGATIVE: a trivial edit. `done` claims to fire after every task — this checks it does not pre-empt the work" },
+
+    { "utterance": "Name my desktop video downloader and find three memorable standard-price .com domains for it.",
+      "expect": "discover-product-domain",
+      "why": "primary branch: product naming and exact-domain discovery belong to the new skill" },
+
+    { "utterance": "Mix and match the useful words in VidsJar, ClipHarbor and StashBay, then check the new .com combinations.",
+      "expect": "discover-product-domain",
+      "why": "remix branch: a bare mix-and-match utterance carrying its own seeds should route here, with no skill named in the request" },
+
+    { "utterance": "Check which of Loamly, Pagebound and Readnest have normal-price .com domains and recommend the strongest one.",
+      "expect": "discover-product-domain",
+      "why": "verification branch: an inline shortlist still needs registry filtering, registrar evidence, and a naming recommendation" },
+
+    { "utterance": "Explain how domain name registration works.",
+      "expect": null,
+      "why": "NEGATIVE: general domain education does not require product naming or availability discovery" },
+
+    { "utterance": "Register vidsjar.com for me.",
+      "expect": null,
+      "why": "NEGATIVE: domain registration is an external mutation outside the read-only discovery skill" },
+
+    { "utterance": "I have an idea for a local-first reading app and need help naming it.",
+      "expect": "discover-product-domain",
+      "why": "greenfield branch: a product-naming request should enter the guided discovery funnel even before the user mentions domains" },
+
+    { "utterance": "I like the name VidsJar but want sharper variations that still have a usable .com.",
+      "expect": "discover-product-domain",
+      "why": "refinement branch: a user-created seed should enter the atom-remix route without restarting greenfield discovery" },
+
+    { "utterance": "I'm starting a new inventory app and need to plan its requirements and technical architecture before we write code.",
+      "expect": "project-discovery",
+      "why": "collision: a bare new-app utterance asking for requirements and architecture stays with project-discovery rather than routing to naming" }
   ]
 }
