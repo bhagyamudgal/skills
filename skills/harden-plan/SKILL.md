@@ -18,6 +18,8 @@ Each one is loaded only on the branch that reaches it — some by main, some by 
 - `references/grill-loop.md` — question-block format, the four response branches, forbidden dismiss reasons, self-heal verification, abort ramps, one-at-a-time rule. Loaded by **main** in Phase 4 when findings remain (`verdict != ready-to-code`).
 - `references/write-back.md` — external-modification check, the three write-back options, the insertion format, and the write-failure fallback. Loaded by **main** in Phase 5 when `PLAN_SOURCE=file`.
 
+One reference is not bundled here: `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` holds the `repo_map_files` / `repo_map_exports` shell, the one copy this skill shares with `/review-pr` and `/fix-pr-review`. Loaded by **main** in Phase 1 when `packages/` or `apps/` exists.
+
 ## Usage
 
 ```
@@ -111,43 +113,15 @@ On abort:
 
 ### Compute repo map (for grounding)
 
-Reuse `/review-pr`'s Phase 1 repo-map bash verbatim. **Wrap in
-`bash -c '...'`** — raw `packages/*/src` globs abort under zsh before
-`2>/dev/null` can suppress the error, silently emptying the map.
+Load `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` and run
+its **Local mode** block — the one copy of this shell, shared with
+`/review-pr` and `/fix-pr-review`. It carries the `bash -c` wrapping
+the globs need to survive zsh, and caps each half at 500 lines with
+the truncation marked. Load it when `packages/` or `apps/` exists;
+when neither does there is nothing to run and the fallback below
+applies.
 
-**Repo map — files** (capped 500 lines, truncation marked):
-
-```bash
-bash -c '
-if [ -d packages ] || [ -d apps ]; then
-  { [ -d packages ] && find packages -type f \( -name "*.ts" -o -name "*.tsx" \) \
-      -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
-      -not -name "*.test.*" -not -name "*.spec.*" 2>/dev/null
-    [ -d apps ] && find apps -type f \( -name "*.ts" -o -name "*.tsx" \) \
-      -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
-      -not -path "*/.next/*" -not -name "*.test.*" -not -name "*.spec.*" 2>/dev/null
-  } | awk "NR<=500{print} END{if(NR>500)print \"[truncated at 500 of \" NR \" lines — use Glob directly for ground truth]\"}"
-fi
-'
-```
-
-Stash as `repo_map_files`.
-
-**Repo map — exports** (capped 500 lines):
-
-```bash
-bash -c '
-if [ -d packages ] || [ -d apps ]; then
-  find packages apps 2>/dev/null -type d \( -name src -o -name lib -o -name source \) \
-    -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
-    -not -path "*/.next/*" 2>/dev/null \
-    | xargs -I{} grep -rhnE "^export (default (async )?function|function|const|class|type|interface|async function) \w+" {} 2>/dev/null \
-    | awk "NR<=500{print} END{if(NR>500)print \"[truncated at 500 of \" NR \" lines — grep packages/ apps/ directly for more]\"}"
-fi
-'
-```
-
-Stash as `repo_map_exports`.
+Stash the two outputs as `repo_map_files` and `repo_map_exports`.
 
 **Non-monorepo fallback**: if neither `packages/` nor `apps/` exists, set
 both maps to `N/A (not a monorepo)` and flag `IS_MONOREPO=false` —
@@ -158,30 +132,22 @@ plan text exclusively.
 
 ### Planning-specific inventories (run in parallel with repo map above)
 
-**Existing services inventory** (for P11 Pattern Consistency):
+Both P11 inventories are the same `find`, differing only in what they
+match and how many lines they keep. Run it twice, substituting
+`<MATCH>` and `<CAP>` from the table below:
 
 ```bash
 bash -c '
-find apps packages 2>/dev/null -type f -name "*.service.ts" \
+find apps packages 2>/dev/null -type f <MATCH> \
   -not -path "*/node_modules/*" -not -path "*/dist/*" \
-  -not -name "*.spec.*" -not -name "*.test.*" 2>/dev/null | head -100
+  -not -name "*.spec.*" 2>/dev/null | head -<CAP>
 '
 ```
 
-Stash as `existing_services_inventory`.
-
-**Existing history / audit tables** (for P11):
-
-```bash
-bash -c '
-find apps packages 2>/dev/null -type f \
-  \( -iname "*history*.ts" -o -iname "*audit*.ts" \) \
-  -not -path "*/node_modules/*" -not -path "*/dist/*" \
-  -not -name "*.spec.*" 2>/dev/null | head -50
-'
-```
-
-Stash as `existing_history_tables`.
+| Stash as | `<MATCH>` | `<CAP>` |
+|---|---|---|
+| `existing_services_inventory` (for P11 Pattern Consistency) | `-name "*.service.ts" -not -name "*.test.*"` | 100 |
+| `existing_history_tables` (for P11) | `\( -iname "*history*.ts" -o -iname "*audit*.ts" \)` | 50 |
 
 ---
 
