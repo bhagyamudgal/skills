@@ -4,7 +4,7 @@ Loaded by main in Phase 3, at the first of steps 4.55 / 4.9 / 6 whose dispatch c
 
 All three are `general-purpose`, dispatched in ONE message so they run in parallel, and all three fetch what they need themselves (`gh pr diff`, Grep, Read) rather than being handed the diff. Each returns a compact block — no prose, no restated file contents.
 
-Substitute `<SKILL_DIR>` in every prompt below before dispatching, exactly as for Subagent 1 (SKILL.md, Phase 2). Verifiers inherit the user's repo as their working directory, so a bare `references/...` path resolves against that repo and silently finds nothing.
+Substitute `<SKILL_DIR>` in every prompt below before dispatching, exactly as for Subagent 1 (SKILL.md, Phase 2). Verifiers inherit the user's repo as their working directory, so a bare `references/...` path resolves against that repo and silently finds nothing. V3's prompt also carries `<PROMPT_PREAMBLE>` — the shared reference-paths + output-format block defined in that same SKILL.md section; substitute it there with `<SKILL_DIR>` already resolved.
 
 ---
 
@@ -84,15 +84,8 @@ If true, ALSO cover Q7 (table overlap), Q8 (1:1 consolidation) and Q9 (cross-tab
 load `<SKILL_DIR>/references/schema-design-checks.md` and follow it. If false, omit Q7-Q9
 entirely; do not emit lines for them.
 
-## Output format
-SKILL_DIR: <SKILL_DIR>
-Your working directory is the user's repo, not the skill directory, so the
-`<SKILL_DIR>/references/...` paths above and below are absolute and must be used as
-written. Load `<SKILL_DIR>/references/finding-output-format.md` before you write any
-finding and use exactly that shape — `Rule-class`, `Enclosing-symbol`, `Class-sites`,
-`Inverse risk` and the `class_completeness:` audit included. A finding in any other shape
-is unparseable to the Phase 3 critic and is dropped. Report findings only; main composes
-the run-level verdict.
+<PROMPT_PREAMBLE>
+Report findings only; main composes the run-level verdict.
 
 Report ONE entry per category, nothing else:
   Q<N>: no gap

@@ -20,6 +20,10 @@ This skill assumes CodeRabbit is configured on the repo via `.coderabbit.yaml`. 
 Each one is loaded only on the branch that reaches it — some by main, some by a subagent. Loader and firing condition:
 
 - `references/batch-mode.md` — orchestration rules, "don't stop" semantics, consolidated-report template, end-of-run decision prompt. Loaded by **main** at Phase 1 when the user gives 2+ PR URLs or asks for all open PRs.
+- `references/reviewer-prompt.md` — the whole Subagent 1 prompt, the anti-slop rules it works under, and the note on why the finding shape is not restated inside it. Loaded by **main** at the Phase 2 dispatch on every `SIZE_MODE` branch, `solo-main` included.
+- `references/cross-cutting-prompt.md` — the whole Subagent 3 prompt. Loaded by **main** at the Phase 2 dispatch when `SIZE_MODE` is `parallel-chunked` or `parallel-chunked-confirm`; the unchunked modes never dispatch Subagent 3.
+- `references/q5-type-coercion.md` — the Q5 type-coercion scan: coercion methods, how to decide a field is numeric, severity. Loaded by **Subagent 1** while answering Q5 when the diff contains a DB insert/update or an API payload construction.
+- `references/class-sweep-and-inverse-risk.md` — reviewer-prompt steps 5 and 6: blast-radius search order, the `class_completeness:` and `Inverse risk:` field rules, the worked inverse-risk examples. Loaded by **Subagent 1** as soon as any finding proposes a code change.
 - `references/q6-reusability-search.md` — Phase 1 repo-map shell + STEP A enumeration + STEP B search algorithm + Q6 control-flow gap. Loaded by **main** in Phase 1 when `packages/` or `apps/` exists, and by **Subagent 1** when the diff has 1+ new top-level definitions.
 - `references/finding-output-format.md` — the per-finding field block, the `class_completeness:` audit shape, and the run-level closing block. The one copy of the finding shape. Loaded by **Subagent 1**, **Subagent 3** and **V3** before they write any finding.
 - `references/schema-design-checks.md` — Q7 (overlap), Q8 (1:1 consolidation), Q9 (cross-table FK) checks. Loaded by **Subagent 1** when `INCLUDE_SCHEMA_CHECKS = true`, and by **V3** when the gap check covers Q7–Q9.
@@ -367,201 +371,47 @@ path resolves against that repo and finds nothing — the load fails silently an
 subagent answers from memory instead. The same substitution applies to Subagent 3 and to
 the Phase 3 verifiers.
 
-Prompt:
+#### Prompt substitutions
 
-```
-You are reviewing a GitHub PR for a human reviewer who wants accurate, critical findings — every one traceable to a line of this diff and worth a second look.
+`<PROMPT_PREAMBLE>` and `<GROUND_TRUTH>` are each substituted into more than one prompt, so
+this is their one definition — every prompt that carries them names them by these tokens.
+Substitute the block as written, with `<SKILL_DIR>` already resolved.
 
+**`<PROMPT_PREAMBLE>`** — opens Subagent 1, Subagent 3 and V3, the three prompts that emit
+findings. Each of them follows it with its own one-line statement of whether it closes on a
+run-level verdict:
+
+```text
 ## Where the reference files live
 SKILL_DIR: <SKILL_DIR>
 Your working directory is the user's repo, not the skill directory, so every
-`<SKILL_DIR>/references/...` path below is absolute and must be used as written.
+`<SKILL_DIR>/references/...` path in this prompt is absolute and must be used as written.
 A bare `references/...` resolves against the repo and silently finds nothing.
 
 ## Output format — load this FIRST
-Load `<SKILL_DIR>/references/finding-output-format.md` before you write anything. It
-holds the per-finding field block, the `class_completeness:` audit shape, the
-post-image line-number convention, and the closing block you end with. Emit every
-finding in exactly that shape — a finding in any other shape is unparseable to the
-Phase 3 critic and is dropped.
+Load `<SKILL_DIR>/references/finding-output-format.md` before you write anything. It holds
+the per-finding field block — `Rule-class`, `Enclosing-symbol`, `Class-sites`, `Inverse
+risk` and the `class_completeness:` audit — the post-image line-number convention, and the
+run-level closing block. Emit every finding in exactly that shape; a finding in any other
+shape is unparseable to the Phase 3 critic and is dropped.
+```
 
+**`<GROUND_TRUTH>`** — opens Subagent 1 and Subagent 2:
+
+```text
 ## Ground truth
 Goal: <from Phase 1>
 Expected touches: <from Phase 1>
 Out of scope: <from Phase 1>
 Prior findings already reported (raise one again only as a correction): <from Phase 1>
-
-## Prior multi-round state — already closed
-These findings were resolved or dismissed in earlier review rounds. They stay closed unless the diff shows the resolving code was reverted.
-<filtered list from PRIOR_STATE.findings where status in {resolved, dismissed, wontfix}>
-For each: id, file, enclosing_symbol, rule_class, status, round_resolved, dismissal_reason.
-
-## PR
-URL: <url>
-
-## Review suppressions
-<SUPPRESSIONS content if loaded, else "None">
-
-## Shared package repo map (for Q6)
-### Files in shared packages
-<repo_map_files>
-### Exported symbols
-<repo_map_exports>
-
-May be truncated at 500 lines — for thorough checks, Grep/Glob packages/ directly.
-
-## Schema review context
-INCLUDE_SCHEMA_CHECKS: <true|false>
-SCHEMA_DIR: <path>
-If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` for Q7-Q9.
-
-## Your task
-
-1. Run `gh pr diff <url>` for the diff.
-2. Run `gh pr view <url> --json files` for the file list.
-
-3. **GROUNDING PASS — MANDATORY before answering any Q.**
-   Write 3-5 bullets describing what this diff changes MECHANICALLY:
-   - Which files are touched and how (added / modified / deleted / renamed)
-   - Which functions / classes / schemas change
-   - What the observable behavior change is
-   Every subsequent finding MUST trace back to one of these bullets. If a finding doesn't trace, you are hallucinating it — drop before output.
-
-4. Answer Q1–Q6 EXPLICITLY (plus Q7–Q9 if `INCLUDE_SCHEMA_CHECKS = true`). Each must be addressed, even if just "No issues".
-
-   Q1. Intent — Does this PR actually solve the stated goal? Where's the gap?
-   Q2. Unnecessary changes — Files, abstractions, config, or indirection not required by the goal? (Collapses scope creep + overengineering — reporting separately produces dupes.)
-       Q2a. Documentation necessity — For any `.md` file with > 200 added lines OR > 40% of PR's total additions: question whether the docs are needed. Check if `CLAUDE.md` or existing project docs already cover the domain. Frame as observation, not bug. Severity: Minor. Category: Unnecessary.
-       Q2b. Premature complexity — Detect known patterns NOT mentioned in the linked issue:
-            - Optimistic locking (`version` columns with default 1)
-            - Soft-delete on append-only/audit tables
-            - Denormalized aggregation columns
-            - Polymorphic reference patterns
-            - Self-referential FKs
-            If `INCLUDE_SCHEMA_CHECKS = true` AND the project already uses the same pattern in existing tables (search `$SCHEMA_DIR`), treat it as an established convention.
-            Severity: Minor. Category: Architecture.
-
-   Q3. DRY — Duplicated logic within the diff or with existing code visible in surrounding context?
-
-   Q4. Performance — N+1 queries, loops over async, unbounded allocations, missing Promise.all, missing indices for new WHERE clauses, sequential awaits that could parallelize?
-
-   Q5. Security & Data Integrity — Injection, auth bypass, unsafe input handling, secrets in code, missing authorization, unvalidated input reaching dangerous sinks, AND type-coercion at write sites.
-
-       **Type-coercion at write sites** (subtle, test-only-caught bug):
-       Scan every DB insert/update / API payload construction in the diff for expressions like `field: value?.toFixed(N)`, `field: String(value)`, or `field: \`${value.toFixed(N)}\`` being written into NUMERIC fields. `.toFixed()` returns a string — silently stores "2.6" in a numeric column.
-
-       Coercion methods to scan: `.toFixed`, `.toString`, `.toLocaleString`, `String(...)`, template-literal `\`${...}\`` containing those.
-       Flag when NOT wrapped in `Number(...)` / `parseFloat(...)` / `parseInt(...)` / unary `+(...)`.
-
-       Determining "numeric field":
-       - **DB writes**: read schema at `$SCHEMA_DIR` OR grep the field name's column definition (`<fieldName>: numeric|integer|real|decimal|double|float|bigint`). If unset / undeterminable, SKIP — do not guess.
-       - **API payloads / DTOs**: read the matching Zod schema (`z.number()`, `z.coerce.number()`) or TypeScript type. If unlocatable, SKIP.
-
-       Severity: Serious. Category: Breaking-change.
-
-   Q6. Reusability (Q6a only — codebase-wide) — MANDATORY tool-use check.
-
-       The full STEP A enumeration + STEP B search algorithm + Q6 control-flow gap notes live in `<SKILL_DIR>/references/q6-reusability-search.md`. Load it before answering Q6 if the diff has 1+ new top-level definitions.
-
-       Q6a. Reimplements existing code (default Severity: SERIOUS; escalate to CRITICAL if existing thing lives in auth / validation / crypto package)
-            <finding with concrete existing file:path to reuse>
-            OR "No issues"
-
-       REQUIRED audit field — use this EXACT name `reusability_searches:`:
-
-         reusability_searches:
-           - <tool>("<query>", "<path>") → <N> matches
-             verified: <yes|no> — <if yes: what existing impl does and whether real match;
-                                    if no: substring collision / wrong semantic>
-           - ...
-
-         AT LEAST one entry per item enumerated in STEP A.
-         For each search where N > 0, `verified:` is MANDATORY.
-         If STEP A was empty: `reusability_searches: N/A (no new top-level definitions in diff)`
-
-5. **CLASS SWEEP — MANDATORY for every finding that proposes a code change.**
-
-   Do this when the finding is FIRST RAISED, not when it is resolved — an unswept
-   finding is a cascade waiting to happen.
-
-   For each finding, derive a searchable signature from its `Rule-class` — the
-   literal or structural pattern, not the prose — and search its **blast radius**:
-   the touched files, then the enclosing module, then the package, plus every
-   caller when `Rule-class` names a shared or exported symbol.
-
-   REQUIRED audit field — use this EXACT name `class_completeness:`. Its exact shape,
-   the `affected | not-affected` vocabulary, and the `N/A (no code change proposed)`
-   sentinel are in `<SKILL_DIR>/references/finding-output-format.md` under
-   "`class_completeness:` audit" — write it as specified there, not from memory.
-
-   If the sweep finds sites the finding did not cover, fold them into the SAME
-   finding (preferred — one finding, N sites) or raise them as siblings, so every
-   site of the class is on the page.
-
-6. **INVERSE-RISK PASS — MANDATORY, run after drafting every `Suggested fix`.**
-
-   Treat your own remedy as code under review. Ask, for each suggested fix:
-   *if a competent engineer implements this literally and nothing else, what breaks?*
-
-   Answer concretely, naming the failure mode — not "could have issues". Worked
-   examples:
-     - "fail-closed decrypt" → placeholder value that can be re-encrypted over real ciphertext
-     - "key={dataUpdatedAt} to re-seed the form" → silently discards unsaved edits on refetch
-     - "treat missing reference as an empty run" → dead schedule now reports success forever
-     - "widen the backend gate" → frontend mirror still restricts; inverts the bug
-
-   Write it into the finding's `Inverse risk:` field. If the fix is a pure addition
-   with no behavior traded away, say `none — pure addition`.
-
-   A fix whose inverse risk is worse than the original finding is the cascade with
-   extra steps. Rewrite the suggestion or downgrade the finding to an observation.
-
-7. Additionally flag:
-   - Silent failures (caught errors swallowed without logging)
-   - Removed error handling
-   - Breaking changes to public APIs not mentioned in PR description
-   - Architectural issues (wrong layer / wrong package / wrong abstraction boundary)
-   - **New error values / sentinels / thrown exceptions**: trace each to EVERY
-     downstream consumer in this pass, including consumers the diff does not touch.
-     Error chains are static and fully traceable, so one pass can cover every layer
-     — a layer per round is a cascade.
-
-     REQUIRED audit field on every such finding — use this EXACT name `consumers:`:
-
-       consumers:
-         - <file:line>: handles | does-not-handle — <one clause>
-
-     Done when every new error value / sentinel / thrown exception in the diff has a
-     `consumers:` list. Zero consumers is acceptable ONLY when the search that returned
-     zero is named on the same line:
-     `consumers: none — <tool>("<query>", "<path>") → 0 matches`.
-
-8. **Schema-specific checks (Q7–Q9)** — only when `INCLUDE_SCHEMA_CHECKS = true`. Load `<SKILL_DIR>/references/schema-design-checks.md` and follow its Q7/Q8/Q9 instructions. Skip entirely if false.
 ```
 
-#### Anti-slop rules (MANDATORY)
+#### The prompt
 
-- Report semantic and codebase-wide defects; CodeRabbit owns style, formatting, and naming.
-- Prior findings stay closed. **Exception**: if you believe a prior finding was wrong, report it with `Category: Prior-finding-correction` + concrete explanation.
-- Findings in `PRIOR_STATE.findings` with `status in {resolved, dismissed, wontfix}` stay closed too. Re-raise one only when the diff shows the resolving code was reverted, and mark the new finding's `status` as `regression`.
-- Raise a conditional issue ("this COULD become a problem if X") only when X is visible as a codebase signal in the diff.
-- Point every finding at a `File: <path>`. Give the line when you can name it on the post-image side; leave it off for module-scope findings, which route to file-level review comments.
-- Raise missing tests only where this PR was expected to add them — advice that would fit any PR belongs to no PR.
-- If a question (Q1–Q9, except Q6) has nothing to report, write "No issues" — that is a complete answer.
-- **Permission to abstain**: if answering needs code you haven't seen, fetch it via `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>` or write `Cannot assess — would need <file>`. Both are complete answers.
-- Low-confidence findings at Moderate or Minor WILL be dropped by the critic. Only flag if a human should still take a second look.
-- For Q6, populate `reusability_searches:` with actual tool calls or the N/A sentinel. Empty/missing audit = Q6 claims INVALID.
-- Populate `class_completeness:` with actual tool calls or the N/A sentinel. Missing audit = the finding is treated as UNSWEPT and the critic runs the sweep itself.
-- Every `Suggested fix:` ships with an `Inverse risk:` — `none — pure addition` when the fix trades nothing away.
-
-#### Output format
-
-`references/finding-output-format.md` is the one copy — the per-finding field block
-(including `Rule-class`, `Enclosing-symbol`, `Inverse risk` and `Class-sites`), the
-`class_completeness:` audit shape, the post-image line-number convention, and the
-run-level closing block. The prompt above already tells Subagent 1 to load it from
-`<SKILL_DIR>/references/finding-output-format.md`; do not restate any of it here, and do
-not paste a second copy into any prompt.
+Load `${CLAUDE_SKILL_DIR}/references/reviewer-prompt.md` at this dispatch — every mode
+reaches it, `solo-main` included, since that mode runs the same prompt body inline. It
+holds the prompt, the anti-slop rules the reviewer works under, and the note on why the
+finding shape is never restated inside it.
 
 ### Subagent 2 (conditional) — Silent-failure hunter
 
@@ -579,11 +429,7 @@ Prompt:
 Check for silent failures, swallowed errors, and inadequate error handling in the GitHub
 PR at <url>. Fetch the diff yourself via `gh pr diff <url>`.
 
-## Ground truth
-Goal: <from Phase 1>
-Expected touches: <from Phase 1>
-Out of scope: <from Phase 1>
-Prior findings already reported (raise one again only as a correction): <from Phase 1>
+<GROUND_TRUTH>
 
 ## Already closed in earlier rounds — do not re-raise
 <rule_class list from PRIOR_STATE.findings where status in {resolved, dismissed, wontfix}>
@@ -598,42 +444,9 @@ Dispatch when `SIZE_MODE` is `parallel-chunked` or `parallel-chunked-confirm`. S
 - `subagent_type`: `general-purpose`
 - Scope: the WHOLE PR. It is the only reviewer permitted to report across file boundaries.
 
-```
-You are reviewing a GitHub PR at <url> for CROSS-FILE patterns ONLY. Other reviewers cover
-each file in isolation — do not duplicate them. Fetch the diff yourself.
-
-## Where the reference files live
-SKILL_DIR: <SKILL_DIR>
-Your working directory is the user's repo, not the skill directory, so the
-`<SKILL_DIR>/references/...` path below is absolute and must be used as written.
-A bare `references/...` resolves against the repo and silently finds nothing.
-
-## Output format — load this FIRST
-Load `<SKILL_DIR>/references/finding-output-format.md` before you write anything and emit
-every finding in exactly that shape, `Rule-class`, `Enclosing-symbol`, `Class-sites`,
-`Inverse risk` and the `class_completeness:` audit included. A finding in any other shape
-is unparseable to the Phase 3 critic and is dropped. You report findings only — no
-run-level verdict.
-
-Goal: <intent model>
-Prior findings already reported: <list>
-
-Report ONLY findings that require seeing two or more files at once:
-
-1. Same defect class in sibling files — one call site handled, an identical one not.
-   Example shape: three hooks in a component get an error branch and the fourth doesn't;
-   two components get role="alert" and the third doesn't.
-2. One concern handled inconsistently across files — differing validation, error handling,
-   auth checks, or null handling for the same logical thing.
-3. A value, sentinel, or thrown error introduced in one file whose consumers in OTHER files
-   don't handle it.
-4. A guard or contract asserted in one file and contradicted in another.
-
-For each finding, cite EVERY file:line involved — a finding naming only one file is by
-definition not cross-cutting; drop it.
-
-"No cross-file findings" is a complete answer.
-```
+The prompt lives in `${CLAUDE_SKILL_DIR}/references/cross-cutting-prompt.md` — load it at
+this dispatch. Only the two chunked branches reach it; the unchunked modes never dispatch
+Subagent 3 at all.
 
 ---
 
@@ -771,8 +584,10 @@ For each surviving finding that proposes a code change, check its `class_complet
 `sites:` list — see "`class_completeness:` audit" in `references/finding-output-format.md`
 for the vocabulary. `handled` is the state file's separate question and never appears here.
 
-Every finding that proposes a code change passes through this step, including findings the
-step 6 gap check adds later — see the routing note there.
+Steps 4.55 and 4.56 both run over the findings the step 6 gap check adds later, not only
+over the ones the reviewers raised — see the routing note there. Every finding that
+proposes a code change passes through this step; every finding carrying a `Suggested fix:`
+passes through 4.56.
 
 Batch every finding needing verification into **V1 — Class-sweep verifier** and dispatch it
 alongside V2/V3. Main applies the rules below to what V1 returns.
@@ -800,9 +615,6 @@ Done when every finding proposing a code change exits this step with a non-empty
 `Class-sites`.
 
 ### 4.56. Inverse-risk verification
-
-Every finding carrying a `Suggested fix:` passes through this step, including findings the
-step 6 gap check adds later — see the routing note there.
 
 For each surviving finding with a `Suggested fix:`:
 
