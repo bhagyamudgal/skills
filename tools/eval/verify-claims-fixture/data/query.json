@@ -1,0 +1,6 @@
+{
+  "filter": {
+    "owner": "bhagya"
+  },
+  "aggregation": "sum estimate_hours"
+}

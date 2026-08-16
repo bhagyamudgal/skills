@@ -4,6 +4,8 @@ This document defines both of `/review-pr`'s per-PR persistence files — the st
 
 **Why this exists**: in real production usage, `/review-pr` ran 6 rounds on a production PR; round 5 resolved finding M3, but round 6 still listed M3 as "deferred" — confusing the user about whether they'd shipped the fix. Root cause: dedup keyed on `(file, line, symbol)` breaks when lines shift, and there was no persistent `resolved` marker. This schema fixes both problems.
 
+`converge-reviews` may add one top-level `convergence` block to this state file after Phase 4. Preserve that block during finding-state write-back. It references finding IDs from this schema; it does not copy or replace their authoritative bodies or statuses.
+
 ---
 
 ## The two persistence files

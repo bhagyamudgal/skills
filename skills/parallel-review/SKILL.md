@@ -11,6 +11,7 @@ description: Run every code reviewer in parallel over a local diff and merge the
 
 - If user specifies files → review those files
 - Otherwise → review all unstaged and staged changes via `git diff HEAD`
+- If a prior convergence artifact exists, invoke `converge-reviews` with the current baseline, diff hash, paths, request, and planned roster/lenses before dispatch. Reuse an unchanged result; when it returns `continue`, dispatch only the invalidated coverage it names. Apply any other result without starting another review round.
 
 ### Step 2: Build the roster, then dispatch
 
@@ -39,6 +40,6 @@ Shared prompt, plus the per-agent lens: "Review these changed files for bugs, lo
 The merge is not done while any reviewer on the roster is outstanding. Account for **every** member by name — reported, or failed and re-dispatched.
 
 1. Merge all findings, collapsing duplicates across reviewers
-2. Rank: Critical > Serious > Moderate > Minor
-3. Present one list, every finding traceable to the reviewer that raised it
-4. Hand the ranked list back to the caller
+2. Assign each merged finding a stable ID from its file, enclosing symbol, normalized defect class, and defect-instance fingerprint. Derive the fingerprint from the smallest stable semantic code anchor—such as a callee, accessed field, branch label, or data-flow endpoints—plus the violated invariant. If two defects still share an anchor, extend it with the nearest distinct semantic parent or operand. Normalize incidental formatting, literals, and reviewer wording; exclude raw line numbers. Merge only when all four parts match, and preserve every source reviewer. The caller owns these IDs and their dispositions; do not create a shared finding-ID authority.
+3. Rank: Critical > Serious > Moderate > Minor, then present one traceable list
+4. Invoke `converge-reviews` with the originating request, local baseline and current diff hash, reviewed paths, roster and lenses, merged findings, dispositions, and prior convergence artifact. Apply its result contract, then hand the ranked list and convergence result back to the caller.

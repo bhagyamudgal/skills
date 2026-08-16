@@ -23,7 +23,7 @@ For each FIX item with `fix_status ∈ {ok, retried_ok, inconclusive, type_check
 
 `type_check_skipped` is a landed fix, not a failure — it means the repo has no TS tooling for the narrow check to run (Phase 5 step 4), and `/done` in Phase 6 still covered it. Excluding it would leave every fix in a non-TypeScript repo without a reply, so it replies like any other landed fix.
 
-Skipped/aborted FIX items get no reply (they land in NEEDS-INPUT for the final report instead). The same applies to Phase 5.5's outcomes: `fix_status ∈ {partial, reverted_inverse_risk}` gets no reply and no thread resolution — a partially-applied or reverted fix must not close the reviewer's conversation. Both surface in the Phase 8 report. So the no-reply set is exactly `fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk}`; Step 7c excludes it.
+Skipped/aborted FIX items get no reply (they land in NEEDS-INPUT for the final report instead). The same applies to Phase 5.5's outcomes: `fix_status ∈ {partial, reverted_inverse_risk, inverse_risk_applied}` gets no reply and no thread resolution — a partial, reverted, or known-risk fix must not close the reviewer's conversation. All three surface in the Phase 8 report. So the no-reply set is exactly `fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk, inverse_risk_applied}`; Step 7c excludes it.
 
 ## Step 7b — Reply validator (pre-post mechanical check)
 
@@ -85,7 +85,14 @@ On failure: dispatch a 1-off `general-purpose` subagent with the original commen
 
 ## Step 7c — Post loop
 
-For each item with a non-null `thread_id` (actionables only — NOT nitpicks, NOT NEEDS-INPUT, NOT `reply_invalid`, and NOT any FIX item Step 7a left without a `reply_final`, i.e. `fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk}`):
+Immediately before the first reply in this approved batch, invoke `preflight-mutations`. Pass the exact PR URL, base and current head SHA, every target thread ID, ordered reply/resolve actions, final validated reply text and classification per item, and the Phase 4 approvals that cover those items. Apply its result contract before continuing.
+
+For each item with a non-null `thread_id` (actionables only — NOT nitpicks, NOT NEEDS-INPUT, NOT `reply_invalid`, and NOT any FIX item Step 7a left without a `reply_final`, i.e. `fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk, inverse_risk_applied}`):
+
+1. Re-fetch the PR head and exact thread. Freeze the validated reply body and identify the authenticated user. If `isResolved: true`, paginate the complete current comment set and search for that author and the exact frozen body. Record exactly one match as `reply_state=verified-existing`; record zero as `confirmed-absent`, and multiple matches or an inconclusive query as `reconcile-required`. Record `resolve_state=already-resolved` independently, perform no mutation unless the user separately authorizes replying to that resolved thread, retire the current card, and preflight the remaining items without this thread before the next write. If the thread is open, compare the current head and complete comment-ID set with the ready card. A mismatch stops the pending item and returns the unexecuted remainder to `preflight-mutations`; a match freezes the before-write comment IDs.
+2. Post the reply below. Then query the exact thread by `thread_id` and require one new comment, absent from the before-write ID set, whose ID matches the mutation response when present and whose author and complete body match the current user and frozen reply. Record one exact match as `landed`; zero matches as `confirmed-absent`; multiple matches or an inconclusive query as `reconcile-required`. On either non-landed result, skip this item's dependent resolve, retire the current card, and preflight the remaining items without this unresolved thread before the next write. Do not retry a `reconcile-required` reply.
+3. Resolve only after the reply is `landed`. Advance the ready card's item ledger and thread guards from the authoritative reply read-back, then refresh the PR head and exact thread immediately before resolution. Reuse the card when the head, `isResolved`, and complete comment-ID set match those advanced guards; re-run `preflight-mutations` for this remaining resolve action only when an unexpected change invalidates it.
+4. Run the resolve mutation below, then query the exact thread by `thread_id`. Record `resolved` only when the authoritative result has `isResolved: true`; record an authoritative `false` as `confirmed-open`, and a failed or inconclusive query as `reconcile-required`. On either non-resolved result, retire the current card and preflight the remaining items without this unresolved thread before the next write. Never infer resolution from the mutation response or retry an indeterminate result.
 
 ```bash
 # 1. Post reply — pass every ID with -f (raw string); -F applies JSON type
@@ -111,6 +118,8 @@ gh api graphql \
     }
   }'
 ```
+
+After an expected `landed` reply and authoritative `resolved` result, advance the card's ledger and guards and reuse that same `ready` card for the next pending item while its invalidators still match. Use a replacement card only on a branch that explicitly retired the current one above. Carry every `confirmed-absent`, `confirmed-open`, and `reconcile-required` item in the batch ledger and Phase 8 failure report; include the exact settling query for `reconcile-required`. Never execute dependent or later writes under a retired card.
 
 ## Step 7d — Promoted nitpicks handling
 

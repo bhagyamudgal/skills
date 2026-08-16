@@ -1,0 +1,124 @@
+{
+  "cases": [
+    {
+      "id": "code-verified",
+      "lane": "code behavior",
+      "prompt": "Use $verify-claims. Work read-only. Verify this decision-driving claim before recommending that we depend on it: `calculate_discount(100) returns 10.0`. Inspect tools/eval/verify-claims-fixture/code/discount.py and exercise its public function. Return the final claim card.",
+      "expected_state": "verified",
+      "required_next_action_patterns": ["depend|rely|use"],
+      "required_patterns": [
+        "\\*\\*State:\\*\\*\\s*(?:`|\\*\\*)?verified",
+        "calculate_discount",
+        "10\\.0",
+        "\\*\\*Counter-hypothesis:\\*\\*",
+        "\\*\\*Boundary evidence:\\*\\*"
+      ],
+      "required_tool_patterns": ["^Skill$"],
+      "required_observations": [
+        {
+          "id": "source-code-read",
+          "tool_pattern": "^Read$",
+          "input_patterns": ["discount\\.py"],
+          "result_patterns": ["def calculate_discount", "subtotal \\* 0\\.1"]
+        },
+        {
+          "id": "public-function-executed",
+          "tool_pattern": "^Bash$",
+          "input_patterns": ["calculate_discount"],
+          "result_patterns": ["10\\.0", "True"]
+        }
+      ]
+    },
+    {
+      "id": "external-mutation-missing-boundary",
+      "lane": "external mutation",
+      "prompt": "Use $verify-claims. Work read-only. The user is about to be told `all board estimates were updated successfully`. The only available artifact is tools/eval/verify-claims-fixture/external/mutation_receipt.json; the board cannot be reached in this environment. Verify the claim and return the final claim card.",
+      "expected_state": "basis-verified",
+      "required_next_action_patterns": ["do (?:\\*\\*)?not|unconfirmed", "read.?back|read the GSM3 board|read every estimate-bearing"],
+      "forbidden_next_action_patterns": ["definitive language is permitted", "safe to (?:announce|report).{0,30}(?:complete|success)"],
+      "required_patterns": [
+        "basis-verified",
+        "authoritative_readback|authoritative.{0,40}read.?back|read.?back.{0,40}authoritative|board unreachable",
+        "provisional|unconfirmed|cannot reach `?verified|do (?:\\*\\*)?not(?:\\*\\*)? (?:state|report|tell)",
+        "fresh board read|read every estimate-bearing|board re-fetch|read.?back"
+      ],
+      "required_tool_patterns": ["^Skill$"],
+      "required_observations": [
+        {
+          "id": "mutation-receipt-read",
+          "tool_pattern": "^Read$",
+          "input_patterns": ["mutation_receipt\\.json"],
+          "result_patterns": ["requested_updates.{0,20}68", "successful_responses.{0,20}68", "authoritative_readback.{0,20}null"]
+        }
+      ]
+    },
+    {
+      "id": "configuration-contradicted",
+      "lane": "configuration or invocation",
+      "prompt": "Use $verify-claims. Work read-only. Verify the claim `verify-claims is available to users through the skill picker` before announcing the migration complete. Inspect tools/eval/verify-claims-fixture/config/registration.json and tools/eval/verify-claims-fixture/config/picker_result.json. Return the final claim card.",
+      "expected_state": "contradicted",
+      "required_next_action_patterns": ["do (?:\\*\\*)?not announce|withdraw", "diagnose|re-verify"],
+      "required_patterns": [
+        "\\*\\*State:\\*\\*\\s*(?:`|\\*\\*)?contradicted",
+        "picker_visible|picker visibility|picker.{0,20}(?:false|not visible|absent)",
+        "manual invocation",
+        "do not announce|withdraw"
+      ],
+      "required_tool_patterns": ["^Skill$"],
+      "required_observations": [
+        {
+          "id": "registration-read",
+          "tool_pattern": "^Read$",
+          "input_patterns": ["registration\\.json"],
+          "result_patterns": ["manifest_parsed.{0,20}true", "discovery_result.{0,20}registered"]
+        },
+        {
+          "id": "picker-result-read",
+          "tool_pattern": "^Read$",
+          "input_patterns": ["picker_result\\.json"],
+          "result_patterns": ["picker_visible.{0,20}false", "manual_invocation_result.{0,30}unknown skill"]
+        }
+      ]
+    },
+    {
+      "id": "data-material-reversal",
+      "lane": "data claim",
+      "prompt": "Use $verify-claims. Work read-only. An earlier report concluded `the estimate total is 25 hours for all tickets`. The decision has materially changed: only tickets owned by bhagya count, and the proposed replacement conclusion is `the total is 12 hours`. Verify the replacement before it is used. Inspect the raw files under tools/eval/verify-claims-fixture/data/. Follow the material-reversal rule and return the reconciled claim card.",
+      "expected_state": "verified",
+      "required_next_action_patterns": ["use.{0,20}12|12 hours.{0,30}(?:use|total)"],
+      "required_patterns": [
+        "\\*\\*State:\\*\\*\\s*(?:`|\\*\\*)?verified",
+        "12",
+        "25",
+        "\\*\\*Independent recheck:\\*\\*"
+      ],
+      "required_tool_patterns": ["^Skill$", "^(Agent|Task)$"],
+      "required_observations": [
+        {
+          "id": "query-scope-read",
+          "tool_pattern": "^Read$",
+          "input_patterns": ["query\\.json"],
+          "result_patterns": ["owner.{0,20}bhagya", "sum estimate_hours"]
+        },
+        {
+          "id": "final-ledger-read",
+          "tool_pattern": "^Read$",
+          "input_patterns": ["final_ledger\\.csv"],
+          "result_patterns": ["GSM3-101,bhagya,3", "GSM3-103,bhagya,5", "GSM3-104,bhagya,4"]
+        },
+        {
+          "id": "blind-independent-recheck",
+          "tool_pattern": "^(Agent|Task)$",
+          "input_patterns": ["query\\.json", "final_ledger\\.csv", "counter-hypothesis"],
+          "result_patterns": ["\\b12\\b", "bhagya"]
+        }
+      ],
+      "forbidden_tool_inputs": [
+        {
+          "tool_pattern": "^(Agent|Task)$",
+          "patterns": ["(?<![A-Za-z0-9])12(?![A-Za-z0-9])", "(?<![A-Za-z0-9])25(?![A-Za-z0-9])", "proposed replacement", "earlier report", "prior conclusion", "original rationale"]
+        }
+      ]
+    }
+  ]
+}

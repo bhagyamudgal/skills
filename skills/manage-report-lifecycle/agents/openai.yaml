@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Report Lifecycle"
+  short_description: "Consolidate reports without losing evidence"
+  default_prompt: "Use $manage-report-lifecycle to consolidate these hosted reports into one canonical artifact."

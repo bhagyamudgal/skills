@@ -46,7 +46,8 @@ npx skills add bhagyamudgal/skills
 
 | Skill | Description |
 |-------|-------------|
-| `done` | MANDATORY post-task verification — six blocking steps: type-check, parallel review to zero critical/serious, simplify + blocking comment scan, correctness against the request, roll-call report, commit |
+| `done` | MANDATORY readiness verification — map every request item to implementation, verify six acceptance lanes and five evidence facets, and issue final readiness only after required publication evidence exists |
+| `simplify` | Remove unnecessary complexity from a completed diff while preserving its behavior, guards, and verified scope |
 | `parallel-review` | Build a reviewer roster, dispatch it in parallel over a local diff, and merge to one ranked list — the merge is not done while any reviewer is outstanding |
 | `review-pr` | Deep anti-slop review of a GitHub PR with critic-pass filtering, persistent multi-round state, and rolling-review posting — batch mode reviews multiple PRs via one subagent per PR with a consolidated report |
 | `fix-pr-review` | Triage and fix CodeRabbit / `review-pr` findings, then reply + resolve PR conversations |
@@ -61,9 +62,17 @@ npx skills add bhagyamudgal/skills
 | `reuse-first` | Search-first discipline before writing any new utility, type, schema, component, hook, or constant — 3-layer search you must print, reuse ladder, fork smells |
 | `backend-perf` | Performance checklist for backend endpoints and DB queries — walk every check and name a verdict on each; a check you did not name is a check you did not run |
 | `systematic-debugging` | Four-phase root-cause loop for mid-debugging discipline — no fix without an understood cause, every phase ends on a checkable bar, bandaid budget zero |
-| `executing-tickets-with-subagents` | Execute a multi-sub-task GitHub ticket via subagents — one wave per task, ledger-tracked so a compaction can resume, follow-up triage, manual-QA handoff doc |
+| `verify-claims` | Gate inference-backed, decision-driving claims with a counter-hypothesis and paired evidence from their basis and user-facing acceptance boundary |
+| `preflight-mutations` | Resolve exact targets, authority, dependencies, reversibility, confirmation, and read-back before changing shared state |
+| `calibrate-board-mutations` | Calibrate board-estimate batches with anchors, representative previews, umbrella rules, and authoritative totals |
+| `converge-reviews` | Reuse review evidence, track affected coverage, and cap stable review scopes at three rounds |
+| `manage-report-lifecycle` | Consolidate or supersede hosted analytical reports while preserving every source item, one canonical URL, and verifiable predecessor state |
+| `executing-tickets-with-subagents` | Orchestrate bundled tickets or explicit away/keep-going work through a durable ledger, with one mutation owner per task and a bounded unattended worker pool |
+| `sync-agent-setups` | Manually preview and sync Claude Code's user-authored behavioral setup outward to explicitly selected agents |
 | `resolving-merge-conflicts` | Resolve an in-progress git conflict without a **silent drop** — every hunk from both sides placed as kept, superseded, or dropped before you commit |
 | `git-commit` | Conventional commits from diff analysis — every file classified into exactly one commit; append-only, with a message-only mode |
+| `file-pr` | Publish a PR from a current `ready-to-publish` card, verify the remote branch and PR, then return their evidence to `done` |
+| `file-issue` | File one issue an assignee can act on unaided — two-vocabulary duplicate search, a title that survives a wrong diagnosis, a body carrying observation, reproduction, expectation and a checkable done condition |
 | `openclaw-backup` | Verified restore point for an OpenClaw install — official archive, `VACUUM INTO` SQLite snapshots, a raw archive covering the session transcripts the official tool drops, checksum manifest, and a per-install `RESTORE.md`. Manual-only via `disable-model-invocation`, so its description stays out of context until you invoke it |
 
 Several skills use progressive disclosure — `SKILL.md` holds the spine, and branch-specific material sits in `references/` (or `modes/` for `design-director`), loaded only when that branch fires. Load instructions use `${CLAUDE_SKILL_DIR}/` so they resolve against the skill directory rather than the user's repo.
@@ -73,12 +82,14 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 | Folder | Purpose |
 |---|---|
 | `skills/coderabbit-config/` | `.coderabbit.yaml` template + persistent-learnings sidecar. Copy into a repo so CodeRabbit absorbs style + convention findings before `/review-pr` runs. See [`skills/coderabbit-config/README.md`](skills/coderabbit-config/README.md) for bootstrap instructions. |
-| `tools/verify_skills.py` | Structural verifier across all 19 skills — frontmatter, code fences, pointer form, severity-ladder consistency, dangling and orphan references, cross-skill duplication. Plus produce → validate → consume dataflow checks scoped to `review-pr` and `fix-pr-review`. Run `python3 tools/verify_skills.py ./skills`; exits non-zero on failure. |
+| `tools/verify_skills.py` | Structural verifier across all skills — frontmatter, code fences, pointer form, severity-ladder consistency, dangling and orphan references, cross-skill duplication. Plus produce → validate → consume dataflow checks scoped to `review-pr` and `fix-pr-review`. Run `python3 tools/verify_skills.py ./skills`; exits non-zero on failure. |
+| `tools/eval/run_verify_claims.py` | Fresh-session behavioral evaluator for `verify-claims` across code, external mutation, configuration, data, missing evidence, contradiction, and material reversal. Raw streams and final cards are saved under `.eval-results/`. |
 
 ## Usage
 
 ```
 /done                # Run after every task
+/simplify            # Remove unnecessary complexity without changing behavior
 /parallel-review     # Review locally-changed code
 /review-pr <pr-url>  # Review a GitHub PR (or several at once — batch mode)
 /fix-pr-review       # Triage and apply CodeRabbit / review-pr findings
@@ -93,9 +104,17 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 /reuse-first         # Search-first check before writing new utilities/types/components
 /backend-perf        # Perf checklist for backend services and DB queries
 /systematic-debugging  # Root-cause loop once you're inside a debugging session
+/verify-claims         # Verify a consequential inference before relying on it
+/preflight-mutations   # Prepare or block a shared-state mutation before execution
+/calibrate-board-mutations  # Calibrate an estimate batch before board writes
+/converge-reviews      # Reconcile a review round and choose its bounded next action
+/manage-report-lifecycle  # Consolidate hosted reports into one verified canonical artifact
 /executing-tickets-with-subagents  # Run a bundled ticket end-to-end via subagents
+/sync-agent-setups     # Preview and sync Claude setup to selected agents
 /resolving-merge-conflicts         # Resolve merge/rebase conflicts safely
 /git-commit          # Conventional commit (or message-only)
+/file-pr             # Publish a current ready-to-publish card, then return evidence to done
+/file-issue          # File one actionable issue — dedupe search, then the same bars
 /openclaw-backup     # Verified restore point for an OpenClaw install
 ```
 

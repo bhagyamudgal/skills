@@ -1,6 +1,6 @@
 ---
 name: executing-tickets-with-subagents
-description: Orchestrate a bundled GitHub ticket through subagents — one wave per sub-task, ledger-tracked. Use when a ticket carries 3+ sub-issues shipping as one reviewed PR, when the user asks for subagent-driven execution, or when resuming such a run after a compaction.
+description: Orchestrate ledger-tracked work through subagents. Use for a bundled GitHub ticket with 3+ sub-issues, a request for subagent-driven execution, resuming such a run after compaction, or explicit away/keep-going delegation even when only one task remains.
 ---
 
 # Executing Tickets with Subagents
@@ -9,10 +9,17 @@ description: Orchestrate a bundled GitHub ticket through subagents — one wave 
 
 The main conversation is an **orchestrator only**. Every edit, review, and QA pass runs in a dispatched subagent. Durable state lives on disk and GitHub — the two places compaction cannot reach.
 
+## Select the run branch
+
+- **Unattended:** When the user explicitly says they are stepping away and asks work to continue, read `${CLAUDE_SKILL_DIR}/references/unattended-scheduler.md` in full before the first dispatch. Its scheduling, transition, update, and handoff contract applies even to one task. Use the phases below only when the work is also a bundled GitHub ticket.
+- **Bundled ticket:** Use the phases below for the ticket's intake, waves, and endgame.
+
+**Gate:** record the selected branch in the ledger before dispatching work.
+
 ## Phase 0 — Intake
 
 1. **Resume check** — if a ledger exists for this ticket, read it before anything else and execute its NEXT ACTION. The ledger is the only source of run state; conversation memory is not. Reconcile the four trackers (todo, checklist comment, harness tasks, ledger) before the next wave.
-2. **Fetch the full issue thread** — every comment and every attached image (`gh issue view <n> --comments`; download images and actually read them). Comments routinely override or extend the original body; an unread comment is a spec you don't have.
+2. **Fetch the full issue thread** — read `${CLAUDE_SKILL_DIR}/../audit-ticket/references/ticket-evidence.md` in full and the authenticated, fail-fast image-download guidance in `${CLAUDE_SKILL_DIR}/../audit-ticket/SKILL.md`, then fetch structured issue JSON with `gh issue view <n> --json number,title,body,author,createdAt,updatedAt,state,assignees,url,comments`. Build the source map from the issue body and every comment's `body`, `author`, `createdAt`, and `url`; download every attached image with authentication and an HTTP-error exit, check that exit before opening the file, and actually read each successful image. Record a failed download as `image <i> unavailable`; never open or hash its error body as image evidence. Comments routinely override or extend the original body; an unread comment is a spec you don't have.
 3. **Research the codebase** — verify claims against the code before bringing questions to the user.
 
 ## Phase 1 — Lock, plan, instrument
@@ -23,39 +30,39 @@ The main conversation is an **orchestrator only**. Every edit, review, and QA pa
 4. **Instrument tracking** before task 1:
    - **Ledger** (e.g. `docs/<ticket>-progress.md`) — THE recovery map, see contract below
    - `tasks/todo.md` checklist
-   - **One editable GitHub checklist comment** on the issue (status + root cause per item; save its comment id in the ledger; update via `gh api ... -X PATCH -F body=@file`). Read back after every mutating command; retry only when the read-back shows no effect — empty stdout is not failure.
+   - **One editable GitHub checklist comment** on the issue (status + root cause per item; save its comment id in the ledger; update via `gh api ... -X PATCH -F body=@file`). Render the complete initial comment to a file and freeze its SHA-256. Immediately before creating it, refresh the issue's URL, `updatedAt`, body, state, assignees, and comments; confirm the intended checklist is still absent; then invoke `preflight-mutations` with those guards, the exact frozen file and digest, locked tracking decision, expected resulting comment body, and authoritative comment read-back. Apply its result contract before continuing. Read back the created comment by ID and require its complete body to equal the frozen content; retry only when authoritative read-back proves no effect — empty stdout is not failure.
    - The harness todo list (`TodoWrite`)
 
 ## Ledger contract
 
-Written for a reader with **zero context** — assume the next writer remembers nothing. Update after EVERY wave. Must contain: per-task status with commit SHAs; the current NEXT ACTION stated imperatively; accumulated deferred Moderate and Minor findings awaiting triage; standing process rules (permissions granted, environment quirks + fallbacks, QA credentials/data notes); locations of briefs/artifacts.
+Written for a reader with **zero context** — assume the next writer remembers nothing. Update after EVERY wave. Must contain: per-task status with commit SHAs; the current NEXT ACTION stated imperatively; accumulated deferred Moderate and Minor findings awaiting triage; standing process rules (permissions granted, environment quirks + fallbacks, QA credentials/data notes); locations of briefs/artifacts and the ticket source map.
 
 ## Phase 2 — The wave (one per task)
 
 1. **Brief to scratchpad**; if HEAD moved since planning, run an Explore **drift-check** and write an addendum (addendum wins).
-2. **Fresh implementer agent** — the orchestrator dispatches, the agent edits. Bug fixes are TDD (failing test first, watch it fail). Formatter before commit; type-check loop until green; single conventional commit; push. Dispatch prompts are self-contained: paths, env, locked decisions, verification commands, commit format, report format, environment-quirk fallbacks — the agent has no other context.
+2. **Fresh implementer agent** — the orchestrator dispatches, the agent edits. Bug fixes are TDD (failing test first, watch it fail). Format and run the task's type-check loop, then leave the task diff uncommitted for independent review. Dispatch prompts are self-contained: paths, env, locked decisions, verification commands, intended commit format, report format, environment-quirk fallbacks — the agent has no other context.
 3. **Two-stage review, separate subagents** — one combined reviewer anchors on whichever lens it starts with; two fresh ones don't. A review is two reports, one per stage:
    - **Stage 1 — spec compliance**: reviewer gets the task brief + diff, and the named risks to verify. Its inputs are exactly those two. Verdicts against the ticket requirements: **Missing / Extra / Misunderstood**, with file:line evidence.
    - **Stage 2 — code quality**: independent reviewer for correctness, error handling, tests that assert real behavior, and structure; findings ranked Critical / Serious / Moderate / Minor. `parallel-review` runs alongside and covers style and convention; Stage 1 is what catches spec violations.
-4. **Triage every finding**: FIX-NOW (fix agent, then **re-review both stages until spec passes and quality approves** — a task closes at zero open Critical and Serious findings) / DISMISS only with a verified rationale (check the locked design/brief first — reviewers re-litigate settled decisions) / DEFER (Moderate and Minor only; log in ledger minors).
+4. **Triage every finding**: FIX-NOW (fix agent, then **re-review both stages until spec passes and quality approves** — a task closes at zero open Critical and Serious findings) / DISMISS only with a verified rationale (check the locked design/brief first — reviewers re-litigate settled decisions) / DEFER (Moderate and Minor only; log in ledger minors). Once review is clear, run the task's applicable `done` lanes over the uncommitted diff. Let `done` invoke `git-commit` for the single verified task commit and record its SHA. If the locked wave strategy includes a push, invoke `preflight-mutations` afterward with the exact remote branch, local/upstream SHAs and commit range, PR base/head and dependencies, and locked push permission before pushing.
 
    Reports arrive **unverified** — SHAs, counts, file:lines, and ran-vs-inspected are the evidence that clears them.
 5. **`browser-qa`** for UI tasks: records original data, restores it, proves restoration; artifacts to scratchpad only. Run it between waves, with no implementer active — hot reload contaminates the session mid-test.
-6. **Bookkeeping**: tick `tasks/todo.md`, PATCH the checklist comment, update the harness todo list, write the ledger — then next task.
+6. **Bookkeeping**: tick `tasks/todo.md`; immediately before each wave's checklist PATCH, invoke `preflight-mutations` with the exact issue and comment IDs, replacement body, current comment version/body, locked tracking permission, and read-back, then apply its result contract; update the harness todo list and ledger before the next task.
 
-A **wedged** agent gets replaced, not re-nudged: dispatch a fresh one.
+A **wedged** agent is retired, not re-nudged: record its terminal status or successful interrupt, preserve its worktree and diff location, then move the task `active → ready` and dispatch a fresh owner. If inactivity cannot be proved, mark the task blocked instead of assigning a second owner.
 
 ## Phase 3 — Endgame
 
 1. **Final whole-branch review** from the *recomputed* merge-base (it moves; exclude generated files). Report every cross-task interaction found, or state explicitly that none were. Triage **all** ledger minors FIX-NOW / FOLLOW-UP / DROP.
 2. Fix pass → `fix-pr-review` to reply-and-resolve every external review thread citing commit SHAs or rationale.
-3. Update PR body to final state. Mark ready only with user approval; **watch CI on the final head** — drafts and merge conflicts silently skip `pull_request` workflows, so "no failures" may mean "never ran". Confirm the workflow ran on the final head, then confirm it passed.
+3. Render the complete final PR body to a file and freeze its SHA-256. Immediately before updating the body or marking the PR ready, refresh the exact PR URL, current title and body, base/head SHA, draft state, and dependent PRs/workflows. Invoke `preflight-mutations` for that external-metadata batch with those target guards, the frozen body path and digest, the exact resulting body and ready state, update/ready actions, and the user's ready approval. Apply its result contract, recheck the guards and digest before each write, and require authoritative read-back of the complete body and draft state. **Watch CI on the final head** — drafts and merge conflicts silently skip `pull_request` workflows, so "no failures" may mean "never ran". Confirm the workflow ran on the final head, then confirm it passed.
 4. **Manual-QA handoff doc** — standard closing artifact for bundled bug-fix tickets. Per fixed item: link to the originating issue comment, what was wrong before vs what changed (plain language), and step-by-step testing instructions so the user can validate each fix.
-5. **Every stray finding leaves as its own ticket**: small ones → ONE consolidated follow-up ticket; major findings → a dedicated issue each. Assign all of them to the user.
+5. **Every stray finding leaves as its own ticket**: small ones → ONE consolidated follow-up ticket; major findings → a dedicated issue each. Before composing any rewritten, split, or follow-up issue, reread `${CLAUDE_SKILL_DIR}/../audit-ticket/references/ticket-evidence.md`; its provenance graph and rendered closeout gate apply to the original and every successor. Apply `file-issue`'s two-vocabulary duplicate search to every proposed successor and resolve every match before staging it. Render every final body first and record its path and SHA-256 digest. Immediately before the first write, refresh the original issue's `updatedAt` and invoke `preflight-mutations` once for the complete batch: exact repository; current original issue state and guards; the original issue's complete frozen investigation update or comment payload; every frozen successor title, body path, digest, and create option; duplicate-search queries and resolutions; original-to-successor, successor-to-predecessor, and dependency-relevant sibling links; source finding and evidence IDs; assignees; authorization; and the rendered issue-and-image read-back plan. Apply its result contract, recheck the guards and payload digests before each write, then execute only the writes in that batch. Re-fetch and reread the rendered issue set and images against the source map before reporting the tickets complete; any ambiguous create result follows `preflight-mutations`'s `reconcile-required` contract instead of retrying.
 
 ## Hard rules
 
 | Rule | Why |
 |---|---|
-| Wedged agent → dispatch a fresh one | Re-nudging a stuck agent wastes more than restarting |
+| Wedged agent → retire, preserve, then replace | Re-nudging wastes time; replacing without proof creates two owners |
 | User-owned territory (migrations, merges, un-drafting) → ask | One approval does not extend to the next category |

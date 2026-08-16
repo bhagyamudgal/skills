@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verify Claims"
+  short_description: "Gate consequential claims with paired evidence"
+  default_prompt: "Use $verify-claims to verify this decision-driving claim before relying on it."

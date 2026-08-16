@@ -69,6 +69,11 @@ the databases are the only part that cannot tolerate a live copy.
 | Zero-downtime (default) | Files rewritten mid-tar may be torn in the raw archive. Databases are covered separately. |
 | Brief stop | Minutes of downtime, messages in that window missed. Every artifact quiescent. |
 
+Immediately before stopping a live gateway, invoke `preflight-mutations` with the exact
+host, service manager and name, stop/restart actions, expected downtime, current process
+and health state, recovery command, and the user's brief-stop approval. Apply its result
+contract before stopping the service. Zero-downtime runs do not use this gate.
+
 If stopping: confirm the process is gone with `pgrep -af openclaw` before archiving, and
 confirm it returned healthy afterwards.
 
@@ -161,6 +166,15 @@ the rendered `RESTORE.md` contains no remaining `<PLACEHOLDER>` tokens.
 A backup on the same disk as the thing it protects survives config mistakes, not disk loss.
 If the user wants a copy elsewhere:
 
+Before `rsync`, verify from the receiving system that the destination is encrypted at rest,
+accessible only to the intended recipient accounts, and governed by a known retention period
+and tested deletion path. A destination missing any of those controls is blocked.
+
+Immediately before `rsync`, invoke `preflight-mutations` with that evidence, the exact source
+and destination host/path, included artifact inventory and credential sensitivity, recipient,
+retention/deletion path, current destination state, checksum and access-control read-back, and
+the user's off-box-copy approval. Apply its result contract before copying.
+
 ```bash
 rsync -avh --partial -e ssh <source> <destination>
 ```
@@ -175,8 +189,26 @@ sha256sum -c /tmp/check.sha256    # macOS: shasum -a 256 -c
 Confirm the checksum output covers a non-empty file list before reading it as a pass — a
 verifier fed an empty list reports success having checked nothing.
 
-**Gate:** every checked file reports `OK`. A mismatch fails the step; re-transfer that file.
-`--partial` makes a re-run resume.
+A checksum mismatch retires that transfer card. Preserve its `failed` result and the observed
+destination partial state as immutable history; if the transfer or read-back is ambiguous, mark
+it `reconcile-required` and resolve that exact file before planning another write. Before each
+retry, re-read the exact source file and destination partial file plus the receiving system's
+encryption, effective access, retention, and tested deletion controls. Create a new card scoped
+to that one mismatched file and one resumable `rsync --partial` transfer, with the current guards
+and expected checksum read-back. Retry only on a current `ready` verdict, then retire that card
+with its authoritative result before any later attempt.
+
+Re-read the receiving system's encryption and effective access controls after the copy. If
+either differs from the preflight evidence, preserve and report the copy as sensitive partial
+state. The copy approval does not authorize deletion. Render a separate compensating deletion
+card with the exact destination, observed failure, deletion action, and absence read-back;
+delete only after fresh explicit confirmation and a current `ready` preflight result.
+
+**Gate:** every checked file reports `OK`, encryption at rest remains enabled, effective access
+is restricted to the approved recipient accounts, and the retention/deletion path remains
+available. A mismatched file clears the gate only through the fresh-card retry contract above;
+a failed security control blocks completion while the sensitive partial state is preserved or
+separately deleted. `--partial` makes the new transfer resume.
 
 Omitting the official archive from the pull is reasonable — its contents are a subset of the
 raw archive. State that omission in the report.

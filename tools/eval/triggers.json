@@ -4,7 +4,11 @@
     "tools/eval/fixture/, and records which skill (if any) the agent invokes first.",
     "",
     "'expect' is the skill slug, or null for utterances that should fire nothing.",
+    "'forbid' is a skill slug that must not fire; another skill or no skill may fire.",
     "'why' states what the case is actually testing, so a failure is interpretable.",
+    "",
+    "Cases naming external board, database, or hosted-report surfaces measure",
+    "utterance-only first-skill routing; those resources need not exist in the fixture.",
     "",
     "A case only measures what the fixture can support. An utterance about",
     "TypeScript errors in a repo with no TypeScript is a nonsense request and the",
@@ -80,6 +84,162 @@
     { "utterance": "add a comment to the top of user.ts",
       "expect": null,
       "why": "NEGATIVE: a trivial edit. `done` claims to fire after every task — this checks it does not pre-empt the work" },
+
+    { "utterance": "Before we act on this recommendation, verify that the evidence supports it and test the strongest alternative explanation.",
+      "expect": "verify-claims",
+      "why": "primary branch: an inference-backed recommendation is about to drive action" },
+
+    { "utterance": "The manifest parser found verify-claims. Can I announce that the migration is complete?",
+      "expect": "verify-claims",
+      "why": "autonomous branch: an internal proxy is being promoted to a user-facing completion claim without saying verify" },
+
+    { "utterance": "You concluded that formatUserLabel is safe, but src/user.ts declares nickname optional while the function calls toUpperCase on it. Verify that challenged conclusion before advising me.",
+      "expect": "verify-claims",
+      "why": "challenge branch: the user disputes a decision-driving claim" },
+
+    { "utterance": "I don't think your conclusion is right. Verify it before advising me.",
+      "expect": "verify-claims",
+      "why": "bare challenge branch: user disputes a conclusion without supplying counter-evidence" },
+
+    { "utterance": "New evidence reverses the conclusion we were going to rely on. Independently recheck the replacement conclusion first.",
+      "expect": "verify-claims",
+      "why": "reversal branch: changed evidence requires an independent claim recheck" },
+
+    { "utterance": "What value is VERSION exported as in src/user.ts?",
+      "expect": null,
+      "why": "NEGATIVE: a directly observable fact with no decision consequence stays outside the gate" },
+
+    { "utterance": "Change the exported VERSION from 2 to 3.",
+      "forbid": "verify-claims",
+      "why": "NEGATIVE: a direct reversible edit carries no inference-backed claim. Forbid rather than expect-nothing — done fires legitimately at the end of an edit task, and the runner scores the first Skill call" },
+
+    { "utterance": "formatUserLabel crashes when nickname is missing. Diagnose the bug.",
+      "forbid": "verify-claims",
+      "why": "COLLISION: claim verification must not divert a direct bug-diagnosis request" },
+
+    { "utterance": "I added VERSION = 2. Run the completion checks.",
+      "expect": "done",
+      "why": "primary code branch: an explicit completion request routes through done rather than directly to claim verification" },
+
+    { "utterance": "I updated the done skill and its README entry. Run final completion checks for the rendered docs, skill parsing, discovery, and manual invocation.",
+      "expect": "done",
+      "why": "documentation and skill branches: done owns the cross-surface verdict while routing to rendered and invocation boundaries" },
+
+    { "utterance": "Test the checkout flow in the browser and capture screenshots, network requests, and console errors.",
+      "expect": "browser-qa",
+      "why": "COLLISION: producing UI boundary evidence belongs to browser-qa; done consumes it only for a completion verdict" },
+
+    { "utterance": "No, VERSION is 2, not 3. Correct that factual mistake.",
+      "forbid": "verify-claims",
+      "why": "NEGATIVE: a harmless factual correction is not an inference-backed, decision-driving claim. Forbid rather than expect-nothing — done fires legitimately at the end of a correction, and the runner scores the first Skill call" },
+
+    { "utterance": "I've approved changing issue 12's estimate on the shared project board to 5 hours. Run the mutation preflight, then make the change.",
+      "expect": "preflight-mutations",
+      "why": "primary branch: an approved shared-state write still needs target, ownership, dependency, reversibility, and authorization preflight" },
+
+    { "utterance": "Split issue 12 into separate implementation and investigation tickets, but the grouping and successor links are ambiguous. Preview the structure before changing GitHub.",
+      "expect": "preflight-mutations",
+      "why": "ambiguity branch: an issue restructure needs an exact-target preview before shared state changes" },
+
+    { "utterance": "Rewrite the message of a commit that is already published on the remote branch.",
+      "expect": "preflight-mutations",
+      "why": "published-history branch: rewriting remote history requires dependency, reversibility, and authorization checks" },
+
+    { "utterance": "Correct these customer records in the shared production database.",
+      "expect": "preflight-mutations",
+      "why": "production-data branch: a shared production write requires mutation preflight before execution" },
+
+    { "utterance": "We already updated 12 of 50 board items, but the ownership guard just changed. Continue the batch using the new scope.",
+      "expect": "preflight-mutations",
+      "why": "partial-batch branch: a changed guard after partial writes requires reconciling the ledger and remaining scope before continuation" },
+
+    { "utterance": "Amend the message of my latest commit; it exists only in this local repository and has never been pushed.",
+      "forbid": "preflight-mutations",
+      "why": "NEGATIVE: unpublished local history is recoverable local state and stays outside shared-state mutation preflight" },
+
+    { "utterance": "Rename formatUserLabel to formatDisplayName in this local working tree.",
+      "forbid": "preflight-mutations",
+      "why": "NEGATIVE: an ordinary local edit does not mutate shared or published state" },
+
+    { "utterance": "Read issue 12 and PR 41 and summarize their current status. Do not change anything.",
+      "forbid": "preflight-mutations",
+      "why": "NEGATIVE: read-only issue and PR inspection must not trigger a mutation workflow" },
+
+    { "utterance": "The board write is finished. Use verify-claims to confirm the completion claim from a fresh authoritative read-back.",
+      "expect": "verify-claims",
+      "why": "COLLISION: post-write acceptance-boundary verification belongs to verify-claims, not preflight-mutations" },
+
+    { "utterance": "Estimate every issue assigned to me on this project board, preview a representative sample, then update the board.",
+      "expect": "calibrate-board-mutations",
+      "why": "primary branch: a multi-item estimate batch needs scope, anchors, sample approval, and a final ledger before shared writes" },
+
+    { "utterance": "Our board estimates used person-hours, but I meant agent-assisted elapsed hours. Recalibrate the remaining tickets before continuing.",
+      "expect": "calibrate-board-mutations",
+      "why": "recalibration branch: a changed unit invalidates the unexecuted estimate batch" },
+
+    { "utterance": "Resume the partially completed board-estimate batch and total only what actually landed.",
+      "expect": "calibrate-board-mutations",
+      "why": "reconciliation branch: partial board writes require authoritative item read-back and ledger-derived totals" },
+
+    { "utterance": "Set issue 12's estimate to the exact value 5 hours; no other item is in scope.",
+      "expect": "preflight-mutations",
+      "why": "COLLISION: one explicitly valued board write needs shared-state preflight, not numerical calibration" },
+
+    { "utterance": "Read the project board and summarize its current estimates without changing anything.",
+      "forbid": "calibrate-board-mutations",
+      "why": "NEGATIVE: read-only board analysis does not prepare an estimate mutation batch" },
+
+    { "utterance": "Review round two is complete. Reconcile the current findings ledger and tell me whether the unchanged scope warrants another round.",
+      "expect": "converge-reviews",
+      "why": "primary branch: a completed repeated review needs evidence reuse, round accounting, and one bounded next action" },
+
+    { "utterance": "The third review pass still has two Serious findings and three Moderate findings. Decide how this review ends without starting round four.",
+      "expect": "converge-reviews",
+      "why": "cap branch: blockers remain blocking while non-blockers move to proposed follow-up at the stable-scope limit" },
+
+    { "utterance": "Only one file changed after review. Reuse the unaffected reviewer coverage and identify the exact delta that needs re-review.",
+      "expect": "converge-reviews",
+      "why": "invalidation branch: changed content invalidates affected coverage rather than all prior evidence" },
+
+    { "utterance": "Run a quick review of my current uncommitted diff.",
+      "expect": "parallel-review",
+      "why": "COLLISION: producing a first local review belongs to parallel-review; convergence consumes its completed round" },
+
+    { "utterance": "Review https://github.com/acme/widgets/pull/42 and give me the findings.",
+      "expect": "review-pr",
+      "why": "COLLISION: producing a PR review belongs to review-pr; convergence coordinates later rounds" },
+
+    { "utterance": "I'm stepping away. Keep going on this one remaining task and leave me a durable handoff.",
+      "expect": "executing-tickets-with-subagents",
+      "why": "unattended single-task branch: explicit away/keep-going delegation has no task-count threshold" },
+
+    { "utterance": "I'm going to sleep. Work through the whole task list with subagents and tell me what is ready in the morning.",
+      "expect": "executing-tickets-with-subagents",
+      "why": "unattended multi-task branch: the orchestrator owns bounded scheduling and the morning ledger" },
+
+    { "utterance": "Consolidate these three hosted audit reports into one canonical report, preserve every unique finding, and mark the old reports superseded.",
+      "expect": "manage-report-lifecycle",
+      "why": "primary branch: explicit consolidation of existing hosted analytical reports needs lossless item accounting and one authority" },
+
+    { "utterance": "Replace this research report with the corrected hosted version and verify that the predecessor links to the new canonical URL.",
+      "expect": "manage-report-lifecycle",
+      "why": "replacement branch: an existing durable report is being superseded and needs reciprocal authority closeout" },
+
+    { "utterance": "Create a first research report about our authentication architecture.",
+      "forbid": "manage-report-lifecycle",
+      "why": "NEGATIVE: first-time report creation has no existing report lifecycle to reconcile" },
+
+    { "utterance": "Fix the typo in the executive summary of our current hosted audit report.",
+      "forbid": "manage-report-lifecycle",
+      "why": "NEGATIVE: a routine edit to one hosted report does not change lifecycle authority" },
+
+    { "utterance": "Split issue 12 into two successor tickets and link both back to the original issue.",
+      "forbid": "manage-report-lifecycle",
+      "why": "COLLISION: ticket provenance and restructuring stay with ticket workflows, not report lifecycle" },
+
+    { "utterance": "Mark finding S2 resolved in the PR review state after commit abc123.",
+      "forbid": "manage-report-lifecycle",
+      "why": "COLLISION: PR finding-state lifecycle remains owned by the review workflow" },
 
     { "utterance": "Name my desktop video downloader and find three memorable standard-price .com domains for it.",
       "expect": "discover-product-domain",
