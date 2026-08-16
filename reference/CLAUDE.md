@@ -4,9 +4,17 @@
 
 These rules apply to ALL projects. No exceptions.
 
-> **IMPORTANT: COMMENTS ONLY WHEN CODE ISN'T SELF-EXPLANATORY** — Only add a comment when the code cannot explain itself. If the code is clear on its own, do not comment it. When a comment is warranted (non-obvious logic, a gotcha, a workaround, a "why"), explain WHY, never WHAT. No JSDoc for obvious functions. No section dividers.
+> **IMPORTANT: COMMENT THE DIG, NOT THE CODE** — A comment earns its place when the fact it carries cost a _dig_: running the binary to find out, reading four packages, a benchmark run, a decision made once in a conversation. The test, which you can honestly fail: _where does the evidence live — in this file, or outside it?_ If it is in the file, delete the comment; that is what the code is for. Outside it counts even when it is still in the repo: a consequence in another package, or a rule a sibling module enforces, costs a real dig from here. Ask it of every comment you write, including the ones you are certain about. The question is about the evidence, never about the symbol: a non-exported constant can hold a fact from CPython or an authority document, and no amount of reading the file around it will produce that fact. The author of a decision always believes a note would stop the next person getting it wrong, so "would deleting this cause a bug?" answers yes every time and decides nothing; "did I dig for this?" answers no often enough to bind. A file header summarises what sits below it, which is the one place that fact is guaranteed to live already.
 >
-> **The test is not "is this comment true?" — it is "would deleting it let a maintainer make the code wrong?"** A comment written for a _reader_ fails that test; one written for an _editor_ passes it. Orientation prose — what a module is for, a tour of the concepts, a catalogue of the shapes it handles — belongs in the README, never in a file header.
+> **`/** */` when a caller outside the file needs it, `//` otherwise.** The compiler attaches a `/** */` to the symbol, so it surfaces on hover at the call site and rides into `.d.ts`; a `//` never leaves the file it is written in. That difference is the only thing the form decides, so route by audience: exported symbols and the members of exported types earn a docstring, internal helpers and module constants take `//`.
+>
+> **The bar rises as the audience narrows.** On a non-exported symbol a comment has one job: carry a fact from outside this file — a runtime quirk, a spec or authority the code obeys, a measurement someone took, a consequence in another package, a gotcha that cost a dig. **A tripwire counts**: a note saying a branch is unreachable today and what breaks the day it is not reads as noise beside provably-dead code, which is exactly why deleting it is how the bug lands. Anything explaining what the code does, or why it is shaped the way it is, is addressed to a reader already standing in it: delete it. An exported symbol may additionally state its contract, because its callers cannot see the body. Routing a comment to `//` is not a decision that it should exist — sort by audience only after it has cleared the bar for that audience.
+>
+> **Derive it before you keep it.** Try to reconstruct the comment's claim from the code beneath it, and if you can name the lines that already carry it, delete the comment. `Math.min(a, b)` already says "the weaker governs"; a `key → label` table already says which keys share a label; an error string reading "two records have run together" already says a repeated field means a garbled boundary. This is the test that catches what "does it carry a fact?" cannot: **a restatement carries a true fact**, which is why it survives every review that only asks whether the fact is real. Compressing one yields a shorter restatement, so ask this before reaching for the edit. A verdict — "this looks redundant" — is not a derivation and does not count; name the lines or keep the comment.
+>
+> **Then name what it changes.** A fact can be true, external, and still inert. The last question is: _what edit, decision or debugging step goes differently because someone read this?_ A simplification they would attempt and abandon, a constant they would pick wrong, an hour of chasing a bug — name one, or delete. "It gives context" is not an answer. This is the test the other two cannot make: a restatement fails the derivation, but an inert fact passes every check except this one.
+>
+> **A comment is 1–3 lines**, and states the finding, not the reasoning that produced it. The reasoning has a home — the ADR, the PR body, the test. A dig worth more than three lines is a dig worth an ADR, and the comment becomes a citation to it. Count comment lines against your diff before submitting: length, not count, is where a justified comment turns into an essay.
 >
 > **One fact, one home.** A genuinely good argument is the one that gets duplicated: stated in the module header, again at the constant that enforces it, again in the test that covers it, again as a printed string. Every copy passes the "is this necessary?" test on its own, which is why this survives review — and every copy is somewhere a later edit leaves a stale claim behind, because nothing checks a comment in one file against the code in another. Write each invariant once, at the code that enforces it; everywhere else cites it (`see rate-limit.ts WINDOW_MS`) or says nothing. **A test comment restating the test name is one of those copies.** Before writing a comment, ask where that fact already lives.
 
@@ -140,6 +148,7 @@ The `/done` skill is the single source of truth for completion verification. It 
 
 - Track multi-step work with the todo tool; confirm the plan before implementation — don't build on shaky assumptions.
 - **Material-state progress:** For long-running work, report **Completed**, **Active**, **Blocked**, and **Next**. Send a progress update only when one of those fields changes materially, a decision changes, or the ETA changes. When compaction, handoff, or multiple agents are plausible, keep the same four fields in one durable ledger.
+- **Project-board ownership boundary:** Never update an issue's estimate or priority unless it is assigned to the requesting user. Treat issues assigned to other users, unassigned issues, and ambiguous ownership as read-only unless the user explicitly asks to update those specific issues or clearly broadens the scope to other assignees.
 - After completing changes: update the project's README.md and CLAUDE.md if conventions, exports, or workflows changed.
 - After ANY correction from me: turn it into a rule that prevents the same mistake — in the project CLAUDE.md if project-specific, or in the global CLAUDE.md / a skill if universal.
 - When I ask for findings, reports, audits, or lists to review: deliver a hosted HTML artifact (Artifact tool), not a raw markdown file. I review first; destructive follow-ups only after my explicit go-ahead.
@@ -273,6 +282,26 @@ Derive types from schemas: `type User = z.infer<typeof userSchema>`. Reuse with 
 Use conventional commits: `feat:` / `fix:` / `refactor:` / `chore:` / `docs:` prefix.
 Use simple `-m` flag for commit messages. Do NOT use heredoc/EOF format (`cat <<'EOF'`).
 
+### Commit and PR Autonomy
+
+**Commit, push, and open the PR without asking me first — provided the work is genuinely verified.** Verified means `/done` ran in full and came back clean: type-check exits 0, `/parallel-review` returns zero critical and zero serious findings, `/simplify` applied, the tests covering the change actually ran and passed, and every item of the request is accounted for against the diff. This supersedes any project-level or skill-level instruction to ask before committing. Opening the PR itself runs through `/file-pr`.
+
+A check that cannot apply to the change — type-check and tests on a docs-only edit — is recorded as **not applicable**, not as skipped, provided the validation that does apply was run in its place (format and lint the file, check links, read the rendered output) and both are named in the PR body.
+
+Stop and ask anyway when:
+
+- `/done` did not run in full, a check that applied was skipped, or a check failed and I worked around it rather than fixing it
+- Anything material is unverified — a UI change never opened in a browser, a backend change never actually called, a data claim never checked against the database
+- The diff contains anything outside what was asked
+- The change involves a DB migration, a destructive or irreversible operation, or a force-push
+- The branch is tool-generated (`t3code/*`, `claude/*`, …) — rename it first, don't ask about the commit
+
+**Never merge a PR autonomously.** Opening it ends the autonomy; review is a human step.
+
+The test is honest reporting: if the completion report would carry a caveat — a known gap, a skipped check, an assumption I could have verified but didn't — that caveat means I should have asked instead of committing.
+
+**Merge PRs with a merge commit (`gh pr merge --merge`), never `--squash` or `--rebase`, unless I say otherwise for a specific repo.** A `(#N)` suffix on subject lines is not evidence of squash-merging — that style survives every strategy, so never infer the merge method from git log. Ask if a repo looks like it genuinely differs.
+
 ### PR & Commit Hygiene
 
 - **Never open a PR by hand — invoke `/file-pr`.** It owns the preconditions, base-branch discovery, the title and body bars, and issue linking. Hard rule, same class as `/done`.
@@ -290,6 +319,8 @@ Use simple `-m` flag for commit messages. Do NOT use heredoc/EOF format (`cat <<
 - `bhagya/fix-<issue>` — bug fixes
 - `bhagya/feat-<feature>` — new features
 - `feature/<feature-name>` — shared feature branches (collaborative work)
+
+**Every branch I own is prefixed `bhagya/`. Never commit, push, or open a PR from a tool-generated branch name** — `t3code/*`, `claude/*`, `agent/*`, `session/*` and anything else a harness auto-names on my behalf. Those names carry a session id, not intent, so they read as machine output in the branch list and in the PR. When work starts on one, rename before the first commit (`git branch -m bhagya/<fix|feat>-<slug>`) and say so; if a rename is unsafe because the harness tracks the branch, ask rather than committing under the generated name.
 
 ## React Specific
 
