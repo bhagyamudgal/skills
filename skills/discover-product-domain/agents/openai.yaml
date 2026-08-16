@@ -1,0 +1,4 @@
+interface:
+  display_name: "Discover Product Domains"
+  short_description: "Generate and verify memorable product domains"
+  default_prompt: "Use $discover-product-domain to turn my product idea into distinctive names with verified standard-price .com domains."
