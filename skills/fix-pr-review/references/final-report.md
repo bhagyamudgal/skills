@@ -61,9 +61,9 @@ Convergence: converged — all <F> fixes class-complete, inverse risk absent, no
       convergence: not run (fix reverted before Phase 5.5)
   [6] ⚠ src/api/session.ts:44 — partial: 2 of 3 sites fixed after one re-verify pass
       convergence: class-complete NO — src/api/session-worker.ts:91 still unfixed
-  [7] ⚠ src/cache/store.ts:30 — reverted: inverse risk confirmed present in applied code
-      convergence: inverse risk PRESENT at src/cache/store.ts:38 — stale entry served
-                   forever after a failed refresh; fix reverted by inverting its own hunks
+  [7] ⚠ src/cache/store.ts:30 — reverted after inverse risk was confirmed
+      convergence: inverse risk was present at src/cache/store.ts:38; risky owned
+                   components removed and current content verified clear
 
 # Rendering rules for this section:
 #   - Every item whose final classification is FIX MUST appear in exactly one
@@ -88,9 +88,8 @@ Convergence: converged — all <F> fixes class-complete, inverse risk absent, no
 #     siblings. Otherwise `NOT converged`, with the count that fell short.
 #   - For each fix, render a `convergence:` line from `convergence[idx]`
 #     (Phase 5.5). If Phase 5.5 did not run for that fix, render
-#     `convergence: not run (<reason>)`. For fix_status=reverted_inverse_risk
-#     where no safe revert path existed, the line MUST state that the risky
-#     fix is STILL APPLIED.
+#     `convergence: not run (<reason>)`. For fix_status=inverse_risk_applied,
+#     the line MUST state that the risky fix is STILL APPLIED.
 #   - For each fix, render the `Test:` line using the `test_scenario` field
 #     from the classifier plan verbatim. Do NOT paraphrase — the user needs
 #     the exact repro they approved.
