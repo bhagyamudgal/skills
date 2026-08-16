@@ -114,9 +114,12 @@ Convergence: converged — all <F> fixes class-complete, inverse risk absent, no
 # renders in the top failure section.
 
 ## /done results
-  /fix-ts-errors:   clean
-  /parallel-review: 1 Moderate finding — consider extracting helper (see output above)
-  /simplify:        no changes suggested
+  Lanes required:   Code<, plus any other lane the fixes touched>
+  Code lane:        verified — type-check clean; parallel-review 1 Moderate finding
+                    (consider extracting helper, see output above); simplify no changes,
+                    added-comment scan clean
+  Other lanes:      <lane: state — evidence, or "none required">
+  Readiness:        <ready | ready-to-publish | not ready — evidence ceiling>
   Remaining after self-heal: <list or "none">
 
 ## GitHub reply/resolve (<count>)

@@ -15,7 +15,7 @@ description: "Resolve an in-progress git conflict without a silent drop. Use whe
 
    Always resolve. When the two intents are genuinely incompatible and no stated goal decides between them, stop and put both candidate resolutions to the user rather than guessing.
 
-4. **Run the project's checks** — `/done` steps 1-4 own this pipeline. Stop before its commit step: committing mid-merge concludes the merge with a generated conventional subject instead of the merge message. Fix anything the merge broke.
+4. **Run the project's checks** — `/done` owns this pipeline: let it select the acceptance lanes, verify each one, assign states, and build its readiness card. Stop at that card and take none of the handoffs its final section ends in — committing mid-merge concludes the merge with a generated conventional subject instead of the merge message, so `git-commit` and `file-pr` both wait for step 5. Fix anything the merge broke.
 
 5. **Finish the merge/rebase.** If the operation rewrites commits or refs already published or consumed, invoke `preflight-mutations` immediately before continuing that published-history operation or updating its shared ref. Pass the exact operation, local/upstream/base/head SHAs, affected remote refs, dependent branches/PRs, recovery ref, and explicit rewrite authorization. Apply its result contract before continuing. Unpublished local conflict resolution does not use this gate.
 

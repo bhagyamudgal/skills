@@ -21,7 +21,7 @@ Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding
 | 4 | Plan approval gate: validate + user confirmation | Approved plan |
 | 5 | Execute fixes: sequential edits + per-file narrow type-check | Modified files, `fix_status` per item |
 | 5.5 | Convergence subagent: class completeness, inverse risk, new siblings | Per-fix verdicts; missing sites applied |
-| 6 | /done pipeline: fix-ts-errors → parallel-review → simplify | Clean code |
+| 6 | `/done` acceptance verification scoped to the fix diff — no commit or publish handoff | Verified fix diff, `done_verified_snapshot` |
 | 7 | Reply + resolve on GitHub (skipped for local files) | Threads resolved |
 | 8 | Finalize: settle NEEDS-INPUT, restore stash, report, suppressions write, next actions | Final report |
 
@@ -556,13 +556,13 @@ note `convergence checked inline`.
 
 ---
 
-## Phase 6: /done pipeline (main)
+## Phase 6: /done verification (main)
 
-After all fixes are applied, run the standard `/done` sequence on the pending fix diff (`git diff HEAD`):
+After all fixes are applied, run `/done` on the pending fix diff (`git diff HEAD`). `/done` is a four-section acceptance workflow, not a fixed three-command pipeline: §1 binds the run and selects the acceptance lanes, §2 verifies each required lane at its boundary, §3 assigns a state to every request item, lane, and evidence facet, and §4 builds the readiness card. Bind the originating request to the approved fix plan and scope every check to the fix diff, not the entire PR.
 
-1. `/fix-ts-errors` — loop until clean (catches the cross-file errors a per-file narrow check cannot see).
-2. `/parallel-review` — review only the fix diff, not the entire PR.
-3. `/simplify` — apply cleanup improvements.
+The Code lane always applies here. It runs `/fix-ts-errors` to green (catching the cross-file errors a per-file narrow check cannot see, and running the full workspace check at least once), runs `/parallel-review` over the fix diff and applies its `converge-reviews` result, runs `/simplify` including its blocking added-comment scan, and accounts for each fix against the diff. Select every other lane the fixes actually touched — UI, documentation, global configuration or skills, external metadata or data, publication or deployment — by the rule `/done` §1 states, and record the rest as `not-applicable` with their exclusion reason.
+
+Do not take `/done` §4's handoffs. This skill owns publication: `git-commit` and `file-pr` are unavailable in Phase 6, and Phase 8's post-completion prompt is the only place a commit or push may start.
 
 ### Self-heal loop (explicit iteration tracking)
 
@@ -588,7 +588,7 @@ If `done_remaining` is non-empty after 2 iterations, record it for the final rep
 
 **Moderate/Minor findings** are recorded in `done_remaining` without self-heal — user decides at commit time.
 
-When the pipeline satisfies `/done`, materialize its exact fix content as the `done_verified_snapshot` required by `git-commit`'s Verified content snapshot contract. Record the snapshot tree and included path manifest while the run-level stash is still untouched. A Phase 8 fix may update only its declared paths in this snapshot after that item's verification lands cleanly; build the replacement tree from the prior snapshot plus those verified bytes, never by recapturing the live worktree. If no valid `done_verified_snapshot` exists, Commit and Push are unavailable.
+When every required lane is verified, materialize the exact fix content as the `done_verified_snapshot` required by `git-commit`'s Verified content snapshot contract. Build it with `/done` §4's path-scoped snapshot procedure (`create_verified_snapshot`): read `HEAD` into an isolated `GIT_INDEX_FILE`, hash only the declared paths with `git hash-object -w`, stage each with `git update-index --add --cacheinfo <mode>,<blob>,<path>`, `--force-remove` each declared deletion, then `git write-tree`. The declared-path set here is the union of every landed fix's declared paths; the auto-stashed WIP and any other dirty path stays out of it and out of the object database. Record the snapshot tree and included path manifest while the run-level stash is still untouched. A Phase 8 fix may update only its declared paths in this snapshot after that item's verification lands cleanly; rebuild the tree by reading the prior snapshot instead of `HEAD` into the isolated index and applying only those verified bytes through the same `update-index --cacheinfo` mechanism, never by recapturing the live worktree. If no valid `done_verified_snapshot` exists, Commit and Push are unavailable.
 
 ---
 
