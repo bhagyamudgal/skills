@@ -21,11 +21,21 @@ Inspect only for:
 - abstractions, branches, configuration, or error handling the request does not need;
 - dead imports, variables, functions, files, or indirection introduced by the change;
 - control flow or naming that can become clearer without changing the public contract; and
-- added comments that fail the repository's comment rule.
+- added comments that fail the added-comment scan below.
 
 Prefer deletion and direct code over a new helper. Reuse an existing local pattern when it removes a fork. Preserve required guards, evidence, recovery behavior, tests, and user-confirmed decisions.
 
-**Gate:** every proposed edit names what becomes simpler and why observable behavior remains equivalent.
+### Added-comment scan
+
+Inspect every comment the change adds. A comment may stay only if it states a non-obvious WHY — a gotcha, a workaround, a constraint, or a reason the code cannot express itself. Delete on sight:
+
+- comments that narrate WHAT the code does;
+- JSDoc on obvious functions; and
+- section dividers.
+
+Where the repository states its own comment rule, that rule governs and this list is its floor. Deleting these is part of this pass, not a suggestion for later.
+
+**Gate:** every proposed edit names what becomes simpler and why observable behavior remains equivalent, and no comment the change adds is still a WHAT-comment, obvious-function JSDoc, or section divider. This scan is blocking: the caller cannot report the work complete while one remains in the diff.
 
 ## 3. Apply and verify
 

@@ -53,7 +53,7 @@ When Code or Global configuration or skills is required, run `simplify` once aft
 
 | Lane | Minimum boundary evidence |
 |---|---|
-| Code | Run the affected repository-native type, lint, build, and test checks. Use `fix-ts-errors` when TypeScript applies, and the full workspace check when repository policy or cross-workspace impact requires it. Run `parallel-review`, apply its `converge-reviews` result, scan every added comment, and account for the request against the diff. |
+| Code | Run the affected repository-native type, lint, build, and test checks. Use `fix-ts-errors` when TypeScript applies; a scoped first pass is allowed, but always run the full workspace check at least once. Run `parallel-review`, apply its `converge-reviews` result, and account for the request against the diff. `simplify`'s added-comment scan is blocking here: a comment narrating WHAT the code does, JSDoc on an obvious function, or a section divider still in the diff leaves this lane unverified. |
 | UI | Run the affected flow through `browser-qa`; require every affected step to pass and record browser output, screenshots, network results, and console state. |
 | Documentation | Inspect the rendered or generated final artifact and exercise affected links, assets, and navigation. Source text alone does not verify rendered output. |
 | Global configuration or skills | Parse the final configuration, verify registration and discovery, then check picker visibility, manual invocation, or actual consumer behavior wherever the change affects them. |
@@ -85,7 +85,7 @@ Unavailable boundary evidence creates an evidence ceiling. It never becomes `ver
 
 ## 4. Build the readiness card
 
-For Git work, first enumerate the content the snapshot would stage without changing the user's index:
+For Git work, first enumerate the dirty worktree content without changing the user's index:
 
 ```bash
 git diff --name-status -z HEAD --
@@ -93,14 +93,22 @@ git ls-files --others --exclude-standard -z
 git diff --no-ext-diff --find-renames HEAD --
 ```
 
-Draft the originating-request rows described below before snapshot construction. Normalize the tracked status records, including both paths for every rename or copy, and union them with the non-ignored untracked paths. Bind every path in that set to at least one verified request row. Then read the full tracked diff. For each untracked path, inspect its filesystem kind before reading it: use the link text for a symbolic link, the complete bytes for a regular file, and fail closed for any other file kind. Bind every changed hunk or logical change to a verified request row, including separate changes that share one file. Treat a binary-file delta as a logical change and record the evidence used to scope it. An unbound path, hunk, or logical change is unrelated content: stop, report it, and do not record a verified snapshot. An empty or incomplete path, diff, kind, or content inventory also fails closed.
+Draft the originating-request rows described below before snapshot construction. Normalize the tracked status records, including both paths for every rename or copy, and union them with the non-ignored untracked paths. Split that set: a path bound to at least one verified request row is **declared**; every other path is out-of-scope. Record the out-of-scope paths in **Out-of-scope worktree content** and exclude them from every step below — unrelated dirty content is reported, never staged, and never blocks the card. Then read the full tracked diff for the declared paths. For each declared untracked path, inspect its filesystem kind before reading it: use the link text for a symbolic link, the complete bytes for a regular file, and fail closed for any other file kind. Bind every changed hunk or logical change inside a declared path to a verified request row, including separate changes that share one file. Treat a binary-file delta as a logical change and record the evidence used to scope it. An unbound hunk or logical change inside a declared path is unrelated content the snapshot would carry: stop, report it, and do not record a verified snapshot. An empty or incomplete path, diff, kind, or content inventory also fails closed.
 
-Seal that approved candidate as a complete manifest of paths, Git modes, and prospective blob IDs, computed without writing objects. Immediately after creating the snapshot below, derive the same manifest from its immutable tree and require an exact match before accepting the tree hash. A path, mode, or blob mismatch means content changed after scope accounting: discard the snapshot result and restart this section from the new bytes.
+Seal the declared set as a complete manifest of paths, Git modes, and prospective blob IDs, computed without writing objects:
 
-After the reverse scope check passes, compute a deterministic content snapshot. From the repository root, create a temporary directory and use a nonexistent index path inside it for every index operation:
+```bash
+git hash-object -- "<declared-regular-file>"
+printf '%s' "$(readlink -- "<declared-symlink>")" | git hash-object -t blob --stdin
+```
+
+A declared path absent from the worktree is a deletion and carries no mode or blob. Immediately after creating the snapshot below, derive the same manifest from its immutable tree with `git ls-tree -r -z <tree> -- <declared paths>` and require an exact match — every declared present path at its manifest mode and blob, every declared deletion absent — before accepting the tree hash. A path, mode, or blob mismatch means content changed after scope accounting: discard the snapshot result and restart this section from the new bytes.
+
+An empty declared set means the task changed no Git content: skip the construction below and set **Verified content snapshot** to `not-applicable`. Otherwise, after the reverse scope check passes, compute a deterministic content snapshot from `HEAD` plus the declared paths alone. From the repository root, create a temporary directory, use a nonexistent index path inside it for every index operation, and pass the declared paths as the function's arguments:
 
 ```bash
 create_verified_snapshot() (
+  test "$#" -gt 0 || return 1
   snapshot_directory=$(mktemp -d) || return 1
   snapshot_index="$snapshot_directory/index"
   cleanup_snapshot() {
@@ -113,7 +121,26 @@ create_verified_snapshot() (
   trap 'snapshot_status=$?; trap - EXIT; cleanup_snapshot || snapshot_status=1; exit "$snapshot_status"' EXIT
 
   GIT_INDEX_FILE="$snapshot_index" git read-tree HEAD || return 1
-  GIT_INDEX_FILE="$snapshot_index" git add -A || return 1
+
+  for declared_path in "$@"; do
+    if [ -L "$declared_path" ]; then
+      declared_mode=120000
+      link_target=$(readlink -- "$declared_path") || return 1
+      blob_id=$(printf '%s' "$link_target" | git hash-object -w -t blob --stdin) || return 1
+    elif [ -f "$declared_path" ]; then
+      if [ -x "$declared_path" ]; then declared_mode=100755; else declared_mode=100644; fi
+      blob_id=$(git hash-object -w -- "$declared_path") || return 1
+    elif [ -e "$declared_path" ]; then
+      return 1
+    else
+      GIT_INDEX_FILE="$snapshot_index" git update-index --force-remove -- "$declared_path" || return 1
+      continue
+    fi
+    test -n "$blob_id" || return 1
+    GIT_INDEX_FILE="$snapshot_index" git update-index --add \
+      --cacheinfo "$declared_mode,$blob_id,$declared_path" || return 1
+  done
+
   snapshot=$(GIT_INDEX_FILE="$snapshot_index" git write-tree) || return 1
   test -n "$snapshot" || return 1
 
@@ -122,13 +149,13 @@ create_verified_snapshot() (
   printf '%s\n' "$snapshot" || return 1
 )
 
-if ! verified_content_snapshot=$(create_verified_snapshot); then
+if ! verified_content_snapshot=$(create_verified_snapshot "${declared_paths[@]}"); then
   echo "Could not create an isolated verified-content snapshot" >&2
   exit 1
 fi
 ```
 
-Record `$verified_content_snapshot` only after the reverse scope check passes for every staged tracked and non-ignored untracked path and every changed hunk or logical change within them. Every index operation uses the isolated temporary index, so the real index remains untouched. The command fails closed if setup, staging, tree creation, or cleanup fails; its exit trap removes the temporary index on both success and failure. The snapshot includes tracked changes and non-ignored new files. External-only work uses its target currency and read-back ledger instead of a Git snapshot.
+Record `$verified_content_snapshot` only after the reverse scope check passes for every declared path and every changed hunk or logical change within it. Every index operation uses the isolated temporary index, so the real index remains untouched. `GIT_INDEX_FILE` redirects the index but not the object database, which is shared: only the declared paths are ever hashed with `git hash-object -w`, so undeclared worktree content is never written into the repository. The command fails closed if setup, hashing, staging, tree creation, or cleanup fails; its exit trap removes the temporary index on both success and failure. The snapshot is `HEAD` plus exactly the declared paths — their current bytes where they exist, their removal where they were deleted. External-only work uses its target currency and read-back ledger instead of a Git snapshot.
 
 Render the drafted mapping with every originating request item exactly once, in request order, and name all lanes that apply to it:
 
@@ -179,7 +206,8 @@ Render the card with the applicable currency header before the three tables. Git
 - **Remote base-tip commit:** <SHA or not-applicable>
 - **Merge-base commit:** <fixed diff baseline SHA>
 - **Pre-verification head:** <SHA>
-- **Verified content snapshot:** <Git tree hash>
+- **Verified content snapshot:** <Git tree hash, or not-applicable when the task declares no Git paths>
+- **Out-of-scope worktree content:** <dirty non-ignored paths excluded from the snapshot, or none>
 - **Expected append-only commits:** <ordered SHA list or none>
 - **External targets:** <stable IDs or URLs and environments, or not-applicable>
 - **Verified external target versions:** <revisions, timestamps, ETags, checksums, exact fields, or not-applicable>
@@ -225,7 +253,7 @@ git status --porcelain=v1 --untracked-files=all
 git rev-parse HEAD^{tree}
 ```
 
-The status output must be empty and the tree SHA must exactly equal **Verified content snapshot**. Record both observations; any remaining or newly introduced content makes the card stale.
+The status output must list exactly the recorded **Out-of-scope worktree content** paths and nothing else — empty when that field is `none` — and the tree SHA must exactly equal **Verified content snapshot**. Record both observations; any other remaining or newly introduced content makes the card stale. A `not-applicable` snapshot means no Git content was declared, so no commit and no content seal apply.
 
 For Git work with no PR publication, set PR base ref, remote base tip, and merge base to `not-applicable`. When a commit is requested, leave only that request row `pending` after every other request row and required lane is `verified` and every evidence facet is `verified` or `not-applicable`. Set the exact next action to `git-commit` and pass **Verified content snapshot** into its sealed-index mode. Require its staged tree to equal that snapshot before it commits without restaging, record its SHAs as **Expected append-only commits**, and require the ordered transition plus clean-status and exact-tree content seal to pass. Then mark the commit request row `verified` and derive final readiness. When repository policy calls for an unrequested discrete-unit commit, use the same transition without adding a request row. No post-publication run applies. External-only work never creates a commit through `done`.
 
