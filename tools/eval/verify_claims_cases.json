@@ -6,13 +6,14 @@
       "prompt": "Use $verify-claims. Work read-only. We are about to recommend that pricing depend on this claim: `calculate_discount(100) returns 10.0`. The implementation is at tools/eval/verify-claims-fixture/code/discount.py. Verify the claim before that recommendation goes out and return the final claim card.",
       "expected_state": "verified",
       "required_next_action_patterns": ["depend|rely|use"],
-      "required_patterns": [
+      "required_card_patterns": [
         "\\*\\*State:\\*\\*\\s*(?:`|\\*\\*)?verified",
         "calculate_discount",
         "10\\.0",
         "\\*\\*Counter-hypothesis:\\*\\*",
         "\\*\\*Boundary evidence:\\*\\*"
       ],
+      "required_patterns": [],
       "required_tool_patterns": ["^Skill$"],
       "required_observations": [
         {
@@ -41,12 +42,13 @@
       "expected_state": "basis-verified",
       "required_next_action_patterns": ["do (?:\\*\\*)?not|unconfirmed", "read.?back|read the GSM3 board|read every estimate-bearing"],
       "forbidden_next_action_patterns": ["definitive language is permitted", "safe to (?:announce|report).{0,30}(?:complete|success)"],
-      "required_patterns": [
+      "required_card_patterns": [
         "basis-verified",
         "authoritative_readback|authoritative.{0,40}read.?back|read.?back.{0,40}authoritative|board unreachable",
         "provisional|unconfirmed|cannot reach `?verified|do (?:\\*\\*)?not(?:\\*\\*)? (?:state|report|tell)",
         "fresh board read|read every estimate-bearing|board re-fetch|read.?back"
       ],
+      "required_patterns": [],
       "required_tool_patterns": ["^Skill$"],
       "required_observations": [
         {
@@ -68,12 +70,12 @@
       "prompt": "Use $verify-claims. Work read-only. Verify the claim `verify-claims is available to users through the skill picker` before the migration is announced complete. Everything the rollout recorded is under tools/eval/verify-claims-fixture/config/. Return the final claim card.",
       "expected_state": "contradicted",
       "required_next_action_patterns": ["do (?:\\*\\*)?not announce|withdraw", "diagnose|re-verify"],
-      "required_patterns": [
+      "required_card_patterns": [
         "\\*\\*State:\\*\\*\\s*(?:`|\\*\\*)?contradicted",
         "picker_visible|picker visibility|picker.{0,20}(?:false|not visible|absent)",
-        "manual invocation",
         "do not announce|withdraw"
       ],
+      "required_patterns": ["manual invocation"],
       "required_tool_patterns": ["^Skill$"],
       "required_observations": [
         {
@@ -101,12 +103,12 @@
       "prompt": "Use $verify-claims. Work read-only. An earlier report concluded `the estimate total is 25 hours for all tickets`. The decision has materially changed: only tickets owned by bhagya count, and the proposed replacement conclusion is `the total is 12 hours`. Verify the replacement before it is used. Inspect the raw files under tools/eval/verify-claims-fixture/data/. Follow the material-reversal rule and return the reconciled claim card.",
       "expected_state": "verified",
       "required_next_action_patterns": ["use.{0,20}12|12 hours.{0,30}(?:use|total)"],
-      "required_patterns": [
+      "required_card_patterns": [
         "\\*\\*State:\\*\\*\\s*(?:`|\\*\\*)?verified",
-        "12",
-        "25",
+        "\\b12\\b",
         "\\*\\*Independent recheck:\\*\\*"
       ],
+      "required_patterns": ["\\b25\\b"],
       "required_tool_patterns": ["^Skill$", "^(Agent|Task)$"],
       "required_observations": [
         {
