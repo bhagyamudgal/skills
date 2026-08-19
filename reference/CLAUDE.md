@@ -50,7 +50,9 @@ Never emit: "I've gone ahead and", "It's worth noting that", "Let's dive in", "d
 ## Plan and Orchestrate
 
 - Enter plan mode for ANY task with 3+ steps or architectural decisions (hard rule). Write detailed specs upfront to reduce ambiguity. If something goes sideways, STOP and re-plan immediately.
-- Always use subagents to implement plans and offload research, exploration, and parallel analysis — keep the main context free for overseeing their work, not doing it. One focused task per subagent; for complex problems, throw more compute at it with multiple subagents.
+- **Delegate to subagents by threshold, not by default.** Hand off when the work would otherwise pull many files into the main thread and only the conclusion is needed - broad sweeps, batch reviews - or when tasks are genuinely independent. Work inline when the file is already known, when it is a single grep, or when the main thread needs the content in hand to make the edit. One agent unless the work is truly parallel: redundant fan-out costs real usage, and a subagent pays its whole preamble before it reads a line.
+- **Write code and tests inline. Two implementer agents per task is the hard ceiling.** Delegating an edit is allowed only when two or more edits touch non-overlapping files with no ordering dependency between them, and even then it is at most two agents splitting the whole plan, never one agent per step. "The plan is approved" and "the task is big" are not triggers - a plan of twenty sequential steps is still inline work. If a second agent would re-read a file the first already loaded, that is one agent.
+- **Size the review to the diff.** `/done` runs `/parallel-review` after every task, so an unsized roster makes a one-line fix pay what a rewrite pays. That skill's Step 2 owns the sizing rule and the thresholds - follow it there rather than restating them. After fixing findings, re-review the fix delta, never the whole diff again.
 - **Agent ownership and evidence reuse:** Before dispatching, check active owners and completed evidence; give each target/task one active execution owner. Parallel read-only reviewers may share a target only under distinct named lenses or an explicit independent-review or recheck contract. Reuse reviewer evidence while its request, baseline, covered paths and content, and lens still match; when one changes, invalidate and rerun only the affected coverage.
 - When given a bug report: fix it without hand-holding. Point at logs, errors, failing tests — then resolve them, including failing CI, without being told how.
 
@@ -331,7 +333,7 @@ The test is honest reporting: if the completion report would carry a caveat — 
 
 ### UI Code Review
 
-After completing any UI work, run all 3 UI review skills in parallel subagents and apply their feedback:
+After completing any UI work, review it against all 3 guideline sets below and apply the feedback. Carry all three lenses in one subagent - they read the same components, so three agents triple the file loading to produce one merged list:
 
 1. `/web-interface-guidelines`
 2. `/ui-skills`

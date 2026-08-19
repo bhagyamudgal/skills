@@ -19,6 +19,13 @@ Name the roster first, then launch every member in parallel with the Agent tool.
 
 Members 1-3 are `subagent_type` values, passed to the Agent tool as-is. Member 4 is a **skill-running agent**: `/web-interface-guidelines`, `/ui-skills`, and `/rams` are skills, not agent types, so they cannot be passed as `subagent_type` — dispatch a `general-purpose` agent that invokes them instead.
 
+**Size the roster to the diff before naming it.** `done` runs this skill after every task, so an unsized roster charges a one-line fix what a rewrite costs. Measure the Step 1 scope with `git diff --shortstat HEAD`:
+
+- One file and under roughly 50 changed lines, or the user asked for a quick review, then the roster is `pr-review-toolkit:code-reviewer` alone and the rest of this step does not apply.
+- Anything larger builds the roster from the members below.
+
+A re-review after fixing findings covers the fix delta, never the whole diff again, and is sized by that delta.
+
 Always on the roster:
 
 1. **Code Review Agent** (`subagent_type: "pr-review-toolkit:code-reviewer"`)
@@ -28,8 +35,6 @@ Add to the roster when the condition holds:
 
 3. **Silent Failure Hunter** (`subagent_type: "pr-review-toolkit:silent-failure-hunter"`) — the diff touches error handling, try-catch, or fallback logic
 4. **UI Review Agent** (`subagent_type: "general-purpose"`) — the diff touches frontend/UI code. Prompt it to invoke `/web-interface-guidelines`, `/ui-skills`, and `/rams` against the diff and return their merged findings.
-
-Quick review: the roster is `pr-review-toolkit:code-reviewer` alone.
 
 Shared prompt, plus the per-agent lens: "Review these changed files for bugs, logic errors, and adherence to project CLAUDE.md conventions: [files]."
 
