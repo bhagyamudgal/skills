@@ -32,6 +32,8 @@ Two consequences for generation.
 
 **Expect the availability pattern to invert.** Squatter bots brute-force pronounceable strings, so abstract and invented names are the most contested part of the namespace rather than the least. A 2026 run of 254 lookups for a developer tool found zero free abstract names between 4 and 8 characters across `.com` and `.dev`, while several descriptive compounds survived by pairing a common noun with an unusual adjective: `meredoc`, `baredoc`, `inertpage`. A brandable short `.com` is normally an aftermarket purchase. Say that early rather than after five rounds of generation.
 
+**Where the gaps actually are: onsets English does not use.** Bots generate strings that look like English words, so consonant clusters absent from English survive. In the same run, `zn` and `zv` openings produced six free five-letter `.com` names (`zneft`, `znilo`, `zvist`, `znuvo`, `znaft`, `znisk`) after 240 lookups elsewhere had produced none. Try `zn`, `zv`, `zl`, `kv`, `mj`, `tk`, `sv` before concluding a namespace is closed. The cost is a name people cannot spell from hearing it, so weigh that against the radio test rather than treating availability as the win.
+
 ## Independent lens contracts
 
 Give every lens the naming brief and atom bank. Require 12 names with this shape:
@@ -106,6 +108,14 @@ Show 12 candidates spanning all three lenses. For each, include pronunciation,
 recipe, one-line fit, strongest weakness, score, and preliminary domain status.
 Do not hide a creatively strong taken name before the remix turn; label it clearly
 and preserve only its useful atoms.
+
+**Then show every name checked, grouped by the pattern it came from, with its
+status.** Not only the finalists, and not only the survivors. The user is the
+strongest remix engine in the loop: reading two hundred rejected names, they
+routinely see a combination no lens generated, and a taken name still supplies
+half of an available one. Trimming the list to keep the output tidy removes the
+input that most often produces the winner, so hand over the whole pool and say
+which parts of it are free.
 
 Ask for one reaction containing:
 
