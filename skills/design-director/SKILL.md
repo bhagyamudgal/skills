@@ -17,16 +17,17 @@ Before normal mode detection, check whether the thread already contains a select
 
 - Set `IS_CONTINUATION = true` for an existing baseline. State the approved baseline, locked decisions, and requested change in one line.
 - Treat the follow-up as a delta. Preserve everything outside the named change.
-- Route a color-only change to `color`, a mark or letterform change to `logo`, and lockup order, export, packaging, or cleanup to `finalize`.
+- Route a color-only change to `color` and a mark or letterform change to `logo`. Route lockup order, export, packaging, or cleanup to `finalize` only when the active baseline is an approved logo or identity asset.
+- Keep other continuations in the active mode unless the user explicitly invokes another mode.
 - A request to return to an earlier version makes that version the new baseline before applying any other delta.
-- A revert-only request ends after showing the restored baseline. Route to `finalize` when restoring or removing files is part of the request.
+- A revert-only request ends after showing the restored baseline. Route restoration or file removal to `finalize` only for approved logo or identity assets.
 - Re-open exploration only when the user rejects the approved direction or asks for new concepts.
 
 **Phase 0 ends** by setting the baseline and either routing the delta to a mode or continuing to Phase 1 for a greenfield request.
 
 ## Phase 1: Detect mode
 
-1. Read the user's invoking message and any attached images / Figma URLs. A bare mode word (`brief`, `logo`, `layout`, `type`, `color`, `critique`, `identity`, `finalize`, `finalise`) is a valid argument. Requests such as "this is final", "production assets", "export SVG/PNG", or "brand package" route to `finalize`.
+1. Read the user's invoking message and any attached images / Figma URLs. A bare mode word (`brief`, `logo`, `layout`, `type`, `color`, `critique`, `identity`, `finalize`, `finalise`) is a valid argument. In an approved logo or identity context, requests such as "this is final", "production brand assets", "export the approved logo as SVG/PNG", or "brand package" route to `finalize`.
 2. Match against the mode menu below. If exactly one mode matches, set `MODE` and continue.
 3. **Image-only fallback**: if the user attached an image with no clear textual instruction → `MODE = critique`.
 4. **On multiple matches, prefer the more specific mode** ("typography for a brand identity" → Typography). Show the menu only when no single mode is more specific, or nothing matches:
