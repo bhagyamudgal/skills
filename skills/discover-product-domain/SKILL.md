@@ -46,10 +46,13 @@ Capture these fields from the conversation before asking anything:
 - primary audience and market language;
 - core promise and desired emotional signal;
 - three-year expansion boundary;
-- desired and forbidden tones, words, sounds, and associations.
+- desired and forbidden tones, words, sounds, and associations;
+- whether the name should describe the product or work as an abstract mark.
 
 Default unresolved preferences to warm, clear, credible, globally pronounceable,
-5–10 characters, 2 syllables where natural, and no hyphens or digits. In guided
+5–10 characters, 2 syllables where natural, and no hyphens or digits. Default the
+describe-or-abstract field to no requirement to describe, and read
+`references/naming-lenses.md` under **Description is optional** before generating. In guided
 mode, ask only when a different answer would materially change the candidate set.
 
 **Complete when:** every field is answered or carries an explicit default.

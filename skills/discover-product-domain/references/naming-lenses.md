@@ -22,6 +22,16 @@ Tag each atom as `direct`, `suggestive`, `emotional`, `metaphorical`, or
 `phonetic`. Record where it came from: product brief, agent candidate, user
 reaction, or rejected name.
 
+## Description is optional
+
+Vercel, Stripe, Figma, Linear, Notion, Dub, Unkey, Resend and Clerk describe nothing about what they do. A name takes its meaning from the product, never the reverse, so describing the job is one option rather than the target. Judge an abstract candidate on whether it can carry meaning once people use it, not on whether it announces anything.
+
+Two consequences for generation.
+
+**Weight the lenses to the brief.** Compounder and Positioner both produce describing names. When the brief wants a brandable mark rather than an explanatory one, run Phonetic inventor wider and let the other two return fewer.
+
+**Expect the availability pattern to invert.** Squatter bots brute-force pronounceable strings, so abstract and invented names are the most contested part of the namespace rather than the least. A 2026 run of 254 lookups for a developer tool found zero free abstract names between 4 and 8 characters across `.com` and `.dev`, while several descriptive compounds survived by pairing a common noun with an unusual adjective: `meredoc`, `baredoc`, `inertpage`. A brandable short `.com` is normally an aftermarket purchase. Say that early rather than after five rounds of generation.
+
 ## Independent lens contracts
 
 Give every lens the naming brief and atom bank. Require 12 names with this shape:
@@ -80,7 +90,7 @@ Score names before applying the domain gate.
 
 | Dimension | Points | Test |
 |---|---:|---|
-| Strategic fit and stretch | 20 | Fits today's job without blocking the stated three-year boundary |
+| Strategic fit and stretch | 20 | Does not block the stated three-year boundary. An abstract name that describes nothing scores full marks; only a name that boxes the product in loses them |
 | Memorability and distinction | 20 | Leaves a concrete image and is not a generic category label |
 | Pronunciation and spelling | 20 | Passes the radio test in both directions |
 | Tone fit | 10 | Matches the brief's desired signal and avoids forbidden associations |
