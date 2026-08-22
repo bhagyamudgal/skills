@@ -57,7 +57,7 @@ npx skills add bhagyamudgal/skills
 | `grill-me` | Interview-style stress-test of a plan, one decision at a time, against an enumerated list — no "grill complete" until every decision has an answer |
 | `project-discovery` | Discovery interview before writing code on a new project — interrogate requirements and stack, then emit `CLAUDE.md`, `PATTERNS.md` and the `lib/` scaffolding |
 | `discover-product-domain` | Generate through independent naming lenses, remix with the user, and verify their exact standard-price `.com` domains |
-| `design-director` | Senior creative-director direction — 7 modes (brief simplify, logo, layout, typography, color, critique, brand identity) |
+| `design-director` | Senior creative-director direction — 8 modes covering brief simplification, staged logo work, layout, typography, color, critique, brand identity, and production asset finalization |
 | `browser-qa` | Drive a real browser through a UI flow with Playwright MCP — screenshot every step, check network and console, and account for every step with PASS or FAIL |
 | `reuse-first` | Search-first discipline before writing any new utility, type, schema, component, hook, or constant — 3-layer search you must print, reuse ladder, fork smells |
 | `backend-perf` | Performance checklist for backend endpoints and DB queries — walk every check and name a verdict on each; a check you did not name is a check you did not run |

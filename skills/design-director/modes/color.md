@@ -8,9 +8,10 @@
   - **Primary** (1-2 colors with hex, role description)
   - **Secondary** (1-2 colors with hex, role description)
   - **Accent** (1 color with hex, "use sparingly for X")
-  - **Neutrals** (5-step grayscale or warm-neutral ramp with hex)
+  - **Light theme** (background, surface, foreground, muted, border, brand, and accent tokens with hex)
+  - **Dark theme** (the same semantic roles chosen independently, not produced by simple inversion)
   - **Semantic** (success / warning / danger / info — with hex)
-  - **Contrast pairs**: 3-5 WCAG AA-compliant text-on-background pairs (e.g., "Ink #0F1115 on Bone #F7F3ED — 14.2:1 ✓ AAA")
+  - **Contrast proof**: classify each intended use, then apply the WCAG 2.2 criteria in the main skill to measured mark, text, and accent pairings in both themes. Label presentation-only colors instead of treating them as accessible text colors.
   - **Usage ratio**: a one-line 60/30/10 or similar split showing how the palette should be balanced in real layouts
 - **File save**: yes
 - **Next step**: → `/figma-generate-library` to add as color variables
