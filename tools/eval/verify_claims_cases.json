@@ -9,7 +9,7 @@
       "required_card_patterns": [
         "\\*\\*State:\\*\\*\\s*(?:`|\\*\\*)?verified",
         "calculate_discount",
-        "10\\.0",
+        "(?<![\\d.])10\\.0+(?!\\d)",
         "\\*\\*Counter-hypothesis:\\*\\*",
         "\\*\\*Boundary evidence:\\*\\*"
       ],
@@ -72,7 +72,7 @@
       "required_next_action_patterns": ["do (?:\\*\\*)?not announce|withdraw", "diagnose|re-verify"],
       "required_card_patterns": [
         "\\*\\*State:\\*\\*\\s*(?:`|\\*\\*)?contradicted",
-        "picker_visible|picker visibility|picker.{0,20}(?:false|not visible|absent)",
+        "picker(?:_visible|\\s+visibility)?.{0,40}(?:false|not visible|absent)",
         "do not announce|withdraw"
       ],
       "required_patterns": ["manual invocation"],
