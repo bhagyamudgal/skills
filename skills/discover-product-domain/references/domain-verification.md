@@ -22,6 +22,21 @@ Registrar results additionally record currency, standard first-year base price,
 each mandatory fee, standard first-year total, renewal price when shown, and
 premium label.
 
+## Where the confirm rung carries the weight
+
+`.com` has no registry premium tier. A premium `.com` is an aftermarket listing, which is a
+registered domain, so it returns an RDAP domain object. An RDAP `404` on `.com` therefore
+predicts standard registration price reliably.
+
+New gTLDs do not behave that way. `.page`, `.ink` and their peers price short and dictionary
+words at the registry, so an unregistered name can still cost many times the base rate. In a
+2026 run `read.page` returned RDAP `404` and $1,091/yr at the registrar, and `drop.ink` returned
+`404` and roughly $360/yr on renewal, while `inert.page` on the same TLD was standard-priced.
+The pattern is that common words are premium and unusual ones are not.
+
+Spend the confirm rung accordingly: screen `.com` in bulk and confirm only the finalists, and
+confirm every new-gTLD candidate before recommending it.
+
 ## 1. Derive and normalize the domain
 
 - For a display name, lowercase it and remove styling spaces between valid label

@@ -32,7 +32,7 @@ Two consequences for generation.
 
 **Expect the availability pattern to invert.** Squatter bots brute-force pronounceable strings, so abstract and invented names are the most contested part of the namespace rather than the least. A 2026 run of 254 lookups for a developer tool found zero free abstract names between 4 and 8 characters across `.com` and `.dev`, while several descriptive compounds survived by pairing a common noun with an unusual adjective: `meredoc`, `baredoc`, `inertpage`. A brandable short `.com` is normally an aftermarket purchase. Say that early rather than after five rounds of generation.
 
-**Where the gaps actually are: onsets English does not use.** Bots generate strings that look like English words, so consonant clusters absent from English survive. In the same run, `zn` and `zv` openings produced six free five-letter `.com` names (`zneft`, `znilo`, `zvist`, `znuvo`, `znaft`, `znisk`) after 240 lookups elsewhere had produced none. Try `zn`, `zv`, `zl`, `kv`, `mj`, `tk`, `sv` before concluding a namespace is closed. The cost is a name people cannot spell from hearing it, so weigh that against the radio test rather than treating availability as the win.
+**Where the gaps actually are: onsets English does not use.** Bots generate strings that look like English words, so consonant clusters absent from English survive. In the same run, `zn` and `zv` openings produced six free five-letter `.com` names (`zneft`, `znilo`, `zvist`, `znuvo`, `znaft`, `znisk`) after 240 lookups elsewhere had produced none. Switching language does not open a namespace by itself: single dictionary words came back registered in Sanskrit, Hindi, Japanese, Finnish, Turkish, Basque, Welsh, Latin, Greek, Polish, Malay, Swahili and Icelandic, because investors run multilingual wordlists too. What survives is a string no wordlist contains, so try `zn`, `zv`, `zl`, `kv`, `mj`, `tk`, `sv` and foreign roots already carrying those clusters before concluding a namespace is closed. The cost is a name people cannot spell from hearing it, so weigh that against the radio test rather than treating availability as the win.
 
 ## Independent lens contracts
 
@@ -79,12 +79,38 @@ Apply several operators; do not produce eight suffix variants of one root.
 - verb/noun shift;
 - clipped overlap between two atoms;
 - prefix from one candidate + root from another;
+- fragment of a domain the user already owns + a new root;
 - tone inversion, such as technical + warm or fast + safe;
 - future-stretch substitution, such as `media` for `video`.
+
+The owned-fragment operator compounds, so reach for it early when the user holds
+any domain. It turns a domain they already have into the short-link half of a
+pair at no cost, and it converts a fragment that means nothing alone into the
+clipped form of a real name. In one 2026 run it produced the winner after roughly
+400 lookups had produced no purchasable pair: an owned `fol.ink` plus the root
+`slate` gave `folslate.com`, and `fol.ink` stopped being a compromise.
 
 Keep provenance explicit: `VidsJar = vids from the category bank + jar from the
 container bank`. When the user invents a combination, generate close, inverse,
 and future-stretch siblings around it before returning to unrelated roots.
+
+## Wart check
+
+Run every surviving candidate through these before scoring. Each one eliminated a
+finalist in a single 2026 run, and none is visible from the score alone.
+
+- **Pejorative in the audience's own jargon.** `folsilo` failed: "siloed data" is
+  a complaint in the vocabulary of the developers it was for, and the product
+  shared documents.
+- **Meaning in another major language the audience speaks.** `folmist` failed:
+  `Mist` is German for manure, and `Mist!` is a mild expletive.
+- **Spelling and pronunciation disagree in English.** `folquay` failed: `quay` is
+  said "key", so it loses the radio test in both directions at once.
+- **Collides with the user's other products, or with a brand a recorded decision
+  deliberately separated this one from.** `folhex` failed: it read back to the
+  parent brand that the new domain existed to isolate.
+
+A wart disqualifies on its own. Do not average it away against a high score.
 
 ## Brand score (/70)
 
