@@ -24,15 +24,39 @@ reaction, or rejected name.
 
 ## Description is optional
 
-Vercel, Stripe, Figma, Linear, Notion, Dub, Unkey, Resend and Clerk describe nothing about what they do. A name takes its meaning from the product, never the reverse, so describing the job is one option rather than the target. Judge an abstract candidate on whether it can carry meaning once people use it, not on whether it announces anything.
+Vercel, Stripe, Figma, Linear, Notion, Dub, Unkey, Resend and Clerk describe
+nothing about what they do. A name takes its meaning from the product, never the
+reverse, so describing the job is one option rather than the target. Judge an
+abstract candidate on whether it can carry meaning once people use it, not on
+whether it announces anything.
 
 Two consequences for generation.
 
-**Weight the lenses to the brief.** Compounder and Positioner both produce describing names. When the brief wants a brandable mark rather than an explanatory one, run Phonetic inventor wider and let the other two return fewer.
+**Weight the lenses to the brief.** Compounder and Positioner both produce
+describing names. When the brief wants a brandable mark rather than an
+explanatory one, run Phonetic inventor wider and let the other two return fewer.
 
-**Expect the availability pattern to invert.** Squatter bots brute-force pronounceable strings, so abstract and invented names are the most contested part of the namespace rather than the least. A 2026 run of 254 lookups for a developer tool found zero free abstract names between 4 and 8 characters across `.com` and `.dev`, while several descriptive compounds survived by pairing a common noun with an unusual adjective: `meredoc`, `baredoc`, `inertpage`. A brandable short `.com` is normally an aftermarket purchase. Say that early rather than after five rounds of generation.
+**Expect the availability pattern to invert.** Squatter bots brute-force
+pronounceable strings, so abstract and invented names are the most contested part
+of the namespace rather than the least. A 2026 run of 254 lookups for a developer
+tool found zero free abstract names between 4 and 8 characters across `.com` and
+`.dev`, while several descriptive compounds survived by pairing a common noun
+with an unusual adjective: `meredoc`, `baredoc`, `inertpage`. A brandable short
+`.com` is normally an aftermarket purchase. Say that early rather than after five
+rounds of generation.
 
-**Where the gaps actually are: onsets English does not use.** Bots generate strings that look like English words, so consonant clusters absent from English survive. In the same run, `zn` and `zv` openings produced six free five-letter `.com` names (`zneft`, `znilo`, `zvist`, `znuvo`, `znaft`, `znisk`) after 240 lookups elsewhere had produced none. Switching language does not open a namespace by itself: single dictionary words came back registered in Sanskrit, Hindi, Japanese, Finnish, Turkish, Basque, Welsh, Latin, Greek, Polish, Malay, Swahili and Icelandic, because investors run multilingual wordlists too. What survives is a string no wordlist contains, so try `zn`, `zv`, `zl`, `kv`, `mj`, `tk`, `sv` and foreign roots already carrying those clusters before concluding a namespace is closed. The cost is a name people cannot spell from hearing it, so weigh that against the radio test rather than treating availability as the win.
+**Where the gaps actually are: onsets English does not use.** Bots generate
+strings that look like English words, so consonant clusters absent from English
+survive. In the same run, `zn` and `zv` openings produced six free five-letter
+`.com` names (`zneft`, `znilo`, `zvist`, `znuvo`, `znaft`, `znisk`) after 240
+lookups elsewhere had produced none. Switching language does not open a namespace
+by itself: single dictionary words came back registered in Sanskrit, Hindi,
+Japanese, Finnish, Turkish, Basque, Welsh, Latin, Greek, Polish, Malay, Swahili
+and Icelandic, because investors run multilingual wordlists too. What survives is
+a string no wordlist contains, so try `zn`, `zv`, `zl`, `kv`, `mj`, `tk`, `sv`
+and foreign roots already carrying those clusters before concluding a namespace
+is closed. The cost is a name people cannot spell from hearing it, so weigh that
+against the radio test rather than treating availability as the win.
 
 ## Independent lens contracts
 
