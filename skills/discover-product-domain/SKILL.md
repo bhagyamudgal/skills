@@ -47,13 +47,20 @@ Capture these fields from the conversation before asking anything:
 - core promise and desired emotional signal;
 - three-year expansion boundary;
 - desired and forbidden tones, words, sounds, and associations;
-- whether the name should describe the product or work as an abstract mark.
+- whether the name should describe the product or work as an abstract mark;
+- other languages the audience reads, the field whose jargon it speaks, and any
+  existing brand this name must not collide with.
 
 Default unresolved preferences to warm, clear, credible, globally pronounceable,
 5–10 characters, 2 syllables where natural, and no hyphens or digits. Default the
 describe-or-abstract field to no requirement to describe, and read
-`references/naming-lenses.md` under **Description is optional** before generating. In guided
-mode, ask only when a different answer would materially change the candidate set.
+`references/naming-lenses.md` under **Description is optional** before generating.
+When the audience's other languages, jargon field, or brand-collision targets go
+unstated, default to the market language plus English, the audience's own field
+as the jargon source, and every brand the user has named in this conversation;
+record those defaults, because the **Wart check** in `naming-lenses.md` runs on
+them. In guided mode, ask only when a different answer would materially change
+the candidate set.
 
 **Complete when:** every field is answered or carries an explicit default.
 
@@ -79,10 +86,13 @@ complete lens contracts in `${CLAUDE_SKILL_DIR}/references/naming-lenses.md`:
 Give each agent the same brief and atom bank, but none of the other agents'
 candidates. Embed that agent's complete lens rules and the required output shape
 from `naming-lenses.md` in its task; do not assume a subagent can resolve this
-skill's relative paths. Each returns 12 names. When subagents are unavailable,
-run the three lenses sequentially and keep their pools separate until synthesis.
+skill's relative paths. Each returns its allocated share of a 36-name pool;
+**Description is optional** in `references/naming-lenses.md` owns the split and
+when it shifts. When subagents are unavailable, run the three lenses sequentially
+and keep their pools separate until synthesis.
 
-**Complete when:** 36 raw names exist, 12 from each independent lens.
+**Complete when:** 36 raw names exist, split across the three independent lenses
+by the brief's allocation.
 
 ### 4. Synthesize or assess
 

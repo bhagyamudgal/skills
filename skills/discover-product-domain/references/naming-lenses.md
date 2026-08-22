@@ -33,8 +33,10 @@ whether it announces anything.
 Two consequences for generation.
 
 **Weight the lenses to the brief.** Compounder and Positioner both produce
-describing names. When the brief wants a brandable mark rather than an
-explanatory one, run Phonetic inventor wider and let the other two return fewer.
+describing names. When the brief calls for an abstract mark, allocate 18 names to
+Phonetic inventor and 9 to each of the others; the default allocation stays 12
+each. The pool is 36 either way, so step 3's completion gate is unchanged in
+size.
 
 **Expect the availability pattern to invert.** Squatter bots brute-force
 pronounceable strings, so abstract and invented names are the most contested part
@@ -121,7 +123,10 @@ and future-stretch siblings around it before returning to unrelated roots.
 ## Wart check
 
 Run every surviving candidate through these before scoring. Each one eliminated a
-finalist in a single 2026 run, and none is visible from the score alone.
+finalist in a single 2026 run, and none is visible from the score alone. The
+inputs are the brief's audience languages, jargon source, and brand-collision
+targets from step 1; when the user did not state them, apply the defaults step 1
+records so this check runs on stated inputs rather than guesses.
 
 - **Pejorative in the audience's own jargon.** `folsilo` failed: "siloed data" is
   a complaint in the vocabulary of the developers it was for, and the product
