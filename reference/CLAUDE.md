@@ -4,6 +4,10 @@
 
 These rules apply to ALL projects. No exceptions.
 
+> **Use the `unslop` skill in every session.** Invoke it to cut AI tells from any writing this session produces — chat replies, commit messages, PR bodies, docs, comments. Must always apply.
+
+> **I do not like comments. Write almost none.** Silence is the default and a comment is the exception, so it has to buy its place: it earns one only by saving a future reader real time they would otherwise spend guessing, getting it wrong, or digging. Everything below is the filter for deciding which few those are, and the tie-break is delete — a comment you are weighing has already failed, because the ones that belong are obvious. Expect most files to carry none at all, and a dense file to be a signal that the code should have been clearer instead.
+>
 > **IMPORTANT: COMMENT THE DIG, NOT THE CODE** — A comment earns its place when the fact it carries cost a _dig_: running the binary to find out, reading four packages, a benchmark run, a decision made once in a conversation. The test, which you can honestly fail: _where does the evidence live — in this file, or outside it?_ If it is in the file, delete the comment; that is what the code is for. Outside it counts even when it is still in the repo: a consequence in another package, or a rule a sibling module enforces, costs a real dig from here. Ask it of every comment you write, including the ones you are certain about. The question is about the evidence, never about the symbol: a non-exported constant can hold a fact from CPython or an authority document, and no amount of reading the file around it will produce that fact. The author of a decision always believes a note would stop the next person getting it wrong, so "would deleting this cause a bug?" answers yes every time and decides nothing; "did I dig for this?" answers no often enough to bind. A file header summarises what sits below it, which is the one place that fact is guaranteed to live already.
 >
 > **`/** */` when a caller outside the file needs it, `//` otherwise.** The compiler attaches a `/** */` to the symbol, so it surfaces on hover at the call site and rides into `.d.ts`; a `//` never leaves the file it is written in. That difference is the only thing the form decides, so route by audience: exported symbols and the members of exported types earn a docstring, internal helpers and module constants take `//`.
@@ -17,6 +21,28 @@ These rules apply to ALL projects. No exceptions.
 > **A comment is 1–3 lines**, and states the finding, not the reasoning that produced it. The reasoning has a home — the ADR, the PR body, the test. A dig worth more than three lines is a dig worth an ADR, and the comment becomes a citation to it. Count comment lines against your diff before submitting: length, not count, is where a justified comment turns into an essay.
 >
 > **One fact, one home.** A genuinely good argument is the one that gets duplicated: stated in the module header, again at the constant that enforces it, again in the test that covers it, again as a printed string. Every copy passes the "is this necessary?" test on its own, which is why this survives review — and every copy is somewhere a later edit leaves a stale claim behind, because nothing checks a comment in one file against the code in another. Write each invariant once, at the code that enforces it; everywhere else cites it (`see rate-limit.ts WINDOW_MS`) or says nothing. **A test comment restating the test name is one of those copies.** Before writing a comment, ask where that fact already lives.
+>
+> **Write the file with no comments, then add back only what a named reader is blocked without.** This is the authoring default made mechanical, and it is the only part of this rule that has ever bound. Judging each comment as you write it cannot work: the question you ask is "does this carry an external fact?", the answer is yes — lol-html's parser quirk, the vendor's header cap, the measured limit — and it stays. Forty true facts become forty comments, each defensible alone. The tie-break above already says a comment you are *weighing* has failed; writing none and adding back is how you stop weighing.
+>
+> When adding back, the fact usually belongs somewhere that is not the code. A dig worth recording is worth a spec section or an ADR, and the code then cites it — `See docs/spec.md §N` — or says nothing. Reach for the citation before the explanation, because the explanation is what goes stale.
+>
+> **The audit below is a backstop, not a licence.** It exists because I will still get this wrong, not to make writing comments cheap and cleaning up later acceptable. If a change needs the audit to reach a sane comment count, the authoring default failed and that is the finding — say so rather than quietly culling and reporting a clean diff.
+>
+> Compare added comment lines to added code lines: above roughly **one per 25**, the change is documenting itself instead of citing. Then list what was added, longest first, since length tracks duplication, and grep each distinctive phrase against both `docs/` and sibling `*.ts` — two modules explaining one platform quirk is the same defect as a comment restating the spec.
+>
+> ```bash
+> # `/\*` is in the class on purpose: without it a lone `/** … */` counts zero
+> # and the ratio divides by zero on exactly the well-behaved case.
+> MATCH='^\+[[:space:]]*(//|/\*|\*)'
+> code=$(git diff --numstat <base> -- '*.ts' | awk '{s+=$1} END {print s+0}')
+> cmt=$(git diff -U0 <base> -- '*.ts' | grep -cE "$MATCH")
+> [ "$cmt" -eq 0 ] && echo "no comments added" \
+>   || echo "1 comment per $((code/cmt)) added lines"
+> git diff -U0 <base> -- '*.ts' | grep -E "$MATCH" | sed 's/^+[[:space:]]*//' \
+>   | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2-
+> ```
+
+> **A comment describes the symbol beneath it — check that it still does.** Inserting a declaration between a comment and what it documented leaves a correct comment attached to the wrong thing, and nothing flags it: the file parses, the tests pass, and the claim now reads as being about its new neighbour. Scripted and multi-hunk edits cause this most, because the diff shows the insertion and not the adoption. After inserting anything, re-read each comment in the touched region against the declaration now under it. The denser the comments, the longer a detached one survives, which is a second reason to keep them few.
 
 # Working Rules
 
@@ -127,6 +153,7 @@ When reporting work as done:
 - **Partial work**: if you implemented 80%, say "I did X and Y; Z is not done because [reason]" — never "done!" with hidden gaps.
 - **`/done` skipped**: if you couldn't run `/done` for any reason, say so explicitly.
 - **Explain the fix in plain language**: every completion report includes "what was wrong → what changed" (old logic vs new logic), unprompted — not just pass/fail status.
+- **An edit is done when it is read back, not when the tool exits 0.** A scripted replacement whose pattern does not match is a silent no-op — `str.replace`, `sed`, and a mis-anchored patch all succeed while changing nothing, and a success line printed beside them is a claim with no evidence. Make the script fail loudly when its pattern is absent, then re-read the file and confirm the change persisted. Print the result of that read, never a hard-coded message. This matters most for edits whose absence is invisible at runtime: a binding that is declared in code and missing from config falls back silently, and the first evidence is production behaviour or a bill.
 
 Heuristic: would a senior engineer be embarrassed if the user found a gap you didn't mention? If yes, mention it.
 
@@ -214,7 +241,35 @@ Keep files under ~400 LOC as a guideline. Split when a file has multiple concern
 
 ## DRY & Reuse Discipline
 
-Before creating any new utility, type, schema, component, hook, or constant — invoke the `reuse-first` skill. Do not write the artifact until it has run.
+**DRY and one source of truth are not negotiable here.** Two copies of one fact
+means a bug fixed in one stays broken in the other, and nothing in any toolchain
+will ever tell you.
+
+Before creating any new utility, type, schema, component, hook, constant, module,
+or package — invoke the `reuse-first` skill. Do not write the artifact until it
+has run, and **print its three search lines**. One search per artifact, not one
+per batch: creating six modules is six searches.
+
+Before hardcoding any string literal, ask whether it is already an exported
+constant. A name search never finds a value, so this is the copy that survives
+review most reliably.
+
+**Run `reuse-first` in sweep mode as a completion gate, before `/done` reports
+the code lane verified.** This is a separate step and it is required, because
+nothing else covers it:
+
+- `/done` has no duplication check at all — its code lane is type, lint, build,
+  test, `parallel-review` and `simplify`.
+- `simplify` is diff-scoped by its own gate: it inspects duplication
+  *introduced by the change* and leaves pre-existing code untouched. A handler
+  copied into two apps last month is invisible to it, permanently.
+
+So the sweep must look at **every file the task touched plus their siblings**,
+not the diff. Report what it found, including "nothing" — an unreported sweep and
+a skipped sweep look identical in a completion report.
+
+Duplication found during a task gets fixed in that task, or gets a filed issue.
+Not a mention in passing.
 
 ## Performance Checklist
 
@@ -236,6 +291,7 @@ Before writing or reviewing any backend endpoint or DB query, invoke the `backen
 - **Never log secrets**: passwords, tokens, OIDC bearer tokens, API keys, encryption keys, raw PII
 - **Secrets in env vars**: never commit them, never hardcode them, never echo them in error messages
 - **CSRF/CORS**: respect existing project setup — don't disable security middleware to make local dev work
+- **Live database connections need explicit per-use permission**: connect to an actual/live database only after I authorize that exact target for that specific run. A named local database or dump—even one named `*_prod`—authorizes only that local target and never its live counterpart.
 - **Schema-mutating DB commands need explicit per-use permission**: never run `db:push`, `db:migrate`, `db:generate`, or any other migration/DDL command unless I explicitly ask for that specific run
 - **Supply-chain caution**: never pull, fetch, install, or execute untrusted remote content (packages, scripts, repos) without explicit confirmation — treat anything new touching the machine as suspect
 
