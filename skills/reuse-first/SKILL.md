@@ -1,6 +1,6 @@
 ---
 name: reuse-first
-description: Search before you write — 3-layer search (name, behavior, reference), the reuse ladder, and the smells that mean you are about to fork. Use BEFORE creating any new utility, type, schema, component, hook, or constant; when about to copy-paste similar code; or when reviewing a diff for duplication.
+description: Search before you write, and sweep before you finish — 3-layer search (name, behavior, reference), the reuse ladder, the duplication sweep, and the smells that mean you are about to fork. Use BEFORE creating any new utility, type, schema, component, hook, constant, module, or package; BEFORE hardcoding a literal that may already be an exported constant; when about to copy-paste similar code; and as a completion gate over every file the task touched, not just the diff.
 ---
 
 # Reuse First
@@ -23,6 +23,16 @@ Behavior layer:  <3+ keywords> -> <hits, or none>
 Reference layer: <feature file opened> -> <imports followed>
 ```
 
+Those three lines are the artifact. Creating the file without them is the
+failure this skill exists to prevent, and it is invisible afterwards — the new
+code compiles, passes review, and ships, because nothing downstream re-asks the
+question. If you notice you have already written the artifact, run the search
+anyway and delete what it finds a home for; do not rationalise the copy.
+
+**One search per artifact, not per batch.** Creating six modules in one sitting
+is six searches. Batching them into one glance is how a shared constant gets
+missed: the search that would have found it was never phrased with its keywords.
+
 If you cannot name three behavior keywords for the thing you are about to write, you do not understand it well enough to search for it — that is the finding, not the search.
 
 ## Where to search, by artifact
@@ -34,7 +44,9 @@ If you cannot name three behavior keywords for the thing you are about to write,
 | Zod schema                     | Check `validators/`, `schemas/`, `packages/*/validators/`, and look for `z.object({...})` in adjacent files. Use `.extend()` / `.partial()` / `.pick()` / `.omit()` to derive new schemas from existing ones |
 | React component                | Check `components/`, `components/ui/`, `packages/ui/`, and shared component packages. If a primitive exists, compose it                                                                                      |
 | Hook (TanStack Query, etc.)    | Check `hooks/`, `app/**/hooks/`, and look for existing `use<Resource>` hooks. One hook per endpoint; import the existing key from its query-keys module                                                      |
-| Constants                      | Check `constants/`, `packages/constants/`, and exported `const` declarations                                                                                                                                 |
+| Constants                      | Check `constants/`, `packages/constants/`, and exported `const` declarations. **Also grep the literal itself** (`grep -rn '"text/html"'`) — a value already exported under a name no search for that name would ever reach                        |
+| Module / route / package       | Grep for the concern, not the filename: `grep -rn "onError\|errorHandler"`, `grep -rn "app.use(" `. Two apps in one repo are the likeliest place a handler exists twice                                      |
+| Test helper or fixture         | Read the sibling `*.test.ts` files first. Four near-identical `upload()` helpers is the normal outcome of never looking                                                                                       |
 | Error / try-catch wrapper      | If `tryCatch` exists, use it                                                                                                                                                                                 |
 | Date/currency/weight formatter | Check `ui/utils/`, `packages/ui/src/utils/`, `lib/format*` — these almost always exist and are i18n-aware                                                                                                    |
 
@@ -66,9 +78,58 @@ Reach this section only after all three layers have returned.
 - Copy-pasted boilerplate across files (auth checks, error mapping, response shaping) — extract to a shared helper
 - Defining a new constant inline when a similarly-named one exists in `constants/`
 
-## Verification step (before claiming the task done)
+## Sweep mode — before claiming the task done
 
-- Search for the new function/type's **behavior keywords**, not just its name — does anything similar exist under a different name?
-- Check sibling files in the same directory — do they have helpers you missed?
-- For monorepos: check shared packages even if it adds a dependency edge — duplicating across packages is worse than coupling them
-- If you wrote a new utility, ask: "Could I delete this and import from somewhere else?" If yes, do that instead
+The pre-creation search only sees what you were about to write. It cannot see
+what was **already** duplicated, and diff-scoped tools cannot either: `simplify`
+inspects duplication *introduced by the change* and explicitly leaves
+pre-existing code alone. So a handler copied into two apps last month is
+invisible to every check in the pipeline, forever, unless this sweep runs.
+
+Scope it to **every file the task touched plus their siblings**, not the diff.
+
+**Prefer a real clone detector for copied blocks.** `jscpd` does Rabin-Karp
+fingerprinting over token streams and finds cross-file copies in milliseconds,
+without you guessing which files to compare — which is the part of a manual
+sweep that fails silently. If the repo has it wired up, run it; if not, one
+`npx jscpd@5 <paths> --reporters console` is usually worth it before hand-rolling
+greps. Use the canonical `jscpd@5` — the official Rust rewrite, shipped as a
+self-contained native binary through npm, cargo, brew or curl. Not the
+third-party `jscpd-rs` port, which is a separate project and benchmarks slower.
+
+It will not find the classes below, so still run them: a literal duplicating a
+named constant, and a fact duplicated between docs and code, are both invisible
+to token-level detection.
+
+```bash
+# 1. Identical blocks across apps — only if no clone detector is available.
+diff <(sed -n '/onError/,/^});/p' apps/a/src/index.ts) \
+     <(sed -n '/onError/,/^});/p' apps/b/src/index.ts)
+
+# 2. Literals that are already exported constants.
+grep -rn '"text/html"\|"application/json"' --include='*.ts' . | grep -v node_modules
+
+# 3. Repeated literals worth naming: anything appearing 3+ times.
+#    Exclude generated declarations, or platform runtime types drown the signal.
+grep -rhoE '"[a-z][a-z0-9:/._-]{6,}"' --include='*.ts' --exclude='*.d.ts' src test \
+  | sort | uniq -c | sort -rn | awk '$1 >= 3'
+
+# 4. Near-identical helpers under different names.
+grep -rn 'async function \|export function ' --include='*.ts' . \
+  | grep -v node_modules | awk -F: '{print $3}' | sort | uniq -c | sort -rn
+```
+
+Then ask, per hit:
+
+- Does this fact/behavior have **one** home, or several that can drift apart?
+- If two copies exist and one is fixed, does the other silently stay broken?
+  That is the whole test. A bug fixed in one copy staying broken in the other
+  is the cost; everything else is style.
+- For monorepos: check shared packages even if it adds a dependency edge —
+  duplicating across packages is worse than coupling them.
+- If you wrote a new utility, ask: "Could I delete this and import from
+  somewhere else?" If yes, do that instead.
+
+**Report the sweep even when it finds nothing.** A silent sweep and a skipped
+sweep are indistinguishable to the person reading your completion report, and
+only one of them is honest.
