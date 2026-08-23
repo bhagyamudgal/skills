@@ -31,10 +31,14 @@ These rules apply to ALL projects. No exceptions.
 > Compare added comment lines to added code lines: above roughly **one per 25**, the change is documenting itself instead of citing. Then list what was added, longest first, since length tracks duplication, and grep each distinctive phrase against both `docs/` and sibling `*.ts` — two modules explaining one platform quirk is the same defect as a comment restating the spec.
 >
 > ```bash
-> code=$(git diff --numstat <base> -- '*.ts' | awk '{s+=$1} END {print s}')
-> cmt=$(git diff -U0 <base> -- '*.ts' | grep -cE '^\+\s*(//|\*)')
-> echo "1 comment per $((code/cmt)) added lines"
-> git diff -U0 <base> -- '*.ts' | grep -E '^\+\s*(//|\*)' | sed 's/^+[[:space:]]*//' \
+> # `/\*` is in the class on purpose: without it a lone `/** … */` counts zero
+> # and the ratio divides by zero on exactly the well-behaved case.
+> MATCH='^\+[[:space:]]*(//|/\*|\*)'
+> code=$(git diff --numstat <base> -- '*.ts' | awk '{s+=$1} END {print s+0}')
+> cmt=$(git diff -U0 <base> -- '*.ts' | grep -cE "$MATCH")
+> [ "$cmt" -eq 0 ] && echo "no comments added" \
+>   || echo "1 comment per $((code/cmt)) added lines"
+> git diff -U0 <base> -- '*.ts' | grep -E "$MATCH" | sed 's/^+[[:space:]]*//' \
 >   | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2-
 > ```
 
