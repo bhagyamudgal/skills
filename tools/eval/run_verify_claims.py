@@ -148,7 +148,8 @@ def evaluate_case(case, final_text, tool_calls, process_error):
     failures = []
     if process_error:
         failures.append(process_error)
-    cards = [parse_claim_card(block) for block in split_claim_blocks(final_text)]
+    blocks = split_claim_blocks(final_text)
+    cards = [parse_claim_card(block) for block in blocks]
     states = {normalize_state(card.get("state", "")) for card in cards} & CARD_STATES
     if len(states) > 1:
         failures.append(f"conflicting claim cards: {', '.join(sorted(states))}")
@@ -167,6 +168,11 @@ def evaluate_case(case, final_text, tool_calls, process_error):
     for pattern in case.get("forbidden_next_action_patterns", []):
         if re.search(pattern, next_action, re.IGNORECASE | re.DOTALL):
             failures.append(f"forbidden next-action pattern: {pattern}")
+    for pattern in case["required_card_patterns"]:
+        if not re.search(pattern, blocks[-1], re.IGNORECASE | re.DOTALL):
+            failures.append(f"missing claim-card pattern: {pattern}")
+    # Whole-message scope is deliberate. A case can assert a value the card is not expected to
+    # restate, such as a superseded figure the run had to reconcile rather than silently replace.
     for pattern in case["required_patterns"]:
         if not re.search(pattern, final_text, re.IGNORECASE | re.DOTALL):
             failures.append(f"missing output pattern: {pattern}")

@@ -22,6 +22,25 @@ Registrar results additionally record currency, standard first-year base price,
 each mandatory fee, standard first-year total, renewal price when shown, and
 premium label.
 
+## What an RDAP 404 does and does not predict
+
+An RDAP `404` is `candidate_available_rdap` on every TLD, `.com` included. It never
+establishes standard-price availability, because registries maintain reserved and blocked
+lists whose names return `404` and still cannot be registered. Registrar confirmation stays
+required everywhere.
+
+What differs by TLD is how often the confirm rung changes the answer. `.com` has no registry
+premium tier, so a premium `.com` is an aftermarket listing, which is a registered domain
+returning an RDAP domain object. New gTLDs price short and dictionary words at the registry
+itself, so an unregistered name can cost many times the base rate. In a 2026 run `read.page`
+returned RDAP `404` and $1,091/yr at the registrar, and `drop.ink` returned `404` and roughly
+$360/yr on renewal, while `inert.page` on the same TLD was standard-priced. The pattern there
+is that common words are premium and unusual ones are not.
+
+Budget the confirm rung accordingly: screen in bulk, then confirm every candidate you intend
+to recommend, and expect a new-gTLD confirmation to overturn the screen far more often than a
+`.com` one.
+
 ## 1. Derive and normalize the domain
 
 - For a display name, lowercase it and remove styling spaces between valid label
