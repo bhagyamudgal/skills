@@ -1,79 +1,125 @@
 ---
 name: create-artifact
-description: Publish an HTML or Markdown file to a permanent public URL through Netlify's REST API. Use when a plan, report, or page should be a shareable link rather than a local file, or when running outside Claude Code where the Artifact tool is unavailable.
-license: MIT
-allowed-tools: Bash, Read, Write
+description: Upload a Markdown or HTML artifact to Folslate and return a public fol.ink URL. Use to share plans, reports, audits, findings, or other user-facing material as a link, when output is too long to paste inline, or when reading a fol.ink link.
 ---
 
 # Create artifact
 
-Turn a local document into a link. Three authenticated calls, no CLI, no git repository.
+Folslate hosts one Markdown or HTML file at a public URL. There is no account
+and no token: POST the bytes to `api.folslate.com`, get back a `fol.ink` link.
 
-The mechanism is one site, many deploys. A Netlify deploy is a full site snapshot, so you never create a site per artifact: the site's main URL always serves the newest one, and every past deploy keeps its own permanent `deploy_url` keyed by deploy id. That is how one site yields unlimited permanent links.
+## Check these before uploading
 
-## 1. Preflight
+None of the three can be undone after the upload.
 
-`NETLIFY_AUTH_TOKEN` holds a personal access token and every call sends `Authorization: Bearer $NETLIFY_AUTH_TOKEN`. When it is missing, stop and tell the user to create one under User settings, Applications, Personal access tokens, then export it.
+**The link is public.** Anyone holding the URL reads the document, with no
+authentication. Folslate has no delete, list, or edit endpoint, so a link
+cannot be revoked once it is given out. Keep credentials, keys, customer
+records, and anything the user has not agreed to publish out of the upload.
 
-`NETLIFY_ARTIFACT_SITE_ID` names the reused site. When it is missing, create the site once and ask the user to export the returned `id` so later runs share it:
+**It expires in one day.** The `201` carries the exact `expires` timestamp.
+Hand it to the user beside the link. After it, reads answer `404`.
 
-```bash
-curl -s -X POST https://api.netlify.com/api/v1/sites \
-  -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"<slug>-artifacts"}' | jq -r .id
-```
+**The page is inert.** A hosted document cannot run JavaScript, load an
+external stylesheet, font, or image, submit a form, or be framed. An HTML
+report that pulls a chart library from a CDN renders as a blank page. Folslate
+also strips every `<meta http-equiv>` and every `<noscript>` at upload.
 
-The token is a credential. Pass it through the environment, keep it out of command echoes, logs, and any URL you print.
+What you can do instead depends on the upload type. A `text/html` upload keeps
+inline `<style>`, and images load as `data:` URIs, so inline the SVG the CDN
+would have drawn. A `text/markdown` upload escapes raw HTML rather than passing
+it through, so an `<svg>` or `<style>` block written into Markdown arrives as
+visible text; Folslate styles Markdown itself, and a chart has to become a
+`data:` image.
 
-**Done when** both values are set and the site id belongs to an account the user controls.
-
-## 2. Build one self-contained HTML page
-
-Publish HTML. How a `.md` file renders depends on the `Content-Type` the host serves, which is not a contract you control, while an HTML page renders anywhere. Convert Markdown yourself rather than adding a converter dependency: write the page directly, with inline CSS and no external requests, so it survives with no network beyond the host.
-
-Write it to a temporary directory as `index.html`. Keep `#` and `?` out of the filename, which Netlify's file paths reject.
-
-**Done when** a single `index.html` exists and opening it locally shows the finished document.
-
-## 3. Deploy in three calls
-
-Digest first. Netlify matches file contents by SHA1 of the exact bytes.
+## Upload
 
 ```bash
-DIGEST=$(shasum -a 1 index.html | cut -d' ' -f1)
-
-DEPLOY=$(curl -s -X POST \
-  "https://api.netlify.com/api/v1/sites/$NETLIFY_ARTIFACT_SITE_ID/deploys" \
-  -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"files\":{\"/index.html\":\"$DIGEST\"}}")
-
-DEPLOY_ID=$(echo "$DEPLOY" | jq -r .id)
+curl -sS -X POST https://api.folslate.com/v1/upload \
+  -H 'content-type: text/markdown' \
+  --data-binary @report.md
 ```
 
-The response's `required` array lists the digests Netlify still needs. An empty array means it already holds these exact bytes, so skip the upload. Otherwise send the raw file:
+Use `--data-binary`, never `-d`. `-d` strips newlines and collapses the whole
+file into one paragraph, which destroys Markdown.
+
+`content-type` is `text/markdown` or `text/html`. Folslate rejects every other
+value with `415`, and it decides the pipeline: a `text/markdown` body is
+converted to HTML and wrapped in a page shell, a `text/html` body is sanitized
+and kept.
+
+A `201` looks like this:
+
+```json
+{
+    "success": true,
+    "message": "Document stored",
+    "data": {
+        "url": "https://fol.ink/doc_01k3n8w5q2r7v0xyz4a6bcdefg",
+        "expires": "2026-08-26T09:12:44.000Z",
+        "title": "Quarterly report"
+    },
+    "error": null
+}
+```
+
+Report `data.url` and `data.expires` together. A link without its expiry reads
+as permanent, and it is not.
+
+## Read a document back
 
 ```bash
-curl -s -X PUT \
-  "https://api.netlify.com/api/v1/deploys/$DEPLOY_ID/files/index.html" \
-  -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
-  -H "Content-Type: application/octet-stream" \
-  --data-binary @index.html
+curl -sS https://fol.ink/doc_01k3n8w5q2r7v0xyz4a6bcdefg
 ```
 
-The digest map keys the path with a leading slash. The upload URL does not.
+A live document returns the stored HTML. Every failure returns the JSON
+envelope instead, so a body starting with `{` is an error rather than a page.
 
-Then poll `GET /api/v1/deploys/$DEPLOY_ID` until `state` reads `ready`.
+`curl -I` on the same URL tells you a link is alive without recording a view.
 
-**Done when** `state` is `ready`.
+Ids are `doc_` followed by 26 lowercase Crockford Base32 characters, which
+exclude `i`, `l`, `o`, and `u`. Use the `url` the upload returned rather than
+building one.
 
-## 4. Hand back the link
+## Titles
 
-Report the deploy's `deploy_url`, which is the permanent snapshot of this artifact, and say that the site's main URL now serves it as the newest one.
+Every stored document carries a `<title>`. Folslate takes it from
+`X-Folslate-Title`, else the document's own `<title>` or first heading, else
+the document id.
 
-**Done when** the user has a URL that loads the finished page.
+```bash
+curl -sS -X POST https://api.folslate.com/v1/upload \
+  -H 'content-type: text/html' \
+  -H 'x-folslate-title: Release notes' \
+  --data-binary @page.html
+```
 
-## Publishing is public
+The `201` echoes the title the document actually got, so read `data.title`
+rather than fetching the document back to check. Folslate collapses whitespace
+and cuts the title at 200 characters, so a long one comes back changed.
 
-A `deploy_url` needs no credentials to read, and anyone holding it can read the document. Publish content written to be read by others. When it carries credentials, customer data, private notes, or unreleased work, ask the user before the deploy call rather than after.
+A header value carries UTF-8 correctly from a CLI or an agent. Browser
+`fetch()` cannot reliably send a non-ASCII header, so in browser code put the
+title in the document instead, where a Markdown `#` heading is read from the
+body as UTF-8.
+
+## When it fails
+
+Every response from `api.folslate.com`, and every failure on either host, has
+the same four fields: `success`, `message`, `data`, `error`. `data` is `null`
+whenever `success` is `false`. Branch on `error.code`. The `message` is prose and gets reworded.
+
+| `error.code`             | Status | What to do                                                                                                       |
+| ------------------------ | ------ | ---------------------------------------------------------------------------------------------------------------- |
+| `unsupported_media_type` | 415    | Send `text/markdown` or `text/html`. `error.accepts` lists them.                                                 |
+| `payload_too_large`      | 413    | The body is over `error.maxBytes`. Split the document or trim it.                                                |
+| `unprocessable_document` | 422    | Rendering failed. The same bytes fail the same way, so change them before retrying.                              |
+| `rate_limited`           | 429    | Wait the `Retry-After` seconds, then retry.                                                                      |
+| `storage_unavailable`    | 503    | Transient. Retry once.                                                                                           |
+| `not_found`              | 404    | On a read: expired, never existed, or a malformed id. These are deliberately indistinguishable, so do not retry. |
+
+## Limits
+
+Max body is 1 MB. Uploads are rate limited per IP at 20 a minute, counted per
+Cloudflare location rather than globally, so treat it as a brake on bulk
+traffic rather than an exact quota. Retention is one day from upload.
