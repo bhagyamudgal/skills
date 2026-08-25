@@ -180,7 +180,7 @@ The `/done` skill is the single source of truth for completion verification. It 
 - **Project-board ownership boundary:** Never update an issue's estimate or priority unless it is assigned to the requesting user. Treat issues assigned to other users, unassigned issues, and ambiguous ownership as read-only unless the user explicitly asks to update those specific issues or clearly broadens the scope to other assignees.
 - After completing changes: update the project's README.md and CLAUDE.md if conventions, exports, or workflows changed.
 - After ANY correction from me: turn it into a rule that prevents the same mistake — in the project CLAUDE.md if project-specific, or in the global CLAUDE.md / a skill if universal.
-- When I ask for findings, reports, audits, or lists to review: deliver a hosted HTML artifact (Artifact tool), not a raw markdown file. I review first; destructive follow-ups only after my explicit go-ahead.
+- Use the `create-artifact` skill whenever sharing a plan, findings, a report, an audit, or other substantial review material with me. Send its hosted link instead of raw Markdown or a local path, follow the skill's publication checks, and report the expiry beside the link. During unattended work, prepare the artifact locally and leave the irreversible Folslate upload for my return. I review first, and destructive follow-ups wait for my explicit approval.
 - Handoff docs and any other docs I ask for go in the repo's `docs/` folder (create it if missing) — never the repo root unless I explicitly say root. Filenames in lowercase snake_case (e.g., `docs/e2e_session_handover.md`).
 
 ## Overnight / Unattended Mode
