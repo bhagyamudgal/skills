@@ -34,6 +34,14 @@ visible text; Folslate styles Markdown itself, and a chart has to become a
 
 ## Upload
 
+Immediately before any POST below, invoke `preflight-mutations` for the exact
+artifact and Folslate target. Its mutation card must cover the document bytes,
+any sensitive material they contain, the public one-day retention, and the
+absence of revocation or deletion. Because this is an irreversible off-box
+publication, let `preflight-mutations` decide whether the current authorization
+is fresh and exact enough. Continue only on `ready`; on `confirmation-required`,
+wait for the named confirmation. Re-check the card's invalidators before sending.
+
 ```bash
 curl -sS -X POST https://api.folslate.com/v1/upload \
   -H 'content-type: text/markdown' \
@@ -69,11 +77,13 @@ as permanent, and it is not.
 ## Read a document back
 
 ```bash
-curl -sS https://fol.ink/doc_01k3n8w5q2r7v0xyz4a6bcdefg
+curl -sS -i https://fol.ink/doc_01k3n8w5q2r7v0xyz4a6bcdefg
 ```
 
-A live document returns the stored HTML. Every failure returns the JSON
-envelope instead, so a body starting with `{` is an error rather than a page.
+A `200` with `Content-Type: text/html` returns the stored document. Failures
+use a non-`200` status and `Content-Type: application/json`; parse the JSON
+envelope only for that media type. If the status and media type disagree,
+treat the response as unexpected instead of guessing from its first byte.
 
 `curl -I` on the same URL tells you a link is alive without recording a view.
 
@@ -86,6 +96,8 @@ building one.
 Every stored document carries a `<title>`. Folslate takes it from
 `X-Folslate-Title`, else the document's own `<title>` or first heading, else
 the document id.
+
+Run the upload preflight above for this exact HTML artifact before this POST.
 
 ```bash
 curl -sS -X POST https://api.folslate.com/v1/upload \
