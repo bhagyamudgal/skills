@@ -50,7 +50,7 @@ npx skills add bhagyamudgal/skills
 | `create-artifact` | Publish Markdown or HTML through Folslate as a public `fol.ink` link that expires after one day |
 | `simplify` | Remove unnecessary complexity from a completed diff while preserving its behavior, guards, and verified scope |
 | `parallel-review` | Build a reviewer roster, dispatch it in parallel over a local diff, and merge to one ranked list — the merge is not done while any reviewer is outstanding |
-| `review-pr` | Deep anti-slop review of a GitHub PR with critic-pass filtering, persistent multi-round state, and automatic GitHub submission — findings request changes, while a clean review approves |
+| `review-pr` | Deep anti-slop review of a GitHub PR with critic-pass filtering, persistent multi-round state, and automatic GitHub submission; self-authored PRs receive the same assessment as a comment |
 | `fix-pr-review` | Triage and fix CodeRabbit / `review-pr` findings, then reply + resolve PR conversations |
 | `audit-ticket` | Audit a stale GitHub issue against current code — per-requirement verdicts with file:line evidence that is re-checked before printing, then update, sunset, or split it |
 | `fix-ts-errors` | Fix TypeScript errors and loop the **workspace** type-check until it exits 0 — a file whose squiggles cleared is not green |
