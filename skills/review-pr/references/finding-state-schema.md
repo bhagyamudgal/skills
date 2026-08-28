@@ -215,8 +215,13 @@ The subagent prompt MUST emit `rule_class` for every finding. Use a slug from th
 
 Phase 1 computes `$CACHE_FILE` and `CURRENT_HEAD`; everything below describes what that file contains and which of three replay branches the comparison selects.
 
+```bash
+REVIEW_CACHE_CONTRACT_VERSION=2
+```
+
 ```json
 {
+  "contract_version": 2,
   "last_run_sha": "abc123...",
   "last_run_timestamp": "2026-04-11T13:29:50Z",
   "last_run_verdict": "request-changes",
@@ -226,17 +231,27 @@ Phase 1 computes `$CACHE_FILE` and `CURRENT_HEAD`; everything below describes wh
   "last_posted_review_node_id": "PRR_kwDO...",
   "last_posted_verdict": "request-changes",
   "last_posted_at": "2026-04-11T13:30:15Z",
+  "publication_evidence": {
+    "publication_mode": "threaded",
+    "review_node_id": "PRR_kwDO...",
+    "review_database_id": 12345678
+  },
   "posted_comments": [
     { "finding_key": "(file.ts, 47, processrequest)", "finding_id": "<id-hash>",
       "github_comment_id": 12345, "github_thread_id": "PRRT_abc123",
+      "review_database_id": 12345678, "review_node_id": "PRR_kwDO...",
       "finding_severity": "Serious" }
   ]
 }
 ```
 
+`REVIEW_CACHE_CONTRACT_VERSION` is the automatic-posting contract. Before reading any replay or `posted_comments` data, require `.contract_version == REVIEW_CACHE_CONTRACT_VERSION`. A missing or mismatched value marks the cache as legacy: ignore all of its contents, run a full fresh review, and replace it atomically only after the fresh run succeeds. Do not migrate `filtered_out` or thread ownership from a legacy cache.
+
 ### Three replay branches
 
-1. **`last_run_sha == CURRENT_HEAD`** — no new commits. Reuse the cached review result. If authoritative cache evidence confirms the same review body, head SHA, and required GitHub state are already posted, print the cached result and exit. Otherwise continue directly to Phase 4 and post the cached complete finding set; do not ask whether to replay or post.
+These branches apply only after the contract-version check succeeds.
+
+1. **`last_run_sha == CURRENT_HEAD`** — no new commits. Reuse the cached review result. If authoritative cache evidence confirms the same review body, head SHA, required GitHub state, and threaded publication ownership are already posted, print the cached result and exit. Otherwise continue directly to Phase 4 and post the cached complete finding set; do not ask whether to replay or post.
 
 2. **New commits since last run** (cached SHA is an ancestor of HEAD) — PARTIAL re-review:
    - `git diff <last_run_sha>..<CURRENT_HEAD>` (or `gh api compare` cross-repo) for new-commits diff.
@@ -304,21 +319,21 @@ After successful posting:
 5. Increment `last_round`. Update `updated_at`.
 6. Write the file atomically (temp + rename).
 
-State transitions in Phase 4:
+State transitions written by Phase 4:
 
-| Prior status     | Subagent emits finding? | External dismissal? | Fix shipped? | New status           |
-|------------------|-------------------------|-----------------|------------------------------|----------------------|
-| (no entry)       | yes                     | no              | no                           | `active` (new entry) |
-| `active`         | yes                     | no              | no                           | `active`             |
-| `active`         | yes                     | yes             | no                           | `dismissed`          |
-| `active`         | (n/a)                   | no              | yes — every `class_sites` entry `handled: true` | `resolved`  |
-| `active`         | (n/a)                   | no              | yes — some `class_sites` entry still unhandled  | `active` (partial fix is not a resolution; `handled` flags updated) |
-| `resolved`       | yes (regression)        | no              | no                           | `regression`         |
-| `regression`     | yes                     | no              | no                           | `regression`         |
-| `regression`     | yes                     | yes             | no                           | `dismissed`          |
-| `regression`     | (n/a)                   | no              | yes — every `class_sites` entry `handled: true` | `resolved` (new SHA) |
-| `dismissed`/`wontfix` | yes (suppressed)   | (n/a)           | (n/a)                        | unchanged (suppressed in Phase 3 step 4.95) |
-| `dismissed`/`wontfix`, `depends_on` condition voided at current head | (n/a) | (n/a) | (n/a)  | `active` (reopened; `dismissal_reason` + `round_resolved` kept as history) |
+| Prior status     | Subagent emits finding? | Fix shipped? | New status           |
+|------------------|-------------------------|--------------|----------------------|
+| (no entry)       | yes                     | no           | `active` (new entry) |
+| `active`         | yes                     | no           | `active`             |
+| `active`         | (n/a)                   | yes — every `class_sites` entry `handled: true` | `resolved`  |
+| `active`         | (n/a)                   | yes — some `class_sites` entry still unhandled  | `active` (partial fix is not a resolution; `handled` flags updated) |
+| `resolved`       | yes (regression)        | no           | `regression`         |
+| `regression`     | yes                     | no           | `regression`         |
+| `regression`     | (n/a)                   | yes — every `class_sites` entry `handled: true` | `resolved` (new SHA) |
+| `dismissed`/`wontfix` | yes (suppressed)   | (n/a)        | unchanged (suppressed in Phase 3 step 4.95) |
+| `dismissed`/`wontfix`, `depends_on` condition voided at current head | (n/a) | (n/a) | `active` (reopened; `dismissal_reason` + `round_resolved` kept as history) |
+
+An external triage workflow may import `dismissed` or `wontfix` before Phase 4 loads prior state. Phase 4 preserves those dispositions or reopens them when `depends_on` no longer holds; it never creates either disposition.
 
 **Writer caveat — `resolved` has no automated writer yet.** Every other transition in the table above is written by Phase 4 write-back, which is also the only writer of `class_sites`. `resolved` is the exception: `/fix-pr-review` applies fixes and resolves the GitHub threads, but it never opens this file — it has no `review-state` code path at all. Wiring that write-back into `/fix-pr-review` (locate the state file, match its FIX items to entries, check the gate, write) is follow-up work, out of scope here.
 

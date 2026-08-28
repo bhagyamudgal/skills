@@ -267,9 +267,9 @@ CACHE_FILE="$CACHE_DIR/<owner>_<repo>_<pr-number>.json"
 CURRENT_HEAD=$(gh pr view <url> --json headRefOid -q .headRefOid)
 ```
 
-Comparing `last_run_sha` to `CURRENT_HEAD` selects one of three branches: replay the cached run unchanged, re-review only the new commits, or invalidate and start fresh. The cache schema and the full body of each branch live in `references/finding-state-schema.md` under "Run-over-run cache" — already loaded above for the review-state read.
+Use `REVIEW_CACHE_CONTRACT_VERSION` from `references/finding-state-schema.md`, already loaded for the review-state read. Validate `contract_version` before reading any cache field. A missing or mismatched version invalidates the complete cache and starts a full fresh review. For a current cache, comparing `last_run_sha` to `CURRENT_HEAD` selects one of three branches: replay the cached run unchanged, re-review only the new commits, or invalidate and start fresh. The cache schema and the full body of each branch live in that reference under "Run-over-run cache".
 
-After successful run, write result to `$CACHE_FILE` at end of Phase 4 (cache is local, independent of GitHub state).
+After a successful run, write `contract_version: REVIEW_CACHE_CONTRACT_VERSION` with the result in `$CACHE_FILE` at the end of Phase 4. The cache is local and independent of GitHub state.
 
 If `PRIOR_STATE.convergence` exists, invoke `converge-reviews` with the current request, base/head, diff hash, paths, and planned roster/lenses before Phase 2. Reuse a matching result without dispatch. When it returns `closure_check: available`, dispatch the one targeted check over only the named blocker IDs and changed sites. Keep the recorded round unchanged and reject any new finding or widened coverage from that check. Feed its evidence and updated blocker dispositions back through `converge-reviews`, persist the new result plus `closure_check: passed | failed`, then apply that result: a passing check may return `converged`; a failed check remains `blocked-at-cap` at the current round. When the initial result is `continue`, review only the invalidated coverage it names; apply any other result without starting another round.
 
@@ -921,7 +921,7 @@ Total:   <s>
 
 ### Post to GitHub
 
-Invoking `/review-pr` authorizes posting the complete review. Do not ask the user to select findings, confirm posting, keep the review local, edit the body, or choose a next action.
+An explicit `/review-pr <PR URL>` invocation is fresh authorization to submit the complete binary review to that exact PR. The authorization remains valid only while the target PR, head SHA, verdict, and frozen payload match the later mutation card. Apply `preflight-mutations` normally and block on any non-ready verdict; do not bypass it or ask the user to select findings, confirm posting, keep the review local, edit the body, or choose a next action.
 
 - Submit every surviving finding as an individual review comment with the `REQUEST_CHANGES` event.
 - When no findings survive, submit an `APPROVE` review with the summary body and no review comments.
@@ -929,14 +929,14 @@ Invoking `/review-pr` authorizes posting the complete review. Do not ask the use
 
 Load `${CLAUDE_SKILL_DIR}/references/github-posting.md` now. The full posting flow handles:
 
-- **Step 0**: detect the latest prior `<!-- review-pr:run -->` tagged review. Reuse it only when it is under 30 days old and its GitHub state matches the current verdict; otherwise create a fresh review.
+- **Step 0**: detect the latest prior `<!-- review-pr:run -->` tagged review. Reuse it only when it is under 30 days old, its GitHub state matches the current verdict, it was threaded, and that exact review owns a thread for every current file-referenced finding. Any new or unowned finding creates a fresh pending review with the complete finding set.
 - **Step 0b**: verdict-body sync check — on re-runs with a `last_posted_review_id` in cache, warn when the previously-posted body verdict drifted from its GitHub state.
-- **Step 0c**: re-review thread resolution — resolve threads for findings now `resolved`, record the "Resolved since last review" line, and skip re-posting findings that already have threads.
+- **Step 0c**: re-review thread resolution — resolve threads for findings now `resolved`, record the "Resolved since last review" line, and preserve existing threads during an eligible body-only rolling update.
 - **Steps 1-2**: compose summary body (with marker comment) + per-finding review comments.
 - **Step 3**: pre-posting hunk validation (line vs file-level routing).
-- **Step 4 / 4-rolling**: REST POST PENDING (or GraphQL `updatePullRequestReviewBody` for rolling).
-- **Step 5 / 5-rolling**: GraphQL `addPullRequestReviewThread` for file-level (skip threads already in `posted_comments` on rolling path).
-- **Step 6**: GraphQL `submitPullRequestReview` with `REQUEST_CHANGES` or `APPROVE` (skipped on rolling only when the prior review already has the same state).
+- **Step 4 / 4-rolling**: REST POST PENDING, or update the submitted review body only when rolling eligibility proves no new threads are needed.
+- **Step 5**: GraphQL `addPullRequestReviewThread` for file-level findings on a fresh pending review.
+- **Step 6**: GraphQL `submitPullRequestReview` with `REQUEST_CHANGES` or `APPROVE`; skip only after a body-only rolling update whose review already has the required state and complete thread ownership.
 - **Step 7**: failure recovery with disclosed partial state.
 - **Step 8**: cache write-back + state file update + thread resolution for fixed findings.
 
