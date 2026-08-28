@@ -1,25 +1,25 @@
 ---
 name: review-pr
-description: Review a GitHub PR — deep, anti-slop, grounded in the linked issue's intent. Use on a PR URL when the ask is to produce findings; when findings already exist and the ask is to act on them, use /fix-pr-review. Batch mode covers 2+ PRs or "review all open PRs". For local uncommitted changes, use /parallel-review.
+description: Review a GitHub PR, then automatically request changes for any findings or approve a clean review. Use on a PR URL when the ask is to produce and submit findings; when findings already exist and the ask is to act on them, use /fix-pr-review. Batch mode covers 2+ PRs or "review all open PRs". For local uncommitted changes, use /parallel-review.
 ---
 
 # /review-pr — Deep GitHub PR Review
 
 Reviews a remote GitHub PR with anti-slop filtering. Input: **PR URL only**.
 
-Goal: produce an accurate, critical, actionable PR review that surfaces what a human reviewer should double-check — and filters out noise (style nitpicks, hallucinated references, duplicates, generic advice).
+Goal: produce an accurate, critical, actionable PR review, filter out noise (style nitpicks, hallucinated references, duplicates, generic advice), and submit the result to GitHub as `REQUEST_CHANGES` or `APPROVE`.
 
 **Cascade** is the failure this review is built to prevent: a fix shipped for round N's finding becomes round N+1's finding. Two things feed it — the suggested fix carries a defect of its own, and the fix lands on the cited site while identical sibling sites go untouched. So every finding proposing a code change carries an `Inverse risk:` and a `Class-sites:` count, one field per feeder. Phase 3 measures the result as `cascade_share` at step 7.5, the verdict at step 8 reads it to say whether the PR is converging, and Phase 4 prints it.
 
 This skill assumes CodeRabbit is configured on the repo via `.coderabbit.yaml`. CodeRabbit catches style + convention findings before this skill runs; `/review-pr` focuses on what only deep semantic + codebase-wide review can do.
 
-**Use AskUserQuestion for ALL user-facing decisions** — stop-and-ask, cache replay, large-PR confirmation, self-review, findings selection, post-review, post-failure, post-completion. Any sentence that offers the user 2+ labeled paths is an AskUserQuestion call, including the one that ends the run. Options are cursor-selectable, concrete, and considered — put the strongest first and mark it "(Recommended)".
+**Use AskUserQuestion for user-facing decisions that still require judgment** — stop-and-ask, large-PR confirmation, and post-failure recovery. Posting is not a decision point: invoking `/review-pr` authorizes submission of the complete review. Any sentence that offers the user 2+ labeled paths is an AskUserQuestion call. Options are cursor-selectable, concrete, and considered — put the strongest first and mark it "(Recommended)".
 
 ## Reference files
 
 Each one is loaded only on the branch that reaches it — some by main, some by a subagent. Loader and firing condition:
 
-- `references/batch-mode.md` — orchestration rules, "don't stop" semantics, consolidated-report template, end-of-run decision prompt. Loaded by **main** at Phase 1 when the user gives 2+ PR URLs or asks for all open PRs.
+- `references/batch-mode.md` — orchestration rules, "don't stop" semantics, consolidated-report template, and automatic posting sequence. Loaded by **main** at Phase 1 when the user gives 2+ PR URLs or asks for all open PRs.
 - `references/reviewer-prompt.md` — the whole Subagent 1 prompt, the anti-slop rules it works under, and the note on why the finding shape is not restated inside it. Loaded by **main** at the Phase 2 dispatch on every `SIZE_MODE` branch, `solo-main` included.
 - `references/cross-cutting-prompt.md` — the whole Subagent 3 prompt. Loaded by **main** at the Phase 2 dispatch when `SIZE_MODE` is `parallel-chunked` or `parallel-chunked-confirm`; the unchunked modes never dispatch Subagent 3.
 - `references/q5-type-coercion.md` — the Q5 type-coercion scan: coercion methods, how to decide a field is numeric, severity. Loaded by **Subagent 1** while answering Q5 when the diff contains a DB insert/update or an API payload construction.
@@ -31,7 +31,7 @@ Each one is loaded only on the branch that reaches it — some by main, some by 
 - `references/verification-subagents.md` — V1/V2/V3 dispatch conditions + the exact prompt each is given. Loaded by **main** in Phase 3 at the first of steps 4.55 / 4.9 / 6 that fires.
 - `references/false-positive-rules.md` — the four-rule YAML table (`wrapped-coercion`, `intent-alignment`, `library-behavior-citation`, `default-fallback`) each surviving finding is run through. Loaded by **main** at Phase 3 step 4.6 when any finding survives step 4.5.
 - `references/finding-state-schema.md` — both persistence files: `.claude/review-state/<pr>.yml` (schema, finding-ID strategy, state machine, Phase 4 write-back) and the run-over-run cache (schema + the three replay branches). Loaded by **main** in Phase 1 before the review-state read and the cache check, and again in Phase 4 before the state write-back.
-- `references/github-posting.md` — three-phase REST/GraphQL posting flow + rolling-review fix + re-run preflight (verdict-body sync, thread resolution) + failure recovery. Loaded by **main** in Phase 4 when the user chooses to post.
+- `references/github-posting.md` — three-phase REST/GraphQL posting flow + rolling-review fix + re-run preflight (verdict-body sync, thread resolution) + failure recovery. Loaded by **main** in Phase 4 for every completed external review.
 
 ## Planning-doc grounding (optional pre-review context)
 
@@ -47,7 +47,7 @@ If no URL is provided, ask the user for one. Bare `gh` commands infer a PR from 
 
 ## Batch mode (multiple PRs)
 
-Fires when the user provides **2+ PR URLs** or asks to review **all open PRs** — a single-PR run skips this entirely and drops straight into Phase 1. On that branch, load `${CLAUDE_SKILL_DIR}/references/batch-mode.md` before doing anything else: it holds the PR enumeration, the orchestration rules (one subagent per PR, main never reviews inline, subagents never post or ask), the "don't stop" semantics that turn every checkpoint into a pending decision, the consolidated-report template, and the single end-of-run decision prompt.
+Fires when the user provides **2+ PR URLs** or asks to review **all open PRs** — a single-PR run skips this entirely and drops straight into Phase 1. On that branch, load `${CLAUDE_SKILL_DIR}/references/batch-mode.md` before doing anything else: it holds the PR enumeration, the orchestration rules (one subagent per PR, main never reviews inline, subagents never post or ask), the "don't stop" semantics for review-only checkpoints, the consolidated-report template, and the automatic posting sequence.
 
 ---
 
@@ -77,6 +77,21 @@ If `gh pr view` returns a GraphQL resolution error or HTTP 404:
 > **Couldn't access PR** — check repo access. Try `gh auth refresh -s repo` and retry.
 
 Fail fast.
+
+### Self-review short-circuit
+
+After the metadata request succeeds, compare the authenticated viewer with the PR author:
+
+```bash
+VIEWER=$(gh api user -q .login)
+AUTHOR=$(gh pr view <url> --json author -q .author.login)
+```
+
+GitHub documents that [pull request authors cannot approve their own pull requests](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/about-pull-request-reviews). If the accounts match, stop before reviewing:
+
+> **Cannot submit this review under the binary posting contract** — GitHub does not allow an author to approve their own PR, so a clean self-review cannot produce the required `APPROVE` event. Run `/review-pr` from a different GitHub account.
+
+Do not fall back to `COMMENT`; that would violate the binary posting contract.
 
 ### Extract linked issues
 
@@ -797,12 +812,9 @@ Zero active findings → `cascade_share = 0`, not a division by zero.
 Step 8 below reads this value for the verdict prefix, and Phase 4's **Cascade check**
 prints it. Neither recomputes it — one number, one definition, one round.
 
-### 8. Decide verdict (category-aware)
+### 8. Decide verdict
 
-- Any **Critical** → `request-changes`
-- Any **Serious** in `Category = Security | Silent-failure | Breaking-change | Reusability` → `request-changes` (these are never "just a comment"; Reusability is escalated because reimplemented code is a correctness risk via divergent fixes)
-- Any other Serious → `comment`
-- Only Moderate/Minor → `approve` (with comments)
+- One or more surviving findings → `request-changes`
 - No findings → `approve`
 
 At any round, if `cascade_share > 0.5` — the single value computed at step 7.5 just above,
@@ -811,49 +823,28 @@ never recomputed here — prepend to the verdict reason:
 > Over half of this round's findings were introduced by the previous round's fixes.
 > Patching site-by-site is not converging — this module needs a design pass.
 
-#### Severity ratchet (`CURRENT_ROUND >= 3`)
-
-From round 3 onward, **only Critical and Serious may block.** Two concrete effects, both
-on top of the rules above:
-
-1. **Moderate and Minor stop holding the PR.** With no Critical and no `request-changes`
-   Serious, the verdict is `approve` even when Moderate and Minor findings remain — where
-   rounds 1–2 would have landed on `comment`.
-2. **They report separately.** Print them in the Phase 4 body under the
-   `Follow-ups (non-blocking)` heading instead of under their own severity headings, and
-   offer to file them as issues in the post-review prompt.
-
-Rationale: a PR that has absorbed two rounds of fixes is being held by a long tail,
-and each extra round of Moderate-chasing is another chance to feed the cascade. The
-tail is worth less than the churn it costs.
-
-Nothing else moves. No finding is dropped, no severity is rewritten, the verdict enum
-stays `approve | comment | request-changes`, and Critical and Serious block exactly as
-they do at rounds 1–2.
-
 ### 9. Decide Senior-engineer approval
 
-A binary verdict (with middle option):
+A binary assessment:
 
-- **No** — verdict is `request-changes`, OR Q1 identified an intent gap, OR any Critical exists
-- **With changes** — Serious findings exist in any category, OR 3+ Moderate findings
+- **No** — one or more findings survived the critic pass, OR Q1 identified an intent gap
 - **Yes** — otherwise
 
-Write a one-sentence approval reason grounded in the most important finding (or absence — e.g., "Does what the issue asks, no Serious issues").
+Write a one-sentence approval reason grounded in the most important finding or the absence of findings.
 
 ---
 
 ## Phase 4: Output
 
-Every Phase 4 path, including zero findings, self-review, keep-local, and posted-review paths, reaches **Convergence handoff** before exiting, except a self-review fix with `pending-publication` or `pending-input`. That path exits with its dependency-ready action and reaches convergence only after the action completes and the PR head, diff, class sites, and finding state are refreshed.
+Every Phase 4 path reaches **Convergence handoff** after the GitHub review is authoritatively submitted and local state is written back.
 
 ### Print this block to terminal, always
 
 ```
 # PR Review: <title> (#<number>)
 
-**Senior engineer approval**: <emoji> <Yes | No | With changes> — <one-sentence reason>
-**Verdict**: <emoji> <approve | comment | request-changes>
+**Senior engineer approval**: <emoji> <Yes | No> — <one-sentence reason>
+**Verdict**: <emoji> <approve | request-changes>
 **Goal**: <intent goal>
 **Size**: <additions>/<deletions> across <N> files
 **Reviewers**: <list, with "(unavailable)" marker for any failed subagent>
@@ -878,10 +869,6 @@ Every Phase 4 path, including zero findings, self-review, keep-local, and posted
 ### Minor
 <entries>
 
-## Follow-ups (non-blocking)
-<round >= 3 only: Moderate/Minor findings the severity ratchet released from blocking.
- Omit this heading entirely at rounds 1-2, where they appear under their own severity.>
-
 ## Filtered out (<count>)
 <dropped findings with reasons — for auditability>
 
@@ -891,8 +878,8 @@ Every Phase 4 path, including zero findings, self-review, keep-local, and posted
 
 ### Verdict and approval emoji mapping
 
-**Senior engineer approval**: Yes → ✅ · No → ❌ · With changes → ⚠️
-**Verdict**: approve → ✅ · comment → 💬 · request-changes → ❌
+**Senior engineer approval**: Yes → ✅ · No → ❌
+**Verdict**: approve → ✅ · request-changes → ❌
 **Severity headers**: Critical → 🔴 · Serious → 🟠 · Moderate → 🟡 · Minor → 🔵
 
 Filtered out is mandatory in terminal output — it is the only way to see when the critic is over-filtering. Multi-round status is mandatory when `PRIOR_STATE.findings` is non-empty.
@@ -932,159 +919,32 @@ Phase 4: <s>
 Total:   <s>
 ```
 
-### Self-review detection
+### Post to GitHub
 
-Before asking whether to post:
+Invoking `/review-pr` authorizes posting the complete review. Do not ask the user to select findings, confirm posting, keep the review local, edit the body, or choose a next action.
 
-```bash
-VIEWER=$(gh api user -q .login)
-AUTHOR=$(gh pr view <url> --json author -q .author.login)
-[ "$VIEWER" = "$AUTHOR" ] && SELF_REVIEW=true
-```
+- Submit every surviving finding as an individual review comment with the `REQUEST_CHANGES` event.
+- When no findings survive, submit an `APPROVE` review with the summary body and no review comments.
+- Preserve every item in `Filtered out` as terminal-only audit output. Filtered items never enter the GitHub payload.
 
-**GitHub silently coerces `--request-changes` to `--comment` when reviewer is the PR author.**
+Load `${CLAUDE_SKILL_DIR}/references/github-posting.md` now. The full posting flow handles:
 
-If `SELF_REVIEW=true`:
-
-If review has zero findings, print "No findings — nothing to fix.", skip the posting prompts, and continue to **Convergence handoff**. Otherwise:
-
-```
-header: "Self-review"
-text: "Self-review detected — you're the PR author. Posting to GitHub is unnecessary. Fix these findings directly?"
-options:
-  - "Fix now (Recommended)" — Auto-invoke /fix-pr-review; no GitHub posting
-  - "Keep local only" — Review stays in terminal
-  - "Post anyway" — Post as COMMENT state (GitHub coerces self-reviews)
-```
-
-On "Fix now":
-1. Follow `references/finding-state-schema.md` "Phase 4 — write back" for the current findings before invoking another skill. Persist the complete current-round finding state atomically, preserving any existing `convergence` block; this write establishes the finding IDs and statuses that the later fix and convergence steps reference. If the write fails, report it and stop before `/fix-pr-review` or convergence.
-2. Write findings to `/tmp/review-pr-<num>-findings.md` with explicit field labels (NOT the summary table — `/fix-pr-review` parses these labels):
-   ```
-   ## Findings
-
-   Severity: Serious
-   File: src/auth.ts:47
-   Category: Silent-failure
-   Rule-class: silent-failure
-   Enclosing-symbol: handleStdinError
-   Issue: Unhandled stdin error can crash process
-   Why it matters: Production crash on communication failure
-   Suggested fix: Add error event handler
-   Inverse risk: handler that only logs turns a crash into a silent hang
-   Class-sites: 2/3
-   ```
-
-   `Inverse risk:` and `Class-sites:` are not optional here. `/fix-pr-review` keys its
-   "seed, don't re-derive" path on exactly these two labels; drop them and it re-derives
-   both from scratch, discarding the work steps 4.55 and 4.56 already did.
-3. Invoke `/fix-pr-review /tmp/review-pr-<num>-findings.md`.
-4. After `/fix-pr-review` returns, refresh the authoritative PR head and full PR diff. Recheck every finding's stored `class_sites` against that published head; inspect the local diff only to distinguish an unpublished fix from an unchanged finding.
-5. Map every `/fix-pr-review` outcome into authoritative finding state:
-   - `FIX` whose fix is present on the published PR head and whose class sites are all handled → `resolved` with `commit_sha_resolved=<current PR head>`.
-   - `FIX` present only in local or otherwise unpublished work → `active`; set `last_message` to `fix pending publication — next action: publish the verified fix, then refresh the PR head and class sites`. An unchanged or partial FIX also stays `active` with its exact remaining work.
-   - `DISMISS` → `dismissed` with its reason and the current code condition in `depends_on`.
-   - `DISAGREE` → `wontfix` with its technical rationale in `dismissal_reason` and the rationale's current code condition in `depends_on`.
-   - `DEFER` → `wontfix` for this PR with the tracking reference in `dismissal_reason`, the current-PR scope boundary in `depends_on`, and convergence disposition `follow-up` with that tracking reference as the next action.
-   - `NEEDS-INPUT` → `active`; preserve `why_unclear` and the exact required user decision in `last_message`, and use convergence disposition `pending-input` with that decision as the next action.
-6. Atomically write the mapped finding state before convergence, preserving the existing `convergence` block. If any `pending-publication` or `pending-input` disposition remains, stop before convergence and return its first dependency-ready publication or user-decision action. Resume convergence only after refreshing the authoritative PR head, diff, class sites, and finding state when that action completes.
-7. Otherwise pass each finding's persisted status plus `resolved`, `dismissed`, `wontfix`, or `follow-up` disposition and exact next action into `converge-reviews`; its finding IDs and dispositions must match the state file. Never infer resolution from `/fix-pr-review` completion.
-8. Skip post-review prompts — `/fix-pr-review` handles its own workflow. Continue to **Convergence handoff** only when step 6 found no `pending-publication` or `pending-input` disposition; otherwise exit with that disposition's exact next action. Store convergence beside the finding state; never replace it with a convergence-only document.
-
-### Select findings to post (multiSelect)
-
-The user picks what goes to GitHub — posting waits for an explicit "Post now" or "Edit first"
-(self-review "Fix now" is the one path that proceeds without posting at all). Skip this step only if:
-- There are zero findings (verdict `approve` with no comments), or
-- The user already chose "Fix now" / "Keep local only" from the self-review prompt.
-
-AskUserQuestion:
-
-```
-header: "Findings"
-text: "Select which findings to post as review comments. Unselected findings stay local."
-options: [one option per finding: "<severity> <file:line> — <Issue, first ~60 chars>", ordered Critical → Minor]
-multiSelect: true
-```
-
-- If findings exceed the option limit, split into multiple multiSelect questions grouped by severity (Critical/Serious first).
-- Deselected findings: move to Filtered out with reason `user-deselected before posting`. They stay local, are excluded from the summary body's finding count, and are recorded in the state file as `dismissed` with `dismissal_reason: user-deselected` so later rounds leave them closed.
-- If deselection removes every finding that drove the verdict, recompute the verdict (Phase 3 step 8) over the selected set before composing the summary body.
-- If the user deselects everything, skip posting entirely — same outcome as "Keep local".
-
-### Then ask
-
-AskUserQuestion (cursor-selectable):
-
-```
-header: "Post review"
-text: "Post this review to the PR? Verdict: <verdict>"
-options:
-  - "Post now" — Submit as <verdict> (uses rolling-review if prior /review-pr review exists)
-  - "Keep local" — Don't post; stays in terminal
-  - "Edit first" — Open body in $EDITOR before posting
-```
-
-Every option here ends with the state-file write-back — "Keep local" included. Follow
-"Phase 4 — write back" in `references/finding-state-schema.md`; it is what lets round N+1
-know what round N settled.
-
-### If yes — Post via references/github-posting.md
-
-The full posting flow lives in `references/github-posting.md` — load it now. It handles:
-
-- **Step 0**: detect prior `<!-- review-pr:run -->` tagged review on the PR. If found within 30 days, use the rolling-review path (edit body in place, attach only NEW threads); otherwise create a fresh review.
+- **Step 0**: detect the latest prior `<!-- review-pr:run -->` tagged review. Reuse it only when it is under 30 days old and its GitHub state matches the current verdict; otherwise create a fresh review.
 - **Step 0b**: verdict-body sync check — on re-runs with a `last_posted_review_id` in cache, warn when the previously-posted body verdict drifted from its GitHub state.
 - **Step 0c**: re-review thread resolution — resolve threads for findings now `resolved`, record the "Resolved since last review" line, and skip re-posting findings that already have threads.
 - **Steps 1-2**: compose summary body (with marker comment) + per-finding review comments.
 - **Step 3**: pre-posting hunk validation (line vs file-level routing).
 - **Step 4 / 4-rolling**: REST POST PENDING (or GraphQL `updatePullRequestReviewBody` for rolling).
 - **Step 5 / 5-rolling**: GraphQL `addPullRequestReviewThread` for file-level (skip threads already in `posted_comments` on rolling path).
-- **Step 6**: GraphQL `submitPullRequestReview` (skipped on rolling — prior review already submitted).
+- **Step 6**: GraphQL `submitPullRequestReview` with `REQUEST_CHANGES` or `APPROVE` (skipped on rolling only when the prior review already has the same state).
 - **Step 7**: failure recovery with disclosed partial state.
 - **Step 8**: cache write-back + state file update + thread resolution for fixed findings.
 
-Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, summary body content, list of findings (line-level + file-level), `PRIOR_STATE` (Step 0c compares against it), `$CACHE_FILE` path, `$STATE_FILE` path.
-
-### If edit first
-
-Write summary body to `/tmp/review-pr-<num>.md`, open in `${EDITOR:-vi}`, then post after editor closes. This flow edits the summary body only; to change or remove a review comment (line-level or file-level), edit the findings list before "Post now".
+Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, summary body content, the complete surviving finding list (line-level + file-level), `PRIOR_STATE` (Step 0c compares against it), `$CACHE_FILE` path, `$STATE_FILE` path, and the `/review-pr` invocation as the posting authorization source.
 
 ### Convergence handoff
 
-Before any Phase 4 path exits, invoke `converge-reviews` with the PR request, base/current head and diff hash, reviewed paths, reviewer roster and lenses, current findings and dispositions, and `$STATE_FILE`. The self-review `pending-publication` and `pending-input` exception exits first with its dependency-ready action and invokes convergence only after the required refresh. Store the resulting `convergence` block in that existing state file without replacing `review-pr`'s finding state. Apply its result contract before recommending another review round or declaring the review converged.
-
-### Post-completion next actions (context-aware)
-
-AskUserQuestion. Skip entirely if:
-- Review had zero findings (verdict was `approve` with no comments)
-- User chose "Fix now" or "Keep local only" from self-review prompt
-- `/fix-pr-review` was already invoked
-
-**For external PRs** (reviewer is NOT the author):
-
-```
-header: "Next"
-text: "Review posted. What would you like to do next?"
-options:
-  - "Re-review later" — Re-run /review-pr after author pushes fixes
-  - "Done" — Nothing more — end the session
-```
-
-On "Re-review later": print `Run /review-pr <url> again after fixes` and exit — the author hasn't pushed yet, so the re-run belongs to a later session.
-
-**The AskUserQuestion above is the final turn of this skill.** No freeform follow-up text question.
-
-**For self-reviews** (user chose "Post anyway"):
-
-```
-header: "Next"
-options:
-  - "Fix findings" — Run /fix-pr-review on this PR
-  - "Done" — End the session
-```
-
-On "Fix findings": invoke `/fix-pr-review <url>`. **Final turn of the skill.** No follow-up.
+After authoritative posting and write-back, invoke `converge-reviews` with the PR request, base/current head and diff hash, reviewed paths, reviewer roster and lenses, current findings and dispositions, and `$STATE_FILE`. Store the resulting `convergence` block in that existing state file without replacing `review-pr`'s finding state. Apply its result contract before recommending another review round or declaring the review converged.
 
 ---
 
@@ -1098,4 +958,5 @@ On "Fix findings": invoke `/fix-pr-review <url>`. **Final turn of the skill.** N
 - **PR has no changes** → short-circuit (Phase 1).
 - **Phase 2 subagent failure** → continue with remaining; abort only if ALL fail.
 - **Network errors on `gh`** → surface, don't silently fall back.
+- **`APPROVE` / `REQUEST_CHANGES` permission denied** → surface the GitHub error and stop; never downgrade to `COMMENT`.
 - **Failed state-file write** → log warning, do not block posting. State file is best-effort persistence.

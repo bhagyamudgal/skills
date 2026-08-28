@@ -10,7 +10,7 @@ For "all open PRs", enumerate via `gh pr list --json number,url,title --limit 50
 
 - Main context is the **orchestrator** — oversight only. It never reviews a PR inline, regardless of `SIZE_MODE` (solo-main routing applies inside each subagent, not in main).
 - Spawn **ONE `general-purpose` subagent PER PR**. Each subagent runs the single-PR flow (Phases 1–3) independently against its own PR and returns its Phase 4 terminal block as its result. Dispatch in parallel batches of 3–4.
-- Subagents NEVER post to GitHub and NEVER ask questions — all posting and all AskUserQuestion checkpoints belong to the orchestrator, at the end.
+- Subagents NEVER post to GitHub and NEVER ask questions. They return the complete surviving finding set and binary verdict to the orchestrator, which posts each review after every subagent has returned.
 
 ### `<SKILL_DIR>` on the batch branch
 
@@ -30,25 +30,33 @@ Substitute this same SKILL_DIR value into every prompt YOU dispatch — Subagent
 Subagent 3, and the Phase 3 verifiers all carry `<SKILL_DIR>` placeholders, and you
 are the only source of the value they have.
 
-Do not post to GitHub and do not ask questions. Return your Phase 4 terminal block.
+Do not post to GitHub and do not ask questions. Return your Phase 4 terminal block plus the complete surviving finding payload the orchestrator needs to post.
 ```
 
 ---
 
 ## "Don't stop" semantics
 
-The run continues unattended through the WHOLE list — batch mode implies the user may be away. Do NOT stop between PRs. Every would-be checkpoint is collected as a **pending decision** instead of asked:
+The run continues unattended through the WHOLE list — batch mode implies the user may be away. Do NOT stop between PRs. Resolve review-only checkpoints as follows:
 
 - Stop-and-ask intent gap → review with just the diff; tag that PR's report `intent not grounded — findings may be generic`.
 - PR > 2000 lines → proceed with chunked review; note the size in that PR's report header.
-- Findings selection + post decision → deferred to end-of-run.
+- Completed external review → queue every surviving finding for automatic posting. Queue a clean review for automatic approval.
 - A failed subagent doesn't stop the batch — record `<pr>: review failed (<reason>)` in the consolidated report and continue with the rest.
+
+---
+
+## Automatic posting
+
+After every subagent returns, post each completed external review in list order through the single-PR GitHub posting flow. Post all surviving findings with `REQUEST_CHANGES`; post `APPROVE` when none survive. Invoke `preflight-mutations` separately for each PR immediately before its first mutation, using the batch `/review-pr` request as the authorization source. Reconcile and record each result before moving to the next PR.
+
+A posting failure never asks immediately. Record the exact partial GitHub state and the recovery choices from `github-posting.md` as `recovery-pending`, then continue with every untouched PR.
 
 ---
 
 ## Consolidated report
 
-After all subagents return, write ONE report document to `/tmp/review-pr-batch-<timestamp>.md` (and print it):
+After automatic posting has attempted every completed review and recorded each current state, write ONE report document to `/tmp/review-pr-batch-<timestamp>.md` (and print it). Derive every posting-status entry from the reconciled result:
 
 ```
 # Batch PR Review — <N> PRs (<date>)
@@ -57,27 +65,19 @@ After all subagents return, write ONE report document to `/tmp/review-pr-batch-<
 |----|-------|----------|---------|---|---|---|---|
 <one row per PR; "review failed" rows included>
 
-## Pending decisions (<count>)
-<one entry per deferred checkpoint, clearly marked:
-  PENDING — #<num>: post decision (<verdict>, <F> findings)
+## Posting status
+<one entry per PR: posted request-changes, posted approve, review failed, posting failed, recovery-pending, or self-review unsupported>
+
+## Pending review context (<count>)
+<one entry per review-only checkpoint that could not be resolved, such as:
   PENDING — #<num>: intent was not grounded — re-run with intent text?>
 
 ## Per-PR reviews
 <each PR's full Phase 4 terminal block, in list order>
 ```
 
----
+## Deferred posting recovery
 
-## End-of-run decisions
+After the report exists, walk every `recovery-pending` PR in list order through `github-posting.md` Step 7. Ask only the recovery question supported by that PR's recorded partial state. Reconcile the chosen action before advancing.
 
-Ask ONCE, only after the consolidated report is written — so if the user is away, the complete report with clearly-marked pending decisions is already on disk and nothing is lost:
-
-```
-header: "Batch done"
-text: "<N> PRs reviewed — <M> have findings to post, <K> pending decisions. Walk through them now?"
-options:
-  - "Triage now (Recommended)" — Walk each PR's findings selection + post decision in turn
-  - "Report only" — Keep the consolidated report; posting decisions stay pending
-```
-
-On "Triage now": for each PR with findings, run the single-PR "Select findings to post" multiSelect followed by its "Post review" prompt, in list order. On "Report only": exit — pending decisions remain marked in the report for a later run.
+After all recovery choices settle, regenerate the same report path from the final reconciled results and print it once more. If the user leaves a recovery unanswered, preserve `recovery-pending` with the exact next action; later PRs and their posting evidence remain complete.

@@ -82,10 +82,10 @@ A reviewer whose scope is the WHOLE PR (Subagent 1 in unchunked modes) ends its 
 with:
 
 ```
-Senior engineer approval: Yes | No | With changes
+Senior engineer approval: Yes | No
 Approval reason: <one sentence>
 Summary: <3 sentences — what the PR does, biggest concern, overall verdict>
-Verdict: approve | comment | request-changes
+Verdict: approve | request-changes
 ```
 
 Chunk reviewers, Subagent 3 and V3 report findings only — their scope is partial, so main
