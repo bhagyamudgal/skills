@@ -7,7 +7,7 @@ description: Review a GitHub PR, then automatically request changes for any find
 
 Reviews a remote GitHub PR with anti-slop filtering. Input: **PR URL only**.
 
-Goal: produce an accurate, critical, actionable PR review, filter out noise (style nitpicks, hallucinated references, duplicates, generic advice), and submit the result to GitHub as `REQUEST_CHANGES` or `APPROVE`.
+Goal: produce an accurate, critical, actionable PR review, filter out noise (style nitpicks, hallucinated references, duplicates, generic advice), and submit the result to GitHub. Reviews of another author's PR use `REQUEST_CHANGES` or `APPROVE`; self-reviews use `COMMENT` because GitHub forbids authors from approving their own PRs.
 
 **Cascade** is the failure this review is built to prevent: a fix shipped for round N's finding becomes round N+1's finding. Two things feed it — the suggested fix carries a defect of its own, and the fix lands on the cited site while identical sibling sites go untouched. So every finding proposing a code change carries an `Inverse risk:` and a `Class-sites:` count, one field per feeder. Phase 3 measures the result as `cascade_share` at step 7.5, the verdict at step 8 reads it to say whether the PR is converging, and Phase 4 prints it.
 
@@ -31,7 +31,7 @@ Each one is loaded only on the branch that reaches it — some by main, some by 
 - `references/verification-subagents.md` — V1/V2/V3 dispatch conditions + the exact prompt each is given. Loaded by **main** in Phase 3 at the first of steps 4.55 / 4.9 / 6 that fires.
 - `references/false-positive-rules.md` — the four-rule YAML table (`wrapped-coercion`, `intent-alignment`, `library-behavior-citation`, `default-fallback`) each surviving finding is run through. Loaded by **main** at Phase 3 step 4.6 when any finding survives step 4.5.
 - `references/finding-state-schema.md` — both persistence files: `.claude/review-state/<pr>.yml` (schema, finding-ID strategy, state machine, Phase 4 write-back) and the run-over-run cache (schema + the three replay branches). Loaded by **main** in Phase 1 before the review-state read and the cache check, and again in Phase 4 before the state write-back.
-- `references/github-posting.md` — three-phase REST/GraphQL posting flow + rolling-review fix + re-run preflight (verdict-body sync, thread resolution) + failure recovery. Loaded by **main** in Phase 4 for every completed external review.
+- `references/github-posting.md` — three-phase REST/GraphQL posting flow + rolling-review fix + re-run preflight (verdict-body sync, thread resolution) + failure recovery. Loaded by **main** in Phase 4 for every completed review.
 
 ## Planning-doc grounding (optional pre-review context)
 
@@ -78,7 +78,7 @@ If `gh pr view` returns a GraphQL resolution error or HTTP 404:
 
 Fail fast.
 
-### Self-review short-circuit
+### Detect self-review posting
 
 After the metadata request succeeds, compare the authenticated viewer with the PR author:
 
@@ -87,11 +87,7 @@ VIEWER=$(gh api user -q .login)
 AUTHOR=$(gh pr view <url> --json author -q .author.login)
 ```
 
-GitHub documents that [pull request authors cannot approve their own pull requests](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/about-pull-request-reviews). If the accounts match, stop before reviewing:
-
-> **Cannot submit this review under the binary posting contract** — GitHub does not allow an author to approve their own PR, so a clean self-review cannot produce the required `APPROVE` event. Run `/review-pr` from a different GitHub account.
-
-Do not fall back to `COMMENT`; that would violate the binary posting contract.
+GitHub documents that [pull request authors cannot approve their own pull requests](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/about-pull-request-reviews). Set `IS_SELF_REVIEW=true` when the accounts match and continue through the complete review. Phase 3 still decides the semantic verdict as `approve` or `request-changes`; Phase 4 submits the review with `COMMENT`, preserving its summary and per-finding threads without claiming an approval GitHub cannot record. Set `IS_SELF_REVIEW=false` otherwise.
 
 ### Extract linked issues
 
@@ -845,6 +841,7 @@ Every Phase 4 path reaches **Convergence handoff** after the GitHub review is au
 
 **Senior engineer approval**: <emoji> <Yes | No> — <one-sentence reason>
 **Verdict**: <emoji> <approve | request-changes>
+**GitHub event**: <APPROVE | REQUEST_CHANGES | COMMENT; use COMMENT when IS_SELF_REVIEW=true>
 **Goal**: <intent goal>
 **Size**: <additions>/<deletions> across <N> files
 **Reviewers**: <list, with "(unavailable)" marker for any failed subagent>
@@ -902,9 +899,11 @@ Convergence: 4 new · 3 caused by earlier fixes · 1 regression reopened · 2 ca
 Trend: cascade_share 0.75 — Not converging — the fixes are generating the findings.
 ```
 
-If a verdict REVERSES an earlier approval, say so explicitly in the Summary with the
-reason and the two SHAs, e.g. *"I approved this at `dd142e0`. I'm reversing that,
-because `e4f7432` made one thing worse than it was."*
+If a verdict reverses an earlier `approve` assessment, say so explicitly in the Summary
+with the reason and the two SHAs. For another author's PR, write *"I approved this at `dd142e0`.
+I'm reversing that, because `e4f7432` made one thing worse than it was."* For a self-review,
+write *"I assessed this as approve at `dd142e0`. I'm reversing that, because `e4f7432`
+made one thing worse than it was."*
 
 ### Wall-time instrumentation (end)
 
@@ -921,26 +920,26 @@ Total:   <s>
 
 ### Post to GitHub
 
-An explicit `/review-pr <PR URL>` invocation is fresh authorization to submit the complete binary review to that exact PR. The authorization remains valid only while the target PR, head SHA, verdict, and frozen payload match the later mutation card. Apply `preflight-mutations` normally and block on any non-ready verdict; do not bypass it or ask the user to select findings, confirm posting, keep the review local, edit the body, or choose a next action.
+An explicit `/review-pr <PR URL>` invocation is fresh authorization to submit the complete review to that exact PR. The authorization remains valid only while the target PR, head SHA, semantic verdict, GitHub event, and frozen payload match the later mutation card. Apply `preflight-mutations` normally and block on any non-ready verdict; do not bypass it or ask the user to select findings, confirm posting, keep the review local, edit the body, or choose a next action.
 
-- Submit every surviving finding as an individual review comment with the `REQUEST_CHANGES` event.
-- When no findings survive, submit an `APPROVE` review with the summary body and no review comments.
+- When `IS_SELF_REVIEW=false`, submit every surviving finding as an individual review comment with `REQUEST_CHANGES`; submit a clean review with `APPROVE` and no review comments.
+- When `IS_SELF_REVIEW=true`, submit the same complete finding set or clean summary with `COMMENT`. Keep the semantic verdict in the body and terminal output.
 - Preserve every item in `Filtered out` as terminal-only audit output. Filtered items never enter the GitHub payload.
 
 Load `${CLAUDE_SKILL_DIR}/references/github-posting.md` now. The full posting flow handles:
 
-- **Step 0**: detect the latest prior `<!-- review-pr:run -->` tagged review. Reuse it only when it is under 30 days old, its GitHub state matches the current verdict, it was threaded, and that exact review owns a thread for every current file-referenced finding. Any new or unowned finding creates a fresh pending review with the complete finding set.
-- **Step 0b**: verdict-body sync check — on re-runs with a `last_posted_review_id` in cache, warn when the previously-posted body verdict drifted from its GitHub state.
+- **Step 0**: detect the latest prior `<!-- review-pr:run -->` tagged review. Reuse it only when it is under 30 days old, its GitHub state matches the required event, its semantic verdict still matches on self-reviews, it was threaded, and that exact review owns a thread for every current file-referenced finding. Any failed condition creates a fresh pending review with the complete finding set.
+- **Step 0b**: verdict-body sync check — on re-runs with a `last_posted_review_id` in cache, map the body verdict through `IS_SELF_REVIEW` and warn when the implied event drifted from its GitHub state.
 - **Step 0c**: re-review thread resolution — resolve threads for findings now `resolved`, record the "Resolved since last review" line, and preserve existing threads during an eligible body-only rolling update.
 - **Steps 1-2**: compose summary body (with marker comment) + per-finding review comments.
 - **Step 3**: pre-posting hunk validation (line vs file-level routing).
 - **Step 4 / 4-rolling**: REST POST PENDING, or update the submitted review body only when rolling eligibility proves no new threads are needed.
 - **Step 5**: GraphQL `addPullRequestReviewThread` for file-level findings on a fresh pending review.
-- **Step 6**: GraphQL `submitPullRequestReview` with `REQUEST_CHANGES` or `APPROVE`; skip only after a body-only rolling update whose review already has the required state and complete thread ownership.
+- **Step 6**: GraphQL `submitPullRequestReview` with `REQUEST_CHANGES`, `APPROVE`, or the self-review `COMMENT`; skip only after a body-only rolling update whose review already has the required state and complete thread ownership.
 - **Step 7**: failure recovery with disclosed partial state.
 - **Step 8**: cache write-back + state file update + thread resolution for fixed findings.
 
-Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, summary body content, the complete surviving finding list (line-level + file-level), `PRIOR_STATE` (Step 0c compares against it), `$CACHE_FILE` path, `$STATE_FILE` path, and the `/review-pr` invocation as the posting authorization source.
+Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, `IS_SELF_REVIEW`, summary body content, the complete surviving finding list (line-level + file-level), `PRIOR_STATE` (Step 0c compares against it), `$CACHE_FILE` path, `$STATE_FILE` path, and the `/review-pr` invocation as the posting authorization source.
 
 ### Convergence handoff
 
@@ -958,5 +957,5 @@ After authoritative posting and write-back, invoke `converge-reviews` with the P
 - **PR has no changes** → short-circuit (Phase 1).
 - **Phase 2 subagent failure** → continue with remaining; abort only if ALL fail.
 - **Network errors on `gh`** → surface, don't silently fall back.
-- **`APPROVE` / `REQUEST_CHANGES` permission denied** → surface the GitHub error and stop; never downgrade to `COMMENT`.
+- **Review event permission denied** → surface the GitHub error and stop. Use `COMMENT` only when Phase 1 established `IS_SELF_REVIEW=true`; never downgrade another author's review after a permission failure.
 - **Failed state-file write** → log warning, do not block posting. State file is best-effort persistence.

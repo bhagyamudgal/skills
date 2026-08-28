@@ -6,7 +6,7 @@ This file owns:
 - Composing summary body + per-finding review comments
 - Pre-posting hunk validation (line vs file-level routing)
 - Three-phase REST/GraphQL posting (PENDING review → file-level threads → submit)
-- **Rolling-review fix**: reuse a recent `/review-pr` review only when its GitHub state matches the current binary verdict.
+- **Rolling-review fix**: reuse a recent `/review-pr` review only when its GitHub state matches the required submission event.
 - Pre-posting preflight on re-runs: verdict-body sync check, thread resolution for findings now `resolved`
 - Failure recovery (Phase A/B/C disclosed partial state)
 - State + cache write-back
@@ -37,13 +37,24 @@ Every review posted by `/review-pr` includes a hidden marker comment in the body
 <!-- review-pr:run sha=<head_sha_at_post_time> round=<round_number> -->
 ```
 
-Before posting, map the current verdict to its required GitHub state:
+Before posting, map the semantic verdict to its normal event and required GitHub state, then override both for a self-review:
 
 ```bash
 case "$verdict" in
-  approve) REQUIRED_REVIEW_STATE=APPROVED ;;
-  request-changes) REQUIRED_REVIEW_STATE=CHANGES_REQUESTED ;;
+  approve) REVIEW_EVENT=APPROVE; REQUIRED_REVIEW_STATE=APPROVED ;;
+  request-changes) REVIEW_EVENT=REQUEST_CHANGES; REQUIRED_REVIEW_STATE=CHANGES_REQUESTED ;;
   *) echo "Unsupported review verdict: $verdict" >&2; exit 1 ;;
+esac
+
+if [ "$IS_SELF_REVIEW" = "true" ]; then
+  REVIEW_EVENT=COMMENT
+  REQUIRED_REVIEW_STATE=COMMENTED
+fi
+
+case "$REVIEW_EVENT" in
+  APPROVE) REVIEW_FLAG=--approve ;;
+  REQUEST_CHANGES) REVIEW_FLAG=--request-changes ;;
+  COMMENT) REVIEW_FLAG=--comment ;;
 esac
 ```
 
@@ -73,16 +84,18 @@ Before selecting a branch, derive `CURRENT_THREADED_FINDING_IDS` from every surv
 
 - the validated current cache records `publication_evidence.publication_mode: threaded`;
 - `last_posted_review_node_id` and `last_posted_review_id` equal the candidate prior review;
+- when `IS_SELF_REVIEW=true`, the cache's `last_posted_verdict` equals the current semantic verdict;
 - every ID in `CURRENT_THREADED_FINDING_IDS` has exactly one `posted_comments` entry with non-empty `github_thread_id`, `review_node_id == PRIOR_REVIEW_NODE_ID`, and `review_database_id == PRIOR_REVIEW_DB_ID`.
 
-Treat missing ownership fields, multiple matches, an unvalidated cache contract, or a monolithic publication as not thread-complete. Query each cached thread ID and require it to belong to the candidate review before reuse; any absent, mismatched, or inconclusive thread makes the current run a fresh review.
+Treat missing ownership fields, multiple matches, an unvalidated cache contract, a self-review semantic-verdict mismatch, or a monolithic publication as not thread-complete. Query each cached thread ID and require it to belong to the candidate review before reuse; any absent, mismatched, or inconclusive thread makes the current run a fresh review.
 
 **Branches**:
 
 - **No prior tagged review** → fall through to Step 4 (Phase A: create new pending review).
 - **Prior tagged review found, submittedAt is within 30 days, its state matches the required GitHub state, AND it is thread-complete** → ROLLING-REVIEW path. Skip Steps 4–6. Use Step 4-rolling only to update the body; no new thread is needed.
+- **Prior self-review has a different semantic verdict** → create a fresh pending review through Step 4. Both verdicts have GitHub state `COMMENTED`, so state equality alone cannot make a reversal safe to roll onto the old threads.
 - **Prior tagged review found but any current file-referenced finding lacks a thread owned by that review** → create a fresh pending review through Step 4 with the complete current finding set. This covers both line-level and file-level additions; submitted reviews cannot accept new pending-review threads.
-- **Prior tagged review found but its state differs from the required GitHub state** → create a fresh review through Step 4. Updating a submitted review body cannot change `APPROVED` to `CHANGES_REQUESTED` or the reverse.
+- **Prior tagged review found but its state differs from the required GitHub state** → create a fresh review through Step 4. Updating a submitted review body cannot change its state among `APPROVED`, `CHANGES_REQUESTED`, and `COMMENTED`.
 - **Prior tagged review found BUT submittedAt > 30 days ago** → treat as legacy, fall through to Step 4 (new review). Don't try to edit reviews older than a month — they likely belong to a different commit history.
 
 The state and ownership checks keep body-only re-reviews compact without dropping new findings or attempting to attach them to a submitted review.
@@ -91,19 +104,25 @@ The state and ownership checks keep body-only re-reviews compact without droppin
 
 ## Step 0b — Verdict-body sync check (re-runs)
 
-If `last_posted_review_id` exists in cache, compare last-posted body verdict against GitHub state:
+If `last_posted_review_id` exists in cache, map the last-posted body verdict through the current self-review status before comparing it with GitHub state:
 
 ```bash
 LAST_POSTED_REVIEW_ID=$(jq -r '.last_posted_review_id // empty' "$CACHE_FILE")
 if [ -n "$LAST_POSTED_REVIEW_ID" ]; then
   LAST_POSTED_STATE=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews/$LAST_POSTED_REVIEW_ID" --jq .state)
   LAST_POSTED_BODY_VERDICT=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews/$LAST_POSTED_REVIEW_ID" --jq .body | grep -oE '\*\*Verdict\*\*:\s*`?(approve|request-changes)`?' | sed 's/.*\(approve\|request-changes\).*/\1/')
+  case "$LAST_POSTED_BODY_VERDICT" in
+    approve) LAST_POSTED_BODY_REQUIRED_STATE=APPROVED ;;
+    request-changes) LAST_POSTED_BODY_REQUIRED_STATE=CHANGES_REQUESTED ;;
+    *) LAST_POSTED_BODY_REQUIRED_STATE=UNKNOWN ;;
+  esac
+  [ "$IS_SELF_REVIEW" = "true" ] && LAST_POSTED_BODY_REQUIRED_STATE=COMMENTED
 fi
 ```
 
-If they drifted:
+If `LAST_POSTED_BODY_REQUIRED_STATE` differs from `LAST_POSTED_STATE`:
 
-> **Previous review's body verdict (`<body>`) does NOT match GitHub state (`<state>`).** The current run will create a fresh review when the required state differs; it will not preserve a mismatched rolling review.
+> **Previous review's body verdict (`<body>`) implies `<expected-state>`, but GitHub reports `<state>`.** The current run will create a fresh review when the required state differs; it will not preserve a mismatched rolling review.
 
 ---
 
@@ -160,7 +179,7 @@ Build a lean summary body (NO "Filtered out" section — internal only). **Alway
 *Details in review comments below.*  <!-- omit if ALL findings are body-fallback -->
 ```
 
-When there are zero findings, replace the findings table and details line with `### Findings\nNo findings.` The body still posts as an `APPROVE` review.
+When there are zero findings, replace the findings table and details line with `### Findings\nNo findings.` The body posts with `APPROVE` for another author's PR or `COMMENT` for a self-review.
 
 **Severity count badges**: `🔴 <N> Critical · 🟠 <M> Serious · 🟡 <K> Moderate · 🔵 <J> Minor` — only include levels that have findings.
 
@@ -234,7 +253,7 @@ Parse each `patch`: each `@@ -<oldStart>,<oldLen> +<newStart>,<newLen> @@` heade
 
 For each line-level finding: is `line` present on `path`'s post-image counter? If yes → keep. If no → demote to file-level + log the demotion.
 
-With routing now exact, render the complete summary body, canonical ordered line-comment set `(path, line, side, body)`, canonical ordered file-level set `(finding ID, path, body)`, and monolithic recovery body to files and freeze their SHA-256 digests. The file-level set is the posting ledger: Phase B posts and reconciles each exact frozen entry rather than rebuilding a path/body from live findings. Refresh the PR URL, base and current head SHA, and any prior review's ID, state, body, author, and submitted time. Invoke `preflight-mutations` immediately before Step 4 or Step 4-rolling performs the posting batch's first mutation. Pass those target guards, all frozen payload paths and digests, every surviving finding ID, the binary verdict, line/file targets, prior review ID or new-review action, subsequent add/submit/resolve targets, and the originating `/review-pr` request as the authorization source. Apply its result contract before continuing.
+With routing now exact, render the complete summary body, canonical ordered line-comment set `(path, line, side, body)`, canonical ordered file-level set `(finding ID, path, body)`, and monolithic recovery body to files and freeze their SHA-256 digests. The file-level set is the posting ledger: Phase B posts and reconciles each exact frozen entry rather than rebuilding a path/body from live findings. Refresh the PR URL, base and current head SHA, and any prior review's ID, state, body, author, and submitted time. Invoke `preflight-mutations` immediately before Step 4 or Step 4-rolling performs the posting batch's first mutation. Pass those target guards, all frozen payload paths and digests, every surviving finding ID, the semantic verdict, `IS_SELF_REVIEW`, `REVIEW_EVENT`, line/file targets, prior review ID or new-review action, subsequent add/submit/resolve targets, and the originating `/review-pr` request as the authorization source. Apply its result contract before continuing.
 
 ---
 
@@ -355,7 +374,7 @@ SUBMIT_RESP=$(gh api graphql -f query='
       pullRequestReview { id databaseId state submittedAt }
     }
   }
-' -f reviewId="$REVIEW_NODE_ID" -f event="<APPROVE|REQUEST_CHANGES>")
+' -f reviewId="$REVIEW_NODE_ID" -f event="$REVIEW_EVENT")
 
 SUBMIT_RESPONSE_ID=$(echo "$SUBMIT_RESP" | jq -r '.data.submitPullRequestReview.pullRequestReview.databaseId // empty')
 SUBMIT_RESPONSE_STATE=$(echo "$SUBMIT_RESP" | jq -r '.data.submitPullRequestReview.pullRequestReview.state // empty')
@@ -385,7 +404,7 @@ elif [ "$SUBMIT_RESPONSE_HAS_ERRORS" = "true" ] \
 fi
 ```
 
-**Event mapping**: `approve` → `APPROVE`, `request-changes` → `REQUEST_CHANGES`. `COMMENT` is not a valid outcome for this skill.
+**Event mapping**: another author's `approve` verdict uses `APPROVE`, and `request-changes` uses `REQUEST_CHANGES`. A self-review uses `COMMENT` for either semantic verdict because GitHub forbids authors from approving their own pull requests.
 
 A Phase C failure is the worst case: pending review has all threads but is never submitted, lingering as a draft.
 
@@ -401,11 +420,11 @@ If Phase A, B, or C fails: **DO NOT silently collapse to a monolithic body.** Th
 
 If authoritative read-back shows the target review is already submitted — including `ROLLING_PATH=true` — do not enter either cleanup branch below. Preserve the submitted review and query its complete body, line comments, and file-level threads. Reconcile every thread against the frozen canonical file-level entries and classify each entry as exactly one of `landed`, `confirmed-absent`, or `ambiguous`; cache exact landed IDs immediately. A body mismatch, multiple matches, or inconclusive query is `reconcile-required` and blocks further mutation.
 
-When one or more entries are `confirmed-absent`, offer only `Create supplemental review for confirmed-absent threads`, `Abort — preserve submitted review`, or `Show payload & preserve review`. The supplemental path refreshes the submitted-review and PR guards, freezes a summary naming the original review plus only the confirmed-absent entries, and invokes `preflight-mutations` with those exact payloads and digests. It then creates a new pending review through Step 4, attaches its file-level entries through Step 5, submits the same binary verdict through Step 6, and reconciles every result before advancing. Record each new cached thread as owned by the supplemental review; the split ownership makes later rolling reuse ineligible. Abort and show-payload leave the submitted review unchanged. Never attach a thread to a submitted review, delete it, route it through pending cleanup, or replace it with a monolithic review.
+When one or more entries are `confirmed-absent`, offer only `Create supplemental review for confirmed-absent threads`, `Abort — preserve submitted review`, or `Show payload & preserve review`. The supplemental path refreshes the submitted-review and PR guards, freezes a summary naming the original review plus only the confirmed-absent entries, and invokes `preflight-mutations` with those exact payloads and digests. It then creates a new pending review through Step 4, attaches its file-level entries through Step 5, submits the same `REVIEW_EVENT` through Step 6, and reconciles every result before advancing. Record each new cached thread as owned by the supplemental review; the split ownership makes later rolling reuse ineligible. Abort and show-payload leave the submitted review unchanged. Never attach a thread to a submitted review, delete it, route it through pending cleanup, or replace it with a monolithic review.
 
 ### No pending review
 
-When Phase A reconciliation set `NO_PENDING_REVIEW=true`, use a distinct recovery prompt: `Post frozen monolithic review` or `Abort — keep local`. Before a post, refresh the PR guards and invoke `preflight-mutations` with the complete zero-match reconciliation evidence plus the exact frozen monolithic body and digest; then post without calling `cleanup_pending_review`. Reconcile every result by exact author, head, verdict, and complete body before any retry. Abort performs no mutation. After one exact match, run the monolithic publication write-back below before convergence; this branch ends only after that write-back succeeds or its failure is reported.
+When Phase A reconciliation set `NO_PENDING_REVIEW=true`, use a distinct recovery prompt: `Post frozen monolithic review` or `Abort — keep local`. Before a post, refresh the PR guards and invoke `preflight-mutations` with the complete zero-match reconciliation evidence plus the exact frozen monolithic body and digest; then post with `gh pr review <url> "$REVIEW_FLAG" --body-file /tmp/review-pr-<num>-monolithic.md` without calling `cleanup_pending_review`. Reconcile every result by exact author, head, required GitHub state, semantic verdict in the body, and complete body before any retry. Abort performs no mutation. After one exact match, run the monolithic publication write-back below before convergence; this branch ends only after that write-back succeeds or its failure is reported.
 
 ### Pending review exists
 
@@ -461,7 +480,7 @@ cleanup_pending_review() {
 
 The cleanup result is authoritative only when the exact pending review node is absent. A surviving node, failed read-back, or changed review remains `reconcile-required`; preserve its IDs and stop without fallback posting.
 
-**On "Post as monolithic"**: require `cleanup_pending_review` to confirm absence, refresh the PR guard, then invoke a new preflight for the exact frozen monolithic body before `gh pr review <url> <verdict-flag> --body-file /tmp/review-pr-<num>-monolithic.md`. Reconcile every result by exact author, head, verdict, and complete body before any retry. After one exact match, run the monolithic publication write-back below before convergence.
+**On "Post as monolithic"**: require `cleanup_pending_review` to confirm absence, refresh the PR guard, then invoke a new preflight for the exact frozen monolithic body before `gh pr review <url> "$REVIEW_FLAG" --body-file /tmp/review-pr-<num>-monolithic.md`. Reconcile every result by exact author, head, required GitHub state, semantic verdict in the body, and complete body before any retry. After one exact match, run the monolithic publication write-back below before convergence.
 
 **Monolithic publication write-back**: freeze the authoritative match as `publication_evidence` with `publication_mode: monolithic`, the exact review database and node IDs, author, head SHA, GitHub state, verdict, complete-body SHA-256, every surviving finding ID, and verification timestamp. Merge it into `$CACHE_FILE` with `contract_version: REVIEW_CACHE_CONTRACT_VERSION`, `last_posted_review_id`, `last_posted_review_node_id`, `last_posted_verdict`, `last_posted_at`, `last_posted_finding_ids`, and `publication_evidence`; preserve existing `posted_comments` only as historical ownership records because a monolithic review creates no per-finding threads. A later run must not treat those entries as owned by the monolithic review. Follow `references/finding-state-schema.md` "Phase 4 — write back" for every surviving finding, then merge the same `publication_evidence` as a top-level `publication` block in `$STATE_FILE`, preserving its `findings` and `convergence` blocks. Write both files atomically. A failed write-back is reported and blocks convergence; publication already landed, so never repost it.
 
@@ -565,4 +584,4 @@ After every mutation attempt, query the exact thread ID. Record `resolved` only 
                                Step 8
 ```
 
-Net effect: only a thread-complete body update reuses a submitted review. A new or unowned finding, monolithic predecessor, verdict reversal, legacy cache, or aged review creates a fresh pending review with every current finding, while resolved prior threads remain collapsed.
+Net effect: only a thread-complete body update reuses a submitted review. A new or unowned finding, monolithic predecessor, required-state change, self-review semantic-verdict reversal, legacy cache, or aged review creates a fresh pending review with every current finding, while resolved prior threads remain collapsed.
