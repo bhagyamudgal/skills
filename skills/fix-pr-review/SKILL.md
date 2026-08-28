@@ -70,7 +70,7 @@ One reference is not bundled here: `${CLAUDE_SKILL_DIR}/../review-pr/references/
 /fix-pr-review https://github.com/owner/repo/pull/123#pullrequestreview-4089716169
 /fix-pr-review https://github.com/owner/repo/pull/123#discussion_r3064352825
 /fix-pr-review ./review.md            # local output from /review-pr
-/fix-pr-review /tmp/review-pr-123-findings.md  # temp file from /review-pr self-review
+/fix-pr-review /tmp/review-pr-123-findings.md  # local review export
 /fix-pr-review                         # no arg → ask user to paste
 ```
 
@@ -193,7 +193,7 @@ Stash both outputs as `repo_map_files` and `repo_map_exports` for the Phase 3 su
 
 `/review-pr` now posts findings as **individual inline comments** (one per finding, each on a specific code line). These create standard `PullRequestReviewThread`s on GitHub — identical to CodeRabbit threads. The existing GraphQL fetch below handles them with zero special parsing.
 
-For self-review auto-fix (where `/review-pr` detects the user is the PR author and offers "Fix now"), findings are written to a temp file (e.g., `/tmp/review-pr-<number>-findings.md`) in the standard `## Findings` format. This uses the existing local file input path — Phase 7 automatically skips GitHub ops for local files.
+Manually exported or legacy `/review-pr` findings files use the existing local-file path. Phase 7 skips GitHub operations for those inputs.
 
 ### Fetch from GitHub (PR URL / review URL / discussion URL)
 

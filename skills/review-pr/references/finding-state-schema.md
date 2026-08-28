@@ -147,9 +147,9 @@ One id, not a list — the single *nearest* cause. When several closed findings 
 │        └────┬─────────┬──────────────┬─────┘
 │             │         │              │
 │             │         │              │
-│  (fix landed,         │      (user dismisses     (subagent emits SAME id
-│   confirmed in        │       in post-review     after status was resolved
-│   diff, AND every     │       prompt)            — code regressed)
+│  (fix landed,         │      (explicit external  (subagent emits SAME id
+│   confirmed in        │       disposition)       after status was resolved
+│   diff, AND every     │                          — code regressed)
 │   class_sites entry   │
 │   handled)            │
 │             ▼         ▼              ▼
@@ -157,8 +157,8 @@ One id, not a list — the single *nearest* cause. When several closed findings 
 │      │ resolved │ │ dismissed│  │regression│
 │      └──────────┘ │ wontfix  │  └────┬─────┘
 │                   └────┬─────┘       │
-│                        │             │  (user re-flags the regression
-│                        │             │   as resolved or dismissed)
+│                        │             │  (external triage marks the regression
+│                        │             │   resolved or dismissed)
 │                        │             ▼
 │                        │        back to resolved/dismissed
 │                        │
@@ -168,7 +168,7 @@ One id, not a list — the single *nearest* cause. When several closed findings 
 ```
 
 - **`resolved`**: subagent saw the fix in the diff between `commit_sha_resolved` and the prior round's HEAD, **and** every `class_sites` entry is `handled: true`. A fix that lands on the cited site while a sibling site stays unhandled leaves the finding `active`. No automated writer sets this today — see the writer caveat at the end of "Phase 4 — write back".
-- **`dismissed`**: user explicitly dropped the finding via the post-review AskUserQuestion. `dismissal_reason` is required.
+- **`dismissed`**: an explicit disposition imported from prior state or a downstream triage workflow. `dismissal_reason` is required. `/review-pr` never creates this status by deselecting a finding.
 - **`wontfix`**: user rejected the finding as wrong / out-of-scope. `dismissal_reason` is required (e.g., "intentional design — see the linked design issue").
 - **`regression`**: subagent emits a finding whose `id` matches an existing `resolved` entry, AND the diff shows the resolving code was reverted/edited. Treat as a fresh active finding but keep the history.
 - **`dismissed`/`wontfix` → `active`**: the code condition recorded in `depends_on` no longer holds at the current head, so the rationale that closed the finding no longer applies. Reopen as `active`; keep `dismissal_reason` and the original `round_resolved` as history, and note which commit voided the condition. There is no separate "voided" status — a void dismissal is just an open finding again.
@@ -215,8 +215,13 @@ The subagent prompt MUST emit `rule_class` for every finding. Use a slug from th
 
 Phase 1 computes `$CACHE_FILE` and `CURRENT_HEAD`; everything below describes what that file contains and which of three replay branches the comparison selects.
 
+```bash
+REVIEW_CACHE_CONTRACT_VERSION=2
+```
+
 ```json
 {
+  "contract_version": 2,
   "last_run_sha": "abc123...",
   "last_run_timestamp": "2026-04-11T13:29:50Z",
   "last_run_verdict": "request-changes",
@@ -226,17 +231,27 @@ Phase 1 computes `$CACHE_FILE` and `CURRENT_HEAD`; everything below describes wh
   "last_posted_review_node_id": "PRR_kwDO...",
   "last_posted_verdict": "request-changes",
   "last_posted_at": "2026-04-11T13:30:15Z",
+  "publication_evidence": {
+    "publication_mode": "threaded",
+    "review_node_id": "PRR_kwDO...",
+    "review_database_id": 12345678
+  },
   "posted_comments": [
     { "finding_key": "(file.ts, 47, processrequest)", "finding_id": "<id-hash>",
       "github_comment_id": 12345, "github_thread_id": "PRRT_abc123",
+      "review_database_id": 12345678, "review_node_id": "PRR_kwDO...",
       "finding_severity": "Serious" }
   ]
 }
 ```
 
+`REVIEW_CACHE_CONTRACT_VERSION` is the automatic-posting contract. Before reading any replay or `posted_comments` data, require `.contract_version == REVIEW_CACHE_CONTRACT_VERSION`. A missing or mismatched value marks the cache as legacy: ignore all of its contents, run a full fresh review, and replace it atomically only after the fresh run succeeds. Do not migrate `filtered_out` or thread ownership from a legacy cache.
+
 ### Three replay branches
 
-1. **`last_run_sha == CURRENT_HEAD`** — no new commits. AskUserQuestion: `Replay cached (Recommended)` vs `Fresh review`. On replay, print cached findings and exit (Phase 2/3/4 skipped).
+These branches apply only after the contract-version check succeeds.
+
+1. **`last_run_sha == CURRENT_HEAD`** — no new commits. Reuse the cached review result. If authoritative cache evidence confirms the same review body, head SHA, required GitHub state, and threaded publication ownership are already posted, print the cached result and exit. Otherwise continue directly to Phase 4 and post the cached complete finding set; do not ask whether to replay or post.
 
 2. **New commits since last run** (cached SHA is an ancestor of HEAD) — PARTIAL re-review:
    - `git diff <last_run_sha>..<CURRENT_HEAD>` (or `gh api compare` cross-repo) for new-commits diff.
@@ -292,33 +307,33 @@ For each remaining finding:
 
 ### Phase 4 — write back
 
-After successful posting (or after "Keep local"):
+After successful posting:
 
 1. For each finding currently posted/active in this round:
    - If `id` not in `PRIOR_STATE.findings`: append new entry with `status: active`, `round_first_seen: <current_round>`, and the cascade fields taken straight off the printed finding: `inverse_risk` from its `Inverse risk:` line, `class_sites` from the site list in its `class_completeness:` audit as verified in Phase 3 (each site `handled: false` unless this PR's diff already covers it), `caused_by` from the regression sweep's lineage attribution (null when it attributed none), `depends_on: null`.
    - If `id` already exists with `status: active`: append `<this-round-label>` to `label_history`, update `last_message`. Status stays `active`. Also refresh `inverse_risk` when the suggested fix changed this round, and rewrite `class_sites` with this round's `handled` flags — including sites the current diff newly introduced.
    - If `id` already exists with `status: regression` (entered via Phase 3 step 4.95 because the resolving code was reverted): treat exactly like `active` — append to `label_history`, update `last_message`, refresh `class_sites`. Set `caused_by` when the sweep traced the reopen to another finding's fix. The finding stays in `regression` until the user resolves OR dismisses it (rules below). The history of `round_resolved` + `commit_sha_resolved` is **preserved** (do NOT clear them — they document the prior resolve that got reverted).
-2. For each finding the user explicitly dismissed via the post-review AskUserQuestion: write `status: dismissed` + `dismissal_reason: <user reason>` regardless of prior status (including `regression`). A regression that the user dismisses goes to `dismissed` (the prior `round_resolved` + `commit_sha_resolved` from before the regression are kept in the entry as historical context). Write `depends_on` at the same moment — the code condition the rationale rests on, in the user's own terms. It is required for `wontfix` and for any `dismissed` whose reason rests on how the code behaves today; a dismissal with `depends_on: null` can never be voided and will outlive the condition that justified it.
+2. Preserve existing `dismissed` and `wontfix` entries unless the regression sweep reopens them. Automatic posting never converts a surviving finding to either status; every surviving finding remains `active` or `regression` and is posted.
 3. For each finding whose fix has shipped (writer caveat below — this transition is currently made by hand): `status: resolved` + `commit_sha_resolved: <sha of the resolving commit>` regardless of prior status — but **only when every `class_sites` entry is `handled: true`**. If any site is still unhandled, keep the prior status (`active` / `regression`), write the updated `handled` flags, and leave `commit_sha_resolved` untouched: a fix covering part of the class is not a resolution. A regression that gets fully re-fixed goes back to `resolved` with the *new* commit SHA; the prior `commit_sha_resolved` is overwritten (only the latest resolving commit is kept — `label_history` retains the full timeline).
 4. For each closed finding the Phase 3 regression sweep reopened: an entry reopened because a `class_sites` site went unhandled or its `inverse_risk` failure mode materialized becomes `status: regression`; a `dismissed`/`wontfix` entry whose `depends_on` condition was voided becomes `status: active`, keeping `dismissal_reason` and `round_resolved` as history and naming the voiding commit in `last_message`.
 5. Increment `last_round`. Update `updated_at`.
 6. Write the file atomically (temp + rename).
 
-State transitions in Phase 4:
+State transitions written by Phase 4:
 
-| Prior status     | Subagent emits finding? | User dismisses? | Fix shipped? | New status           |
-|------------------|-------------------------|-----------------|------------------------------|----------------------|
-| (no entry)       | yes                     | no              | no                           | `active` (new entry) |
-| `active`         | yes                     | no              | no                           | `active`             |
-| `active`         | yes                     | yes             | no                           | `dismissed`          |
-| `active`         | (n/a)                   | no              | yes — every `class_sites` entry `handled: true` | `resolved`  |
-| `active`         | (n/a)                   | no              | yes — some `class_sites` entry still unhandled  | `active` (partial fix is not a resolution; `handled` flags updated) |
-| `resolved`       | yes (regression)        | no              | no                           | `regression`         |
-| `regression`     | yes                     | no              | no                           | `regression`         |
-| `regression`     | yes                     | yes             | no                           | `dismissed`          |
-| `regression`     | (n/a)                   | no              | yes — every `class_sites` entry `handled: true` | `resolved` (new SHA) |
-| `dismissed`/`wontfix` | yes (suppressed)   | (n/a)           | (n/a)                        | unchanged (suppressed in Phase 3 step 4.95) |
-| `dismissed`/`wontfix`, `depends_on` condition voided at current head | (n/a) | (n/a) | (n/a)  | `active` (reopened; `dismissal_reason` + `round_resolved` kept as history) |
+| Prior status     | Subagent emits finding? | Fix shipped? | New status           |
+|------------------|-------------------------|--------------|----------------------|
+| (no entry)       | yes                     | no           | `active` (new entry) |
+| `active`         | yes                     | no           | `active`             |
+| `active`         | (n/a)                   | yes — every `class_sites` entry `handled: true` | `resolved`  |
+| `active`         | (n/a)                   | yes — some `class_sites` entry still unhandled  | `active` (partial fix is not a resolution; `handled` flags updated) |
+| `resolved`       | yes (regression)        | no           | `regression`         |
+| `regression`     | yes                     | no           | `regression`         |
+| `regression`     | (n/a)                   | yes — every `class_sites` entry `handled: true` | `resolved` (new SHA) |
+| `dismissed`/`wontfix` | yes (suppressed)   | (n/a)        | unchanged (suppressed in Phase 3 step 4.95) |
+| `dismissed`/`wontfix`, `depends_on` condition voided at current head | (n/a) | (n/a) | `active` (reopened; `dismissal_reason` + `round_resolved` kept as history) |
+
+An external triage workflow may import `dismissed` or `wontfix` before Phase 4 loads prior state. Phase 4 preserves those dispositions or reopens them when `depends_on` no longer holds; it never creates either disposition.
 
 **Writer caveat — `resolved` has no automated writer yet.** Every other transition in the table above is written by Phase 4 write-back, which is also the only writer of `class_sites`. `resolved` is the exception: `/fix-pr-review` applies fixes and resolves the GitHub threads, but it never opens this file — it has no `review-state` code path at all. Wiring that write-back into `/fix-pr-review` (locate the state file, match its FIX items to entries, check the gate, write) is follow-up work, out of scope here.
 
