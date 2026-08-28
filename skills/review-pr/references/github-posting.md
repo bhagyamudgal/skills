@@ -110,13 +110,18 @@ If `last_posted_review_id` exists in cache, map the last-posted body verdict thr
 LAST_POSTED_REVIEW_ID=$(jq -r '.last_posted_review_id // empty' "$CACHE_FILE")
 if [ -n "$LAST_POSTED_REVIEW_ID" ]; then
   LAST_POSTED_STATE=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews/$LAST_POSTED_REVIEW_ID" --jq .state)
-  LAST_POSTED_BODY_VERDICT=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews/$LAST_POSTED_REVIEW_ID" --jq .body | grep -oE '\*\*Verdict\*\*:\s*`?(approve|request-changes)`?' | sed 's/.*\(approve\|request-changes\).*/\1/')
+  LAST_POSTED_BODY_VERDICT=$(
+    gh api "repos/<owner>/<repo>/pulls/<num>/reviews/$LAST_POSTED_REVIEW_ID" --jq .body |
+      awk '/^## PR Review: #[0-9]+$/ { if (getline > 0 && (($1 == "✅" && $2 == "approve") || ($1 == "❌" && $2 == "request-changes")) && $3 == "|") print $2; exit }'
+  )
   case "$LAST_POSTED_BODY_VERDICT" in
     approve) LAST_POSTED_BODY_REQUIRED_STATE=APPROVED ;;
     request-changes) LAST_POSTED_BODY_REQUIRED_STATE=CHANGES_REQUESTED ;;
     *) LAST_POSTED_BODY_REQUIRED_STATE=UNKNOWN ;;
   esac
-  [ "$IS_SELF_REVIEW" = "true" ] && LAST_POSTED_BODY_REQUIRED_STATE=COMMENTED
+  if [ "$IS_SELF_REVIEW" = "true" ] && [ "$LAST_POSTED_BODY_REQUIRED_STATE" != "UNKNOWN" ]; then
+    LAST_POSTED_BODY_REQUIRED_STATE=COMMENTED
+  fi
 fi
 ```
 
