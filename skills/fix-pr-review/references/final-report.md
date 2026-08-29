@@ -92,7 +92,7 @@ Convergence: converged — all <F> fixes class-complete, inverse risk absent, no
 #     the line MUST state that the risky fix is STILL APPLIED.
 #   - For each fix, render the `Test:` line using the `test_scenario` field
 #     from the classifier plan verbatim. Do NOT paraphrase — the user needs
-#     the exact repro they approved.
+#     the exact validated repro.
 #   - If a subsection's count is 0, omit the subsection entirely (do not
 #     print an empty header).
 

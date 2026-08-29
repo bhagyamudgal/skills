@@ -85,7 +85,7 @@ On failure: dispatch a 1-off `general-purpose` subagent with the original commen
 
 ## Step 7c — Post loop
 
-Immediately before the first reply in this approved batch, invoke `preflight-mutations`. Pass the exact PR URL, base and current head SHA, every target thread ID, ordered reply/resolve actions, final validated reply text and classification per item, and the Phase 4 approvals that cover those items. Apply its result contract before continuing.
+Immediately before the first reply in this authorized batch, invoke `preflight-mutations`. Pass the exact PR URL, base and current head SHA, every target thread ID, ordered reply/resolve actions, final validated reply text and classification per item, and the authorization evidence that covers each item. FIX items use `execution_authorization_evidence`, plus their per-fix confirmation when `--interactive` was set. DISMISS, DEFER, and DISAGREE items use their contested-item confirmation. Apply the result contract before continuing.
 
 For each item with a non-null `thread_id` (actionables only — NOT nitpicks, NOT NEEDS-INPUT, NOT `reply_invalid`, and NOT any FIX item Step 7a left without a `reply_final`, i.e. `fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk, inverse_risk_applied}`):
 

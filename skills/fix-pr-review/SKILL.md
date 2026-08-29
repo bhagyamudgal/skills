@@ -5,9 +5,9 @@ description: Triage and fix review findings that already exist on a GitHub PR, t
 
 # /fix-pr-review — Triage, Fix, and Resolve PR Review Comments
 
-Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding, applies approved fixes, runs `/done`, and replies + resolves conversations on GitHub — all in one flow.
+Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding, applies validated fixes, runs `/done`, and replies + resolves conversations on GitHub — all in one flow.
 
-**Use AskUserQuestion for ALL user-facing decisions** — branch safety, stash confirmation, contested-item confirmation, plan approval, per-fix confirmations, type-check failure triage, and post-completion next actions. Every option is a concrete, considered answer, strongest first and marked "(Recommended)".
+**Use AskUserQuestion only when the run still needs a user decision** — branch safety, stash confirmation, contested-item confirmation, `--interactive` per-fix confirmations, type-check failure triage, and post-completion next actions. Invoking `/fix-pr-review` or imperatively asking to fix review findings authorizes execution of the validated FIX plan; do not ask for separate plan approval. Every required option is a concrete, considered answer, strongest first and marked "(Recommended)".
 
 ## Quick Reference
 
@@ -18,7 +18,7 @@ Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding
 | 1 | Prereqs, input detection, branch safety, baseline type-check | `BASE_SHA`, `repo_map`, `baseline_errors` |
 | 2 | Fetch review data from GitHub or local file | Unified `Comment[]` array |
 | 3 | Triage subagent: classify each finding via R-rubric | Triage plan (FIX/DISMISS/DEFER/DISAGREE/NEEDS-INPUT) |
-| 4 | Plan approval gate: validate + user confirmation | Approved plan |
+| 4 | Plan execution gate: validate + honor invocation intent | Executable plan |
 | 5 | Execute fixes: sequential edits + per-file narrow type-check | Modified files, `fix_status` per item |
 | 5.5 | Convergence subagent: class completeness, inverse risk, new siblings | Per-fix verdicts; missing sites applied |
 | 6 | `/done` acceptance verification scoped to the fix diff — no commit or publish handoff | Verified fix diff, `done_verified_snapshot` |
@@ -77,7 +77,7 @@ One reference is not bundled here: `${CLAUDE_SKILL_DIR}/../review-pr/references/
 Optional flags:
 
 - `--dry-run` — stop after plan display, don't execute
-- `--interactive` — per-item approval instead of single gate
+- `--interactive` — ask before applying each FIX item
 - `--all-nitpicks` — full-triage nitpicks instead of default-dismiss
 
 ## Who gets triaged
@@ -103,6 +103,10 @@ gh auth status 2>&1 | grep -q "Logged in" || { echo "Run 'gh auth login' first";
 - Starts with `./` / `/` / ends with `.md` → **local file**
 - Matches `https://github.com/<owner>/<repo>/pull/<num>` with no fragment → **PR URL**
 - Empty → ask user to paste content or provide URL
+
+### Record execution authorization
+
+Set `EXECUTION_AUTHORIZED=true` when the original request explicitly invokes `/fix-pr-review` or imperatively asks to fix, address, apply, handle, or resolve review findings. A bare URL or a read-only request to inspect, explain, review, or triage sets it to `false`. Preserve the matching request text as `execution_authorization_evidence`; Phase 4 may replace it with an explicit execution choice, and Phase 7 passes the final evidence to `preflight-mutations`.
 
 ### Ensure correct repo + branch (GitHub inputs only)
 
@@ -242,7 +246,7 @@ Its STEP 4 sends the subagent to `references/triage-rubric.md` on its own — yo
 
 ---
 
-## Phase 4: Plan approval gate (main)
+## Phase 4: Plan execution gate (main)
 
 *Validates against the R-rubric — summary table above, full detail in `references/triage-rubric.md`. Required fields per classification are defined there.*
 
@@ -282,13 +286,13 @@ If any DISMISS has `rubric: R5`, print a **separate highlighted section BEFORE**
 [D<n>] <file:line>: <comment ask>
        CLAUDE.md rule: "<verbatim quote>"
        Reply will be: "<reply>"
-       If this rule has a legitimate exception in this case, choose "Edit plan first"
-       in the approval prompt to change D<n> to FIX or NEEDS-INPUT.
+       If this rule has a legitimate exception in this case, select D<n>
+       in the contested-item confirmation to change it to FIX or NEEDS-INPUT.
 ```
 
 ### Contested-item confirmation (multiSelect)
 
-Contested items are the ones that will post a reply and resolve a thread WITHOUT any code change: every DISMISS, DEFER, and DISAGREE. A wrong classification here silently closes a reviewer's conversation — confirm the triage before the approval prompt, and before Phase 5/7 can act on it.
+Contested items are the ones that will post a reply and resolve a thread WITHOUT any code change: every DISMISS, DEFER, and DISAGREE. A wrong classification here silently closes a reviewer's conversation — confirm the triage before Phase 5/7 can act on it.
 
 Skip this step if there are zero contested items. Otherwise, use AskUserQuestion:
 
@@ -317,56 +321,34 @@ On "FIX": re-dispatch the classifier scoped to just this item to produce the ful
 
 Nothing is posted or resolved during this step — Phase 7 remains the only place GitHub is touched, and it acts **only** on items that survived this confirmation. Resolving a thread is irreversible noise in the reviewer's conversation: a DISMISS, DEFER, or DISAGREE that skipped this gate stays open and unanswered until it has been through it.
 
-### Interactive TTY detection
-
-```bash
-[ -t 0 ] && EDIT_AVAILABLE=true
-```
-
-### Approval prompt
+### Execution
 
 If `--dry-run`: print the plan, print `dry run — not executing`, restore stash, exit 0.
 
-Otherwise, use AskUserQuestion with conditional options based on `EDIT_AVAILABLE`:
+If `EXECUTION_AUTHORIZED=true`, proceed directly to Phase 5. The invocation already authorizes execution of every validated FIX item. If `--interactive` was set, ask for per-item confirmation in Phase 5; it does not add a plan-level confirmation.
+
+Otherwise, use AskUserQuestion:
 
    Question:
-     header: "Approve"
-     text: "Approve the fix plan above? <F> fixes, <D> dismissals, <E> deferrals, <G> disagrees, <I> needs-input."
+     header: "Execute"
+     text: "The request did not explicitly authorize edits. Execute the validated plan? <F> fixes, <D> dismissals, <E> deferrals, <G> disagrees, <I> needs-input."
      options:
-       - label: "Execute plan"
+       - label: "Execute plan (Recommended)"
          description: "Apply all FIX items in dependency order"
        - label: "Cancel"
-         description: "No changes made — restore stash and exit"
-       - label: "Edit plan first"
-         description: "Open the plan in $EDITOR for manual tweaks before executing"
-         [only include this option if EDIT_AVAILABLE=true]
+         description: "Leave the worktree unchanged and restore any stash"
 
-On "Execute plan": proceed to Phase 5. If `--interactive` flag was set, switch to per-item confirmation mode in Phase 5.
-On "Cancel": restore stash (if any), print "cancelled", exit 0.
-On "Edit plan first": write plan to `/tmp/fix-pr-review-<num>.md`, open in `${EDITOR:-vi}`, read back after close. Re-run the plan validation step, then use AskUserQuestion again:
-
-   Question:
-     header: "Confirm"
-     text: "Plan modified — <N> changes detected. Execute the edited plan?"
-     options:
-       - label: "Execute"
-         description: "Apply the edited plan"
-       - label: "Cancel"
-         description: "Discard edits and exit"
-
-   On "Execute": proceed to Phase 5. On "Cancel": restore stash, exit 0.
-
-When `EDIT_AVAILABLE=false`, present only "Execute plan" and "Cancel" (2 options). When `EDIT_AVAILABLE=true`, present all 3. The user can always type a freeform response via the automatic "Other" option.
+On "Execute plan": set `EXECUTION_AUTHORIZED=true`, record the choice as `execution_authorization_evidence`, and proceed to Phase 5. On "Cancel": restore the stash if present, print `cancelled`, and exit 0.
 
 ---
 
 ## Phase 5: Execute fixes (main, sequential)
 
-*Executes R6 FIX items from the approved plan (see the R-Rubric Summary table for R6 criteria, Phase 4 for approval gate).*
+*Executes R6 FIX items from the validated plan (see the R-Rubric Summary table for R6 criteria and Phase 4 for validation).*
 
 ### Dependency resolution
 
-Build an execution order from `dependencies:` fields with a simple topological sort. On a **cycle** (A→B→A): abort with `Cyclic fix dependencies detected — edit the plan (rerun with 'e') to resolve.` Restore stash. Exit non-zero.
+Build an execution order from `dependencies:` fields with a simple topological sort. On a **cycle** (A→B→A): abort with `Cyclic fix dependencies detected — correct the dependency fields and rerun /fix-pr-review <original-input>.` Restore stash. Exit non-zero.
 
 ### Pre-edit snapshots (revert mechanism — Edit tool has no undo)
 
@@ -534,7 +516,7 @@ note `convergence checked inline`.
 
 ## Phase 6: /done verification (main)
 
-After all fixes are applied, run `/done` on the pending fix diff (`git diff HEAD`). `/done` is a four-section acceptance workflow, not a fixed three-command pipeline: §1 binds the run and selects the acceptance lanes, §2 verifies each required lane at its boundary, §3 assigns a state to every request item, lane, and evidence facet, and §4 builds the readiness card. Bind the originating request to the approved fix plan and scope every check to the fix diff, not the entire PR.
+After all fixes are applied, run `/done` on the pending fix diff (`git diff HEAD`). `/done` is a four-section acceptance workflow, not a fixed three-command pipeline: §1 binds the run and selects the acceptance lanes, §2 verifies each required lane at its boundary, §3 assigns a state to every request item, lane, and evidence facet, and §4 builds the readiness card. Bind the originating request to the validated fix plan and scope every check to the fix diff, not the entire PR.
 
 The Code lane always applies here. It runs `/fix-ts-errors` to green (catching the cross-file errors a per-file narrow check cannot see, and running the full workspace check at least once), runs `/parallel-review` over the fix diff and applies its `converge-reviews` result, runs `/simplify` including its blocking added-comment scan, and accounts for each fix against the diff. Select every other lane the fixes actually touched — UI, documentation, global configuration or skills, external metadata or data, publication or deployment — by the rule `/done` §1 states, and record the rest as `not-applicable` with their exclusion reason.
 
