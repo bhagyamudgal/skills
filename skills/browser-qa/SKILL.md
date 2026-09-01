@@ -1,6 +1,6 @@
 ---
 name: browser-qa
-description: Drive a real browser through a UI flow with Playwright — navigate, click, fill, screenshot every step, and check network and console. Use when the user names a flow to run against a URL, or after a UI change lands and needs verifying in the browser.
+description: Drive a real browser through a UI flow with Playwright. Navigate, click, fill, screenshot every step, and check network and console. Use when the user names a flow to run against a URL, or after a UI change lands and needs verifying in the browser.
 ---
 
 ## Input

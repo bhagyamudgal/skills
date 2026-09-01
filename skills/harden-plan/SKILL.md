@@ -1,6 +1,6 @@
 ---
 name: harden-plan
-description: Hardens a written plan against the real codebase before any code exists — a plan edit is cheaper than a code refactor. Use when the user asks to harden, check, or lint a plan they are about to execute, and proactively when `/grill-me` or `/grilling` hands off a written plan. Fires while the plan is still text; once code exists the review is `/review-pr`'s.
+description: Hardens a written plan against the real codebase before any code exists. A plan edit is cheaper than a code refactor. Use when the user asks to harden, check, or lint a plan they are about to execute, and proactively when `/grill-me` or `/grilling` hands off a written plan. Fires while the plan is still text; once code exists the review is `/review-pr`'s.
 ---
 
 # /harden-plan: Pre-code Plan Quality Gate
@@ -54,7 +54,7 @@ One reference is not bundled here: `${CLAUDE_SKILL_DIR}/../review-pr/references/
    > - `/harden-plan`: harden a plan pasted earlier in this conversation
 
 Once the plan text is in hand: if it is empty or under 10 lines, print
-`Plan is too short to harden — expand it first` and abort.
+`Plan is too short to harden. Expand it first.` and abort.
 
 Don't attempt to infer from the current branch, git status, or any
 recent file. Intent grounding depends on the exact plan the user wants

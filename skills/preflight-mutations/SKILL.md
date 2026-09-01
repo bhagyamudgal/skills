@@ -17,7 +17,7 @@ Render a simple card inline. For a multi-step or multi-batch run, persist it onl
 ### Mutation card
 
 - **Surface / environment:** <system and local | staging | production | shared>
-- **Action:** <exact mutation verb and delta; no combined “update as needed” language>
+- **Action:** <exact mutation verb and delta; no combined "update as needed" language>
 - **Targets:** <stable IDs, URLs, refs, fields, recipients, or services>
 - **Ownership policy:** <governing policy and owner/assignee/author/environment boundary>
 - **Authorization source:** <user request or later explicit confirmation, quoted narrowly>

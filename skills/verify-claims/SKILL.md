@@ -1,6 +1,6 @@
 ---
 name: verify-claims
-description: Verify an inference-backed, decision-driving claim before it drives a diagnosis, recommendation, external mutation, or user decision — and again when it is challenged or materially reverses.
+description: Verify an inference-backed, decision-driving claim before it drives a diagnosis, recommendation, external mutation, or user decision. Verify it again when it is challenged or materially reverses.
 ---
 
 # Verify Claims

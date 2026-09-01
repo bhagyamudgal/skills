@@ -8,7 +8,7 @@
 ## Overview
 [2-3 sentences on what this is]
 
-## Tech Stack
+## Tech stack
 - Frontend: Next.js 15 (App Router)
 - Backend: Next.js API Routes
 - Database: PostgreSQL (Supabase)
@@ -17,13 +17,13 @@
 - Styling: Tailwind + shadcn/ui
 - Hosting: Vercel
 
-## Key Decisions
+## Key decisions
 - Using Result<T> pattern, services never throw
 - All dates UTC, convert in frontend
 - Feature-based folder structure
 - Direct imports, no barrel exports
 
-## Code Patterns
+## Code patterns
 [Document specific patterns agreed on]
 
 ## Features

@@ -1,6 +1,6 @@
 ---
 name: file-pr
-description: Open a GitHub pull request whose title and body a reviewer understands in one read. Use when opening a PR or publishing ready-to-publish work for review — never open one by hand.
+description: Open a GitHub pull request whose title and body a reviewer understands in one read. Use when opening a PR or publishing ready-to-publish work for review. Never open one by hand.
 ---
 
 # File a Pull Request
@@ -108,7 +108,7 @@ Resolve `$repository` through authenticated `gh repo view ... --json id,nameWith
 
 When **Existing PR URL** is present, skip commit, push, and create, and load `${CLAUDE_SKILL_DIR}/references/existing-pr-reuse.md` before enumerating remotes. It holds that branch's `gh pr view` read of the existing URL, the head-identity remote match with its multiple- and zero-match dispositions, the freeze, revalidation and reconciliation requirements, what supplies the remote-head evidence without another push, and how the paginated candidate search below and any title/body edit behave on a superseding card.
 
-Without **Existing PR URL**, inspect the current branch's configured upstream before selecting a remote. A fully configured, resolvable upstream whose branch ref matches the publication branch selects its named remote only when that remote is valid; a malformed, partial, or unresolvable configured upstream is `reconcile-required`. When upstream is authoritatively absent, enumerate valid remotes: auto-select one, use AskUserQuestion with concrete `<remote> — <nameWithOwner> (<id>)` options and pagination when multiple remain, and stop with `Configure one valid publication remote or bind the branch upstream, then rerun file-pr.` when none remain. The selected valid remote establishes the head repository identity and `<head-owner>`; it may equal or differ from the base repository.
+Without **Existing PR URL**, inspect the current branch's configured upstream before selecting a remote. A fully configured, resolvable upstream whose branch ref matches the publication branch selects its named remote only when that remote is valid; a malformed, partial, or unresolvable configured upstream is `reconcile-required`. When upstream is authoritatively absent, enumerate valid remotes: auto-select one, use AskUserQuestion with concrete `<remote>: <nameWithOwner> (<id>)` options and pagination when multiple remain, and stop with `Configure one valid publication remote or bind the branch upstream, then rerun file-pr.` when none remain. The selected valid remote establishes the head repository identity and `<head-owner>`; it may equal or differ from the base repository.
 
 Record the selected remote's ordered complete endpoint sets plus separate base/head identities as guards and invalidators. Re-enumerate immediately before each push and authoritative read-back; any addition, removal, reorder, resolution failure, or head-repository mismatch is `reconcile-required`. The named-remote push may target its configured complete push set only while that frozen set still matches.
 

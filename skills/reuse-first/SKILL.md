@@ -1,6 +1,6 @@
 ---
 name: reuse-first
-description: Search before you write, and sweep before you finish — 3-layer search (name, behavior, reference), the reuse ladder, the duplication sweep, and the smells that mean you are about to fork. Use BEFORE creating any new utility, type, schema, component, hook, constant, module, or package; BEFORE hardcoding a literal that may already be an exported constant; when about to copy-paste similar code; and as a completion gate over every file the task touched, not just the diff.
+description: "Search before you write, and sweep before you finish: 3-layer search (name, behavior, reference), the reuse ladder, the duplication sweep, and the smells that mean you are about to fork. Use BEFORE creating any new utility, type, schema, component, hook, constant, module, or package; BEFORE hardcoding a literal that may already be an exported constant; when about to copy-paste similar code; and as a completion gate over every file the task touched, not just the diff."
 ---
 
 # Reuse First
