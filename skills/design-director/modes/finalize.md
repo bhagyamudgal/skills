@@ -1,4 +1,4 @@
-# Mode — Finalize Identity
+# Mode: Finalize Identity
 
 - **Inputs**: an approved logo or identity baseline represented by a selection record, editable source artwork, or a deterministic construction spec. When the user explicitly approves an existing identity proposal, normalize it into the identity selection record before continuing. If the approved baseline lacks the required source or construction details, return to `logo` stage `select` or the approval stage in `identity`, matching the active work. If more than one version could be final, ask the user to identify it before continuing.
 - **Slots**:

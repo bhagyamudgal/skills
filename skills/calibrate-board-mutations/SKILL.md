@@ -42,19 +42,19 @@ Reuse a durable policy only when it defines all four facts:
 3. representative anchors; and
 4. applicability to this board and work type.
 
-Otherwise ask the user for the unit and 3–5 anchors spanning the expected range. Record whether time means agent-assisted elapsed effort, person-hours, or another unit. Prepare no estimates until the calibration is complete.
+Otherwise ask the user for the unit and 3-5 anchors spanning the expected range. Record whether time means agent-assisted elapsed effort, person-hours, or another unit. Prepare no estimates until the calibration is complete.
 
 **Gate:** another agent could apply the recorded calibration without inventing its unit or scale.
 
 ## 3. Build and preview a representative sample
 
-Estimate 3–5 varied items before filling the batch, or every eligible item when the scope contains fewer than three. Cover the smallest, typical, and largest work; include an uncertainty edge and an umbrella when either exists. Ground each estimate in current ticket and implementation evidence.
+Estimate 3-5 varied items before filling the batch, or every eligible item when the scope contains fewer than three. Cover the smallest, typical, and largest work; include an uncertainty edge and an umbrella when either exists. Ground each estimate in current ticket and implementation evidence.
 
 Classify every umbrella exactly once:
 
-- `direct` — estimate the umbrella itself and exclude its children from the same aggregate;
-- `derived` — sum its eligible children and exclude the umbrella from the aggregate; or
-- `excluded` — leave it outside the estimated scope with a reason.
+- `direct`: estimate the umbrella itself and exclude its children from the same aggregate;
+- `derived`: sum its eligible children and exclude the umbrella from the aggregate; or
+- `excluded`: leave it outside the estimated scope with a reason.
 
 Show the unit, anchors, sample estimates, reasoning, umbrella treatment, and sample total. Obtain the user's approval before converting ledger items from `candidate` to `pending`. A changed unit, anchor, sample decision, owner boundary, or umbrella rule invalidates all unexecuted estimates.
 

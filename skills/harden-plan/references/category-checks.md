@@ -1,4 +1,4 @@
-# 11 category definitions — P1..P11
+# 11 category definitions: P1..P11
 
 Loaded by **Subagent A** in Phase 2, before it answers any category. Each
 category has a default severity that Subagent A can escalate with
@@ -38,7 +38,7 @@ Collapses scope-creep + overengineering into one bucket (same as
 
 ### P3. DRY (within-plan)
 
-Duplicated logic across the plan's own steps. Not codebase-wide — P6
+Duplicated logic across the plan's own steps. Not codebase-wide. P6
 handles that.
 
 **Default severity**: Moderate.
@@ -81,7 +81,7 @@ request body are validated against the owned tenant root.
 - Plan's auth step only validates `menuPlanId → accountId`
 - Finding: "Upsert endpoint at S2 accepts 4 foreign keys but only
   validates ownership on `menuPlanId`. An authenticated attacker
-  sends their own menuPlanId + a victim's sheetId/mealId — the row
+  sends their own menuPlanId + a victim's sheetId/mealId: the row
   lands because FKs accept it, and the partial unique index prevents
   the victim's next legitimate save."
 - Severity: Critical
@@ -99,17 +99,17 @@ STEP B algorithm, scoped to the plan's stated new symbols.
 **Default severity**: Serious. Escalate to Critical if the existing
 thing is in an auth / validation / crypto package.
 
-**STEP A — Enumerate new symbols**: for every function / class /
+**STEP A. Enumerate new symbols**: for every function / class /
 interface / type / component / hook / method the plan proposes to
 create, write one line `added <kind> <name> in <file>`.
 
-**STEP B — Search aggressively**: for each enumerated item, run
+**STEP B. Search aggressively**: for each enumerated item, run
 exact-name `Grep` in `packages/` + `apps/`, plus semantic-root
 `Grep` (drop domain prefixes/suffixes and search the remaining
 verb/noun). Read candidate matches to verify they're real matches,
 not substring collisions.
 
-**Required audit field** — include `reusability_searches:` listing
+**Required audit field**. Include `reusability_searches:` listing
 the Grep/Glob calls you ran for STEP B. Empty = invalid.
 
 **Worked example**:
@@ -119,7 +119,7 @@ the Grep/Glob calls you ran for STEP B. Empty = invalid.
   exports it. Reuse instead."
 - Severity: Serious
 
-**Known limitation** — same as documented in `/review-pr` Q6:
+**Known limitation**. Same as documented in `/review-pr` Q6:
 P6 does NOT catch the case where an existing helper is called on
 SOME code paths but should also be called on others. Flag those
 under P9 Control-flow hazards instead.
@@ -175,7 +175,7 @@ Missing read-path is a finding.
 - Plan read step S6 only reads `portionsPlanned`
 - Finding: "S1 persists 4 portion fields but S6 read aggregation
   only reads `portionsPlanned`. The other 3 fields will be write-
-  only — their stored values won't surface on reload."
+  only. Their stored values won't surface on reload."
 - Severity: Serious
 - Recommended: "Update S6 to thread all 4 portion fields through
   the aggregation helper so all persisted values round-trip."
@@ -189,7 +189,7 @@ y: null, z: {} }`). Check `stated_files` imports vs the function's
 injected services: if an early return hardcodes empty state for a
 field that another branch populates via an injected helper, flag.
 
-**This is the Q6-known-limitation gap** from `/review-pr` — P9
+**This is the Q6-known-limitation gap** from `/review-pr`: P9
 specifically catches what P6 misses.
 
 **Worked example (PR #4587 F4)**:
@@ -200,7 +200,7 @@ specifically catches what P6 misses.
 - Finding: "S4 early-returns with hardcoded `mealMenuPortions: []`,
   but S5's happy path fetches this from `mealMenuPortionsService`.
   The early-return silently drops stored meal-level portions in
-  the empty-client state — exactly the state where stored
+  the empty-client state, exactly the state where stored
   aggregates should still surface."
 - Severity: Serious
 - Recommended: "Hoist the `mealMenuPortionsService` fetch above the

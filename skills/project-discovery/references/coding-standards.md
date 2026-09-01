@@ -7,10 +7,10 @@ chosen stack actually uses, and delete the rest.
 
 ## 1. TypeScript
 
-**DRY.** If you write the same logic twice, extract it — utilities, API call
+**DRY.** If you write the same logic twice, extract it: utilities, API call
 patterns, validation logic, UI components, type definitions.
 
-**Always use `type`, never `interface`** — one syntax for every definition, and it
+**Always use `type`, never `interface`**: one syntax for every definition, and it
 covers unions, intersections and mapped types. **`function` for declarations,
 arrows for inline callbacks and JSX handlers.**
 
@@ -38,10 +38,10 @@ return user.name;  // TypeScript knows it's defined
 ```
 
 **Type every value; reach for `unknown` and narrow when the shape is genuinely
-open** — `typeof` for primitives, a type guard (`isUser(input)`) for complex
+open**: `typeof` for primitives, a type guard (`isUser(input)`) for complex
 shapes, generics where the caller decides.
 
-**Use `import type` for type-only imports** — erased at compile time, no
+**Use `import type` for type-only imports**: erased at compile time, no
 circular-dependency surprises. Inline form:
 `import { UserService, type CreateUserInput } from './user'`.
 
@@ -64,7 +64,7 @@ type User = {
     "exactOptionalPropertyTypes": true } }
 ```
 
-**Zod schemas are the source of truth for types** — derive with `z.infer`, reuse
+**Zod schemas are the source of truth for types**. Derive with `z.infer`, reuse
 with `.omit()`, `.extend()` and `.partial()`.
 
 ```typescript
@@ -81,7 +81,7 @@ const createUserSchema = userSchema.omit({ id: true, createdAt: true })
 type CreateUserInput = z.infer<typeof createUserSchema>;
 ```
 
-**Where types live** — pick one: co-located with the feature
+**Where types live**. Pick one: co-located with the feature
 (`src/features/users/types.ts`), centralized (`src/types/user.types.ts`), or
 inferred from the DB schema (`type User = typeof users.$inferSelect`).
 
@@ -94,7 +94,7 @@ task complete.** Run `/done` after completing a task.
 ideally, 30-40 at most. If you need comments to separate sections inside a
 function, or you can't name it clearly, it is doing too much.
 
-**Split a file when it loses cohesion** — the table is the tripwire, not the rule.
+**Split a file when it loses cohesion**. The table is the tripwire, not the rule.
 
 | File Type | Max LOC | When to Split |
 |-----------|---------|---------------|
@@ -106,7 +106,7 @@ function, or you can't name it clearly, it is doing too much.
 | Type definition files | 150-200 | Split by domain |
 | Config files | 100 | Split by concern |
 
-**Prefer early returns over nesting; no nested ternaries** — use an object lookup
+**Prefer early returns over nesting; no nested ternaries**. Use an object lookup
 or a function with early returns.
 
 ```typescript
@@ -123,18 +123,18 @@ const label = STATUS_LABELS[status] ?? 'Unknown';
 **Smaller rules that hold everywhere:**
 
 - Return a new object rather than mutating a parameter: `{ ...input, timestamp: Date.now() }`.
-- Named exports over default exports — explicit at the import site, refactor-friendly.
-- No magic numbers or strings — `const ONE_DAY_MS = 24 * 60 * 60 * 1000;`,
+- Named exports over default exports: explicit at the import site, refactor-friendly.
+- No magic numbers or strings: `const ONE_DAY_MS = 24 * 60 * 60 * 1000;`,
   `const ROLES = { ADMIN: 'admin' } as const;`.
-- Meaningful names — `currentDate`, `authenticatedUser`, `activeItems`. Single
+- Meaningful names: `currentDate`, `authenticatedUser`, `activeItems`. Single
   letters only for loop indices, callbacks and generics.
-- Booleans read as questions — `isLoading`, `hasData`, `canDelete`, `shouldRefresh`.
+- Booleans read as questions: `isLoading`, `hasData`, `canDelete`, `shouldRefresh`.
 - `const` over `let`; `let` only where reassignment happens.
-- Optional chaining and nullish coalescing — `user?.address?.street`,
+- Optional chaining and nullish coalescing: `user?.address?.street`,
   `user.name ?? 'Unknown'` (`||` swallows empty strings).
 - Destructure instead of repeated property access; template literals over concatenation.
 - No unused variables or imports.
-- Comment the WHY — the constraint, the workaround, the gotcha. The code states the what.
+- Comment the WHY: the constraint, the workaround, the gotcha. The code states the what.
 - No emoji in logs or code.
 
 ## 3. Error Handling
@@ -168,7 +168,7 @@ return res.json(result.data);
 `instanceof AppError` to a response and everything else to a logged 500.
 
 **Use the `tryCatch` utility instead of raw try-catch blocks.** It returns
-`{ data, error }` — the error is a value you must destructure, so you cannot skip
+`{ data, error }`. The error is a value you must destructure, so you cannot skip
 it. It lives in `lib/try-catch.ts`.
 
 ```typescript
@@ -191,7 +191,7 @@ in `lib/errors.ts`.
 
 ## 4. Naming
 
-- Files: kebab-case (`user-service.ts`) — pick one convention and enforce it.
+- Files: kebab-case (`user-service.ts`). Pick one convention and enforce it.
 - Functions: camelCase, verb-first (`getUserById`, `createOrder`).
 - Components: PascalCase, noun-based (`UserCard`); props are `UserCardProps`.
 - Constants and env vars: SCREAMING_SNAKE (`MAX_RETRIES`, `DATABASE_URL`).
@@ -203,7 +203,7 @@ in `lib/errors.ts`.
 
 ## 5. Imports & Folder Structure
 
-**Path aliases, always** — `"paths": { "@/*": ["./src/*"] }` in tsconfig.
+**Path aliases, always**: `"paths": { "@/*": ["./src/*"] }` in tsconfig.
 
 **Import order (enforce with ESLint):** node built-ins → external packages → `@/`
 aliases → relative → types.
@@ -219,7 +219,7 @@ import type { User } from '@/types';
 **Import directly from the module: `@/components/ui/button`.** Barrel files slow
 builds and invite circular dependencies.
 
-**Folder structure — pick one.**
+**Folder structure: pick one.**
 
 ```
 A: Feature-based (recommended)     B: Layer-based        C: Next.js App Router
@@ -234,7 +234,7 @@ src/types/index.ts
 
 ## 6. API Design
 
-**REST conventions** — resources are plural nouns; actions get a verb suffix when
+**REST conventions**. Resources are plural nouns; actions get a verb suffix when
 CRUD doesn't fit.
 
 ```
@@ -251,7 +251,7 @@ POST      /api/v1/appointments/:id/confirm
              "details": [{ "field": "email", "message": "Invalid email format" }] } }
 ```
 
-**Route handler structure — the same five steps in every route.**
+**Route handler structure: the same five steps in every route.**
 
 ```typescript
 export async function POST(req: Request) {
@@ -297,7 +297,7 @@ export async function POST(req: Request) {
 
 **Use the query builder, not raw SQL.** Raw SQL only where the builder genuinely
 cannot express the query. **Schema commands (`db:push`, `db:migrate`,
-`db:generate`) need per-run permission — propose the command and wait.**
+`db:generate`) need per-run permission. Propose the command and wait.**
 
 **Every table carries the same base columns; related writes go in a transaction;
 soft-deleted rows are filtered in the service (`isNull(patients.deletedAt)`).**
@@ -327,7 +327,7 @@ async function createAppointmentWithNotification(data: CreateAppointmentInput) {
 
 ## 8. React Components
 
-**`useEffect` synchronizes with an external system** — subscriptions, DOM,
+**`useEffect` synchronizes with an external system**: subscriptions, DOM,
 analytics, non-React libraries. Derived state is computed during render; state
 reset uses `key`; state initialization uses the `useState` initializer.
 
@@ -371,7 +371,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
 );
 ```
 
-**Hooks:** `use` + noun/verb, `function` keyword, return a named object — or a
+**Hooks:** `use` + noun/verb, `function` keyword, return a named object, or a
 tuple for simple state (`useToggle(): [boolean, () => void]`).
 
 ```typescript
@@ -418,7 +418,7 @@ async function updatePatient(userId: string, patientId: string, data: UpdatePati
 }
 ```
 
-**Parameterized queries only** — the query builder does this; never interpolate
+**Parameterized queries only**. The query builder does this; never interpolate
 user input into SQL. **Validate environment variables at startup** via
 `lib/env.ts`, and import `env` rather than reading `process.env` at the point of
 use.
@@ -426,8 +426,8 @@ use.
 ## 11. Logging
 
 Use the class-based `Logger` from `lib/logger.ts`. Create it per request,
-`addContext()` as the request progresses — the final line carries everything the
-earlier ones did — and `log.time()` around slow calls.
+`addContext()` as the request progresses, the final line carries everything the
+earlier ones did, and `log.time()` around slow calls.
 
 Structured pairs, context first, message second: `logger.info({ userId }, 'User
 created')`. No `console.log` in shipped code; local debugging and CLI tools only.
@@ -451,7 +451,7 @@ const appointments = pgTable('appointments', {
 ## 13. Git & Documentation
 
 **Conventional commits**, imperative mood, 50-char subject: `feat:`, `fix:`,
-`refactor:`, `perf:`, `chore:`, `docs:`, `test:`, `style:` — with an optional
+`refactor:`, `perf:`, `chore:`, `docs:`, `test:`, `style:`, with an optional
 scope, `feat(auth): add OAuth2 support`.
 
 **Document non-obvious behaviour**, and give each feature folder a README with

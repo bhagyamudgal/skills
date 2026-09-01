@@ -35,7 +35,7 @@ Render a simple card inline. For a multi-step or multi-batch run, persist it onl
 
 **Gate:** action, targets, environment, and batch-item IDs are exact enough that another agent cannot select a broader resource by inference; a multi-step or multi-batch card has an authorized durable home.
 
-Name every target and guarded dependency by stable ID in **Read-back plan**; do not collapse them into “all targets,” “consumers,” or another referential phrase.
+Name every target and guarded dependency by stable ID in **Read-back plan**; do not collapse them into "all targets," "consumers," or another referential phrase.
 
 ## 2. Resolve authority and ownership
 
@@ -75,9 +75,9 @@ Show a user-visible preview before ambiguous restructuring, high-volume changes,
 
 Classify recovery:
 
-- `reversible` — a direct undo restores the captured prior state.
-- `compensating-only` — the original event remains, but a follow-up action can restore its practical effect.
-- `irreversible` — no reliable restoration exists.
+- `reversible`: a direct undo restores the captured prior state.
+- `compensating-only`: the original event remains, but a follow-up action can restore its practical effect.
+- `irreversible`: no reliable restoration exists.
 
 For `reversible`, identify the captured prior value or exact undo. For `compensating-only`, name every recovery target by stable ID and its captured prior value in **Recovery plan**, then specify the compensation and residual trace. For `irreversible`, state the permanent loss. Missing recovery evidence yields `blocked`, not optimistic classification.
 
@@ -85,15 +85,15 @@ For `reversible`, identify the captured prior value or exact undo. For `compensa
 
 ## 5. Assign one verdict
 
-- `ready` — exact batch, ownership, authorization, current guards, dependency evidence, recovery, and read-back plan all satisfy the gates; no fresh confirmation category applies.
-- `confirmation-required` — the evidence and preview are complete, but this action class requires a fresh explicit user decision. Present the card and ask for that decision; do not mutate.
-- `blocked` — required target, ownership, authorization, dependency, recovery, or guard evidence is missing or unsafe. Name the evidence or authority needed; do not mutate.
+- `ready`: exact batch, ownership, authorization, current guards, dependency evidence, recovery, and read-back plan all satisfy the gates; no fresh confirmation category applies.
+- `confirmation-required`: the evidence and preview are complete, but this action class requires a fresh explicit user decision. Present the card and ask for that decision; do not mutate.
+- `blocked`: required target, ownership, authorization, dependency, recovery, or guard evidence is missing or unsafe. Name the evidence or authority needed; do not mutate.
 
 A multi-step or multi-batch run without an already-authorized durable home is `blocked`. **Next action** names the existing workflow artifact to use or the authorization needed to write it; do not create persistence state merely to clear this gate.
 
 Fresh confirmation updates **Authorization source** but does not waive any other gate. Re-read the invalidators after confirmation before changing the verdict to `ready`.
 
-Write **Next action** as a self-contained instruction naming the exact action and targets. Do not hide them behind “this operation,” “the above,” or another referential phrase.
+Write **Next action** as a self-contained instruction naming the exact action and targets. Do not hide them behind "this operation," "the above," or another referential phrase.
 
 ## 6. Hand off execution and preserve partial state
 

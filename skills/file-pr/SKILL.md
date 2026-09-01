@@ -11,9 +11,9 @@ A PR is read by someone who has not seen the session, the diff, or the ticket. E
 
 Read the branch and the current `done` readiness card.
 
-- **Branch** — `git rev-parse --abbrev-ref HEAD` exactly equals **Branch** in the card and satisfies the branch-naming rule in `CLAUDE.md`. A rename or switch makes the card stale and returns to `done`.
-- **Readiness card** — require the current Git card defined by `done`, including its request, currency, coverage, lane, evidence, verdict, and next-action fields. Its verdict must be `ready-to-publish`, with this skill as the exact next action. A missing field or another verdict returns to `done`; do not reconstruct it here.
-- **Publication mode** — bind the expected PR state and draft mode to the user's publication request. When the request does not name draft publication, use `OPEN` and `isDraft: false`.
+- **Branch**: `git rev-parse --abbrev-ref HEAD` exactly equals **Branch** in the card and satisfies the branch-naming rule in `CLAUDE.md`. A rename or switch makes the card stale and returns to `done`.
+- **Readiness card**: require the current Git card defined by `done`, including its request, currency, coverage, lane, evidence, verdict, and next-action fields. Its verdict must be `ready-to-publish`, with this skill as the exact next action. A missing field or another verdict returns to `done`; do not reconstruct it here.
+- **Publication mode**: bind the expected PR state and draft mode to the user's publication request. When the request does not name draft publication, use `OPEN` and `isDraft: false`.
 
 **Gate:** branch, card presence, expected state, and draft mode each have a recorded result, and a failed one stops the PR.
 
@@ -23,9 +23,9 @@ Use the PR base ref and exact base remote already resolved by `done`. Refresh th
 
 Choose exactly one issue link:
 
-- The diff fully resolves the issue — `Closes #N`
-- It resolves part of one, a sub-task of an umbrella ticket or one slice of an epic — `Refs #N`, plus one line naming which part it covers and what stays open
-- It was found while investigating an issue but does not fix it — `Refs #N`, and say that in the body
+- The diff fully resolves the issue: `Closes #N`
+- It resolves part of one, a sub-task of an umbrella ticket or one slice of an epic: `Refs #N`, plus one line naming which part it covers and what stays open
+- It was found while investigating an issue but does not fix it: `Refs #N`, and say that in the body
 
 Never `Closes` an issue this diff does not finish.
 
@@ -57,28 +57,28 @@ For an initial publication card whose **Existing PR URL** is `not-applicable`, r
 
 Form: `<type>(<module>): <description>`. Name the module the way it reads on the board, not the way the directory spells it.
 
-The description names what someone **observes** — what broke, or what is now possible. Not what you edited.
+The description names what someone **observes**: what broke, or what is now possible. Not what you edited.
 
 Banned as the whole description: `improve`, `update`, `handle`, `refactor`, `fix logic`, `clean up`, `various fixes`.
 
-| Mechanism — rewrite | Outcome — ship |
+| Mechanism: rewrite | Outcome: ship |
 |---|---|
 | `fix(portions): correct filter logic` | `fix(portions): portion totals skipped orders placed after cutoff` |
 | `feat(auth): update session handling` | `feat(auth): stay signed in across browser restarts` |
 
-**Tell:** name who observes the thing in the title. When the only honest answer is "someone reading the diff", the title names a mechanism — rewrite it.
+**Tell:** name who observes the thing in the title. When the only honest answer is "someone reading the diff", the title names a mechanism; rewrite it.
 
 **Gate:** the observer is named, and no banned word stands as the description.
 
 ## 4. Compose the body
 
-Open with two to four sentences of plain prose answering **what was wrong, then what changed** — written to make sense to someone who never opens the diff. No heading above it, never a bullet list, never optional.
+Open with two to four sentences of plain prose answering **what was wrong, then what changed**, written to make sense to someone who never opens the diff. No heading above it, never a bullet list, never optional.
 
 Then only the sections that carry real content:
 
-- **What changed** — derive one outcome-focused bullet from each verified request row; do not infer additions from the diff
-- **How to verify** — derive only from the evidence index's exact observations; include applicable `not-applicable` reasons and do not invent evidence
-- **Risk or scope notes** — only when something is genuinely uncertain, migrated, or deliberately deferred
+- **What changed**: derive one outcome-focused bullet from each verified request row; do not infer additions from the diff
+- **How to verify**: derive only from the evidence index's exact observations; include applicable `not-applicable` reasons and do not invent evidence
+- **Risk or scope notes**: only when something is genuinely uncertain, migrated, or deliberately deferred
 - The issue link from section 2
 
 A heading with nothing under it comes out. A small PR is the lead paragraph, how to verify, and the link. Do not paste the internal readiness tables into the PR body.
@@ -91,12 +91,12 @@ The human-authored rule in `CLAUDE.md` governs the body's voice and its ban on a
 
 Read the composed title and body once as someone with no session context. Name a result for each bar:
 
-- **Title** — who observes it
-- **Lead** — states what was wrong and what changed, without the diff
-- **Terms** — every file, flag, or term is introduced where it first appears
-- **Back-references** — no "as mentioned", "the above", "the earlier issue"
-- **Verification** — describes what ran, not what should work
-- **Voice** — no stock phrases, no agent or session references
+- **Title**: who observes it
+- **Lead**: states what was wrong and what changed, without the diff
+- **Terms**: every file, flag, or term is introduced where it first appears
+- **Back-references**: no "as mentioned", "the above", "the earlier issue"
+- **Verification**: describes what ran, not what should work
+- **Voice**: no stock phrases, no agent or session references
 
 A bar you did not name is a bar you did not check. A failed bar is rewritten and re-read, never shipped as a noted exception.
 
@@ -106,13 +106,13 @@ A bar you did not name is a bar you did not check. A failed bar is rewritten and
 
 Resolve `$repository` through authenticated `gh repo view ... --json id,nameWithOwner` and record it as the base repository. A **valid remote** has ordered complete fetch and push sets from `git remote get-url --all <remote>` and `git remote get-url --push --all <remote>` whose credential-free normalized endpoints all resolve through authenticated `gh repo view ... --json id,nameWithOwner` to one common repository ID and `nameWithOwner`. Retain only ordered normalized sets or their digests and resolved IDs, never credentials.
 
-When **Existing PR URL** is present, skip commit, push, and create, and load `${CLAUDE_SKILL_DIR}/references/existing-pr-reuse.md` before enumerating remotes — it holds that branch's `gh pr view` read of the existing URL, the head-identity remote match with its multiple- and zero-match dispositions, the freeze, revalidation and reconciliation requirements, what supplies the remote-head evidence without another push, and how the paginated candidate search below and any title/body edit behave on a superseding card.
+When **Existing PR URL** is present, skip commit, push, and create, and load `${CLAUDE_SKILL_DIR}/references/existing-pr-reuse.md` before enumerating remotes. It holds that branch's `gh pr view` read of the existing URL, the head-identity remote match with its multiple- and zero-match dispositions, the freeze, revalidation and reconciliation requirements, what supplies the remote-head evidence without another push, and how the paginated candidate search below and any title/body edit behave on a superseding card.
 
 Without **Existing PR URL**, inspect the current branch's configured upstream before selecting a remote. A fully configured, resolvable upstream whose branch ref matches the publication branch selects its named remote only when that remote is valid; a malformed, partial, or unresolvable configured upstream is `reconcile-required`. When upstream is authoritatively absent, enumerate valid remotes: auto-select one, use AskUserQuestion with concrete `<remote> — <nameWithOwner> (<id>)` options and pagination when multiple remain, and stop with `Configure one valid publication remote or bind the branch upstream, then rerun file-pr.` when none remain. The selected valid remote establishes the head repository identity and `<head-owner>`; it may equal or differ from the base repository.
 
 Record the selected remote's ordered complete endpoint sets plus separate base/head identities as guards and invalidators. Re-enumerate immediately before each push and authoritative read-back; any addition, removal, reorder, resolution failure, or head-repository mismatch is `reconcile-required`. The named-remote push may target its configured complete push set only while that frozen set still matches.
 
-For an initial publication, immediately before `git-commit`, or before push when no commit is needed, repeat the branch, head, refreshed base ref and SHAs, mixed external read-back, and alternate-index snapshot checks from sections 1–2. Reuse the completed hunk accounting only when the snapshot is unchanged; a changed snapshot returns to `done`. When the verified snapshot differs from `HEAD^{tree}`, invoke `git-commit` for the verified request rows in sealed-index mode: pass **Verified content snapshot**, require the staged tree to equal it, and forbid another staging pass before commit. Record every SHA it creates. Run the append-only transition commands defined by `done`; their ancestry, merge, and exact ordered-list criteria must all pass. A rebase, merge, or unrecorded commit returns to `done`. Add the exact ordered list to **Expected append-only commits** in the publication evidence returned with the card.
+For an initial publication, immediately before `git-commit`, or before push when no commit is needed, repeat the branch, head, refreshed base ref and SHAs, mixed external read-back, and alternate-index snapshot checks from sections 1-2. Reuse the completed hunk accounting only when the snapshot is unchanged; a changed snapshot returns to `done`. When the verified snapshot differs from `HEAD^{tree}`, invoke `git-commit` for the verified request rows in sealed-index mode: pass **Verified content snapshot**, require the staged tree to equal it, and forbid another staging pass before commit. Record every SHA it creates. Run the append-only transition commands defined by `done`; their ancestry, merge, and exact ordered-list criteria must all pass. A rebase, merge, or unrecorded commit returns to `done`. Add the exact ordered list to **Expected append-only commits** in the publication evidence returned with the card.
 
 For an initial publication, before pushing, require the active branch to still equal **Branch**, freshly re-fetch every mixed external target, and require its currency to still match. Then run `done`'s post-commit content seal. Record the exact outputs of `git status --porcelain=v1 --untracked-files=all` and `git rev-parse HEAD^{tree}`. The status output must be empty and the tree SHA must exactly equal **Verified content snapshot**; otherwise return to `done`.
 
@@ -125,7 +125,7 @@ git ls-remote --heads "<push-remote>" "refs/heads/<card-branch>"
 
 After every push attempt, including a nonzero or ambiguous command result, recheck the selected-remote identity and run the exact `git ls-remote` read-back once. Record **landed-push SHA** only when that authoritative SHA equals **push-attempt SHA**. An old or unexpected SHA, unavailable read-back, or changed remote identity is `reconcile-required`: stop publication and never retry from the push command result alone.
 
-On an initial publication, recheck the active symbolic ref, branch-ref SHA, and `HEAD` against the frozen attempt; local movement invalidates the remaining publication even when the remote read-back succeeded. Then load `${CLAUDE_SKILL_DIR}/references/upstream-binding.md` — reached only on this initial-publication branch, it holds the two `git config` probes that resolve the branch's upstream state, the `ABSENT`, `reconcile-required`, and authoritative-no-op classification, the guarded binding command with its read-back, and the `remote landed / upstream not bound` disposition when binding fails after the push landed.
+On an initial publication, recheck the active symbolic ref, branch-ref SHA, and `HEAD` against the frozen attempt; local movement invalidates the remaining publication even when the remote read-back succeeded. Then load `${CLAUDE_SKILL_DIR}/references/upstream-binding.md`. Reached only on this initial-publication branch, it holds the two `git config` probes that resolve the branch's upstream state, the `ABSENT`, `reconcile-required`, and authoritative-no-op classification, the guarded binding command with its read-back, and the `remote landed / upstream not bound` disposition when binding fails after the push landed.
 
 Write the final body to a file and record its SHA-256 digest. Before deciding whether an earlier attempt exists, fetch every PR in the base repository through an authoritative paginated REST query:
 
@@ -137,7 +137,7 @@ Require every page to return successfully and parse completely; any page error, 
 
 Without **Existing PR URL**, recheck the active symbolic ref, branch-ref SHA, and `HEAD` against **landed-push SHA**, then reconcile every retained candidate across all states. Any `OPEN` candidate with a wrong head SHA or multiple open candidates is `reconcile-required`, and creation stops. One valid open candidate either matches the requested base, state, and draft mode or enters the explicit base-rebind or publication-decision path; record its URL and return to `done` to bind it before any edit. A `CLOSED` or `MERGED` candidate at a different head SHA is historical and does not block branch reuse. A closed or merged candidate at **landed-push SHA** requires an explicit reopen, new-branch, or no-publication decision. Create only when the complete all-state result contains no open candidate and no closed or merged candidate for the current attempt. Use the same full paginated query and exact local filter when a create attempt returns no usable URL.
 
-Require authoritative repository metadata to show that the selected head is the base repository or belongs to its fork network; an unrelated head blocks creation. Freeze one creation lane before preflight: same-repository heads use `gh pr create --head <branch>`; when the selected head repository is not the base repository, load `${CLAUDE_SKILL_DIR}/references/fork-creation-lanes.md` before freezing the lane — it holds the authenticated-user-owned and organization-owned fork lanes, the stable-ID owner-type and ownership determination that blocks any other relation, and the REST `head_repo` create form. Immediately before creating the PR, invoke `preflight-mutations` with a new inline, single-item card. Its target is the exact base repository and selected head repository; its action records the frozen creation lane, base, head repository and branch, **landed-push SHA**, title, body path and digest, expected `OPEN` state, and expected draft mode. Its guards include both complete endpoint sets and their repository IDs, separate base/head repository IDs, the active symbolic ref, branch-ref SHA and `HEAD` still at **landed-push SHA**, the verified remote branch, recorded base tip, the complete paginated candidate result and exact filter, and confirmed absence of an open candidate or same-head-SHA current attempt; and its read-back is the exact `gh pr view` query below. Apply this result independently under the same result contract. A changed local ref, `HEAD`, endpoint set, base/head identity, creation lane, title, body path, digest, state, or draft mode invalidates the card; a non-ready PR card does not erase the landed push evidence.
+Require authoritative repository metadata to show that the selected head is the base repository or belongs to its fork network; an unrelated head blocks creation. Freeze one creation lane before preflight: same-repository heads use `gh pr create --head <branch>`; when the selected head repository is not the base repository, load `${CLAUDE_SKILL_DIR}/references/fork-creation-lanes.md` before freezing the lane. It holds the authenticated-user-owned and organization-owned fork lanes, the stable-ID owner-type and ownership determination that blocks any other relation, and the REST `head_repo` create form. Immediately before creating the PR, invoke `preflight-mutations` with a new inline, single-item card. Its target is the exact base repository and selected head repository; its action records the frozen creation lane, base, head repository and branch, **landed-push SHA**, title, body path and digest, expected `OPEN` state, and expected draft mode. Its guards include both complete endpoint sets and their repository IDs, separate base/head repository IDs, the active symbolic ref, branch-ref SHA and `HEAD` still at **landed-push SHA**, the verified remote branch, recorded base tip, the complete paginated candidate result and exact filter, and confirmed absence of an open candidate or same-head-SHA current attempt; and its read-back is the exact `gh pr view` query below. Apply this result independently under the same result contract. A changed local ref, `HEAD`, endpoint set, base/head identity, creation lane, title, body path, digest, state, or draft mode invalidates the card; a non-ready PR card does not erase the landed push evidence.
 
 Append `--draft` to the create command exactly when the bound draft mode is `isDraft: true`.
 

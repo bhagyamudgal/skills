@@ -9,12 +9,12 @@ If invoked with a file path argument, Read that file first and use its contents 
 
 ## Rules
 
-**ALWAYS use the AskUserQuestion tool** for every question you present to the user — every decision reaches the user as a cursor-selectable option.
+**ALWAYS use the AskUserQuestion tool** for every question you present to the user. Every decision reaches the user as a cursor-selectable option.
 
 - Before the first question, enumerate the open decisions in the plan as a numbered list and print it.
-- Ask **ONE question at a time** — one AskUserQuestion call per turn, then wait for the answer.
+- Ask **ONE question at a time**: one AskUserQuestion call per turn, then wait for the answer.
 - Provide **2-4 options** per question. Your recommended answer should be the **first option** with "(Recommended)" in the label.
-- Each option needs a clear `description` explaining the trade-off or implication — not just a label.
+- Each option needs a clear `description` explaining the trade-off or implication, not just a label.
 - **After each answer**, briefly acknowledge the choice (1 sentence max), ending with `<n> of <total> resolved`, then present the next question.
 - If an answer is non-committal ("not sure", "whatever you think", "both"), do not record it: restate the trade-off in one sentence and re-ask the same decision once. Record the second answer either way.
 - When an answer contradicts an earlier one or leaves a dependency unresolved, say which one and re-ask before moving on.

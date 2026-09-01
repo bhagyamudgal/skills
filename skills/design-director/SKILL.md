@@ -70,9 +70,9 @@ Run the mode's **Output** spec. On a continuation, produce the requested fields,
 
 Quality bar across every mode:
 
-- **Every recommendation is a spec** — a named element and a named value (typeface, px, ratio, hex). "Use a serif for headlines" is not a spec; "Pair Söhne (UI) with GT Sectra Display (headlines), 1.6 ratio between H1 and H2" is.
-- **Write in the imperative** — *Pair Söhne with GT Sectra*, *Cut the H1 to 48px*. Make the call.
-- **Show reasoning.** Each concept gets a one-line "why" — symbolism, principle, or precedent.
+- **Every recommendation is a spec**: a named element and a named value (typeface, px, ratio, hex). "Use a serif for headlines" is not a spec; "Pair Söhne (UI) with GT Sectra Display (headlines), 1.6 ratio between H1 and H2" is.
+- **Write in the imperative**: *Pair Söhne with GT Sectra*, *Cut the H1 to 48px*. Make the call.
+- **Show reasoning.** Each concept gets a one-line "why": symbolism, principle, or precedent.
 - **Treat references as traits, not targets.** For logo and identity work, name 2-3 deliberate moves that separate the result from cited brands. Run a small visual desk scan of adjacent category marks before selecting a final direction when image search is available. Record the scan as visual collision screening, never as proof of uniqueness, trademark clearance, or legal safety.
 - **Classify contrast before judging it.** Under [WCAG 2.2](https://www.w3.org/TR/WCAG22/#contrast-minimum), normal text needs 4.5:1; text at least 18 pt regular or 14 pt bold needs 3:1; meaningful non-text graphics or UI boundaries need 3:1. Logotypes are exempt; report their measured ratio and visual legibility as brand-use evidence, not as a WCAG pass. Apply the text threshold to an accent when it carries text.
 - Open on the first concept.
@@ -81,7 +81,7 @@ Quality bar across every mode:
 
 When the user already asked to save, save without asking again. Otherwise, modes flagged `File save: yes` end with an offer to save. Modes flagged `optional` offer only if the output exceeds ~30 lines. Modes flagged `no` skip the offer.
 
-Save path convention: `design/<mode-slug>-<short-name>.md` — e.g. `design/typography-acme.md`, `design/palette-lumen.md`.
+Save path convention: `design/<mode-slug>-<short-name>.md`, e.g. `design/typography-acme.md`, `design/palette-lumen.md`.
 
 If the working directory has no `.git`, skip an unsolicited offer. Honor an explicit save request to the user's path or ask for a path when none is available.
 

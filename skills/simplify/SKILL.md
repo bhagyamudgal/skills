@@ -27,7 +27,7 @@ Prefer deletion and direct code over a new helper. Reuse an existing local patte
 
 ### Added-comment scan
 
-Inspect every comment the change adds. A comment may stay only if it states a non-obvious WHY — a gotcha, a workaround, a constraint, or a reason the code cannot express itself. Delete on sight:
+Inspect every comment the change adds. A comment may stay only if it states a non-obvious WHY: a gotcha, a workaround, a constraint, or a reason the code cannot express itself. Delete on sight:
 
 - comments that narrate WHAT the code does;
 - JSDoc on obvious functions; and

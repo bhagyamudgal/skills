@@ -11,11 +11,11 @@ Every duplicate is a future **divergence**: a bug fixed in one copy stays broken
 
 Exact name often misses it, so search in three passes:
 
-1.  **Name layer**: `grep -r "functionName"` — exact + camelCase + snake_case variants
-2.  **Behavior layer**: grep for what it _does_ — `format.*date`, `validate.*email`, `parse.*currency`
-3.  **Reference layer**: find a feature that _uses_ the thing you're looking for — open it, follow its imports
+1.  **Name layer**: `grep -r "functionName"`, exact + camelCase + snake_case variants
+2.  **Behavior layer**: grep for what it _does_, `format.*date`, `validate.*email`, `parse.*currency`
+3.  **Reference layer**: find a feature that _uses_ the thing you're looking for. Open it, follow its imports
 
-**Done when you have printed what each layer returned** — three lines, before you write anything:
+**Done when you have printed what each layer returned**: three lines, before you write anything:
 
 ```
 Name layer:      <variants grepped> -> <hits, or none>
@@ -24,7 +24,7 @@ Reference layer: <feature file opened> -> <imports followed>
 ```
 
 Those three lines are the artifact. Creating the file without them is the
-failure this skill exists to prevent, and it is invisible afterwards — the new
+failure this skill exists to prevent, and it is invisible afterwards: the new
 code compiles, passes review, and ships, because nothing downstream re-asks the
 question. If you notice you have already written the artifact, run the search
 anyway and delete what it finds a home for; do not rationalise the copy.
@@ -33,7 +33,7 @@ anyway and delete what it finds a home for; do not rationalise the copy.
 is six searches. Batching them into one glance is how a shared constant gets
 missed: the search that would have found it was never phrased with its keywords.
 
-If you cannot name three behavior keywords for the thing you are about to write, you do not understand it well enough to search for it — that is the finding, not the search.
+If you cannot name three behavior keywords for the thing you are about to write, you do not understand it well enough to search for it. That is the finding, not the search.
 
 ## Where to search, by artifact
 
@@ -44,41 +44,41 @@ If you cannot name three behavior keywords for the thing you are about to write,
 | Zod schema                     | Check `validators/`, `schemas/`, `packages/*/validators/`, and look for `z.object({...})` in adjacent files. Use `.extend()` / `.partial()` / `.pick()` / `.omit()` to derive new schemas from existing ones |
 | React component                | Check `components/`, `components/ui/`, `packages/ui/`, and shared component packages. If a primitive exists, compose it                                                                                      |
 | Hook (TanStack Query, etc.)    | Check `hooks/`, `app/**/hooks/`, and look for existing `use<Resource>` hooks. One hook per endpoint; import the existing key from its query-keys module                                                      |
-| Constants                      | Check `constants/`, `packages/constants/`, and exported `const` declarations. **Also grep the literal itself** (`grep -rn '"text/html"'`) — a value already exported under a name no search for that name would ever reach                        |
+| Constants                      | Check `constants/`, `packages/constants/`, and exported `const` declarations. **Also grep the literal itself** (`grep -rn '"text/html"'`). A value already exported under a name no search for that name would ever reach                        |
 | Module / route / package       | Grep for the concern, not the filename: `grep -rn "onError\|errorHandler"`, `grep -rn "app.use(" `. Two apps in one repo are the likeliest place a handler exists twice                                      |
 | Test helper or fixture         | Read the sibling `*.test.ts` files first. Four near-identical `upload()` helpers is the normal outcome of never looking                                                                                       |
 | Error / try-catch wrapper      | If `tryCatch` exists, use it                                                                                                                                                                                 |
-| Date/currency/weight formatter | Check `ui/utils/`, `packages/ui/src/utils/`, `lib/format*` — these almost always exist and are i18n-aware                                                                                                    |
+| Date/currency/weight formatter | Check `ui/utils/`, `packages/ui/src/utils/`, `lib/format*`. These almost always exist and are i18n-aware                                                                                                    |
 
 ## Reuse hierarchy
 
 **reuse > compose > extend > generalize > write new**
 
-1.  **Reuse** as-is if the existing utility fits — even if the name isn't ideal
+1.  **Reuse** as-is if the existing utility fits, even if the name isn't ideal
 2.  **Compose** existing utilities to build the new behavior
 3.  **Extend** by passing options/generics to the existing one
 4.  **Generalize** the existing utility (move to a shared location, add a parameter, keep callers working)
-5.  **Write new** as a last resort — and if it overlaps with an existing one, propose deprecating the older one in the same PR
+5.  **Write new** as a last resort, and if it overlaps with an existing one, propose deprecating the older one in the same PR
 
 ### When duplication IS acceptable
 
 Reach this section only after all three layers have returned.
 
-- **Two unrelated domains** that happen to look similar — DRY is about shared _knowledge_, not shared _appearance_. A `userId` validator and a `productId` validator can both be `z.string().uuid()` independently; coupling them creates fake polymorphism
+- **Two unrelated domains** that happen to look similar: DRY is about shared _knowledge_, not shared _appearance_. A `userId` validator and a `productId` validator can both be `z.string().uuid()` independently; coupling them creates fake polymorphism
 - **Premature abstraction**: three similar lines is fine; abstract on the fourth occurrence, not the second
 - **Tests**: explicit setup in each test often beats shared fixtures that hide what's being tested
 
 ## Signs you are about to fork
 
 - Naming with a suffix: `formatDate2`, `userServiceV2`, `validateInputNew`, `parseFooHelper`
-- Variant naming for similar behavior: `formatPrice` + `formatCurrency` + `priceFormatter` coexisting — a divergence in progress
-- Inline reimplementation of something that "feels like it should exist" — that feeling is usually correct
-- A new file in `utils/` or `lib/` that's under 30 lines — likely belongs in an existing file
-- A new type alias that mirrors a Zod schema's inferred type — use `z.infer` instead
-- Copy-pasted boilerplate across files (auth checks, error mapping, response shaping) — extract to a shared helper
+- Variant naming for similar behavior: `formatPrice` + `formatCurrency` + `priceFormatter` coexisting, a divergence in progress
+- Inline reimplementation of something that "feels like it should exist": that feeling is usually correct
+- A new file in `utils/` or `lib/` that's under 30 lines: likely belongs in an existing file
+- A new type alias that mirrors a Zod schema's inferred type: use `z.infer` instead
+- Copy-pasted boilerplate across files (auth checks, error mapping, response shaping): extract to a shared helper
 - Defining a new constant inline when a similarly-named one exists in `constants/`
 
-## Sweep mode — before claiming the task done
+## Sweep mode: before claiming the task done
 
 The pre-creation search only sees what you were about to write. It cannot see
 what was **already** duplicated, and diff-scoped tools cannot either: `simplify`
@@ -90,10 +90,10 @@ Scope it to **every file the task touched plus their siblings**, not the diff.
 
 **Prefer a real clone detector for copied blocks.** `jscpd` does Rabin-Karp
 fingerprinting over token streams and finds cross-file copies in milliseconds,
-without you guessing which files to compare — which is the part of a manual
+without you guessing which files to compare, which is the part of a manual
 sweep that fails silently. If the repo has it wired up, run it; if not, one
 `npx jscpd@5 <paths> --reporters console` is usually worth it before hand-rolling
-greps. Use the canonical `jscpd@5` — the official Rust rewrite, shipped as a
+greps. Use the canonical `jscpd@5`, the official Rust rewrite, shipped as a
 self-contained native binary through npm, cargo, brew or curl. Not the
 third-party `jscpd-rs` port, which is a separate project and benchmarks slower.
 
@@ -131,7 +131,7 @@ git diff -U0 "$BASE" -- 'apps' 'packages' \
 
 **Do not hand-roll a check for near-identical function bodies.** A grep over
 declaration lines dedupes on text that contains the name, so two helpers with
-*different* names — the case worth finding — can never collide, and the check
+*different* names, the case worth finding, can never collide, and the check
 quietly reports nothing while looking like it ran. Structural similarity needs a
 clone detector; that is what `jscpd` above is for.
 
@@ -145,8 +145,8 @@ Then ask, per hit:
 - If two copies exist and one is fixed, does the other silently stay broken?
   That is the whole test. A bug fixed in one copy staying broken in the other
   is the cost; everything else is style.
-- For monorepos: check shared packages even if it adds a dependency edge —
-  duplicating across packages is worse than coupling them.
+- For monorepos: check shared packages even if it adds a dependency edge.
+  Duplicating across packages is worse than coupling them.
 - If you wrote a new utility, ask: "Could I delete this and import from
   somewhere else?" If yes, do that instead.
 

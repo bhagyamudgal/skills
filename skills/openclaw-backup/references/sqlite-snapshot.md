@@ -5,7 +5,7 @@
 Every OpenClaw database runs in WAL mode. Committed rows live partly in `<db>.sqlite` and
 partly in `<db>.sqlite-wal`, and the gateway writes to both. `cp` reads them at different
 instants, so the copied pair can describe two different points in time. The copy succeeds,
-the file opens, and it fails later — usually during the restore you were relying on.
+the file opens, and it fails later, usually during the restore you were relying on.
 
 `VACUUM INTO '<path>'` runs inside a single read transaction against the live database and
 writes a fresh, consistent file. Three properties earn it:
@@ -26,7 +26,7 @@ counted as a failure.
 
 Call a one-argument version of this script with two arguments and the destination silently
 becomes the source: every `VACUUM INTO` then targets the live database. SQLite refuses to
-overwrite an existing file, so the damage stops there — but the guard below fails the run
+overwrite an existing file, so the damage stops there, but the guard below fails the run
 before it starts, which is where it belongs.
 
 ## The script
@@ -153,10 +153,10 @@ warning it is.
 
 Every line starts `[OK`, and the final count reads `N/N`. Other statuses stop the backup:
 
-- `SOURCE_CORRUPT` — the live database is already damaged. That is a finding about the
+- `SOURCE_CORRUPT`: the live database is already damaged. That is a finding about the
   install; report it and name the database.
-- `SNAPSHOT_CORRUPT` — the source was healthy and the copy is not. Usually free space.
-- `ERROR` — most often a locked or unreadable file; the message names which.
+- `SNAPSHOT_CORRUPT`: the source was healthy and the copy is not. Usually free space.
+- `ERROR`: most often a locked or unreadable file; the message names which.
 
 A run finding zero databases exits 1, because an empty result almost always means a wrong
 path rather than an install with no data.
@@ -164,7 +164,7 @@ path rather than an install with no data.
 ## Verifying a snapshot preserves extensions
 
 OpenClaw's memory database uses the `vec0` vector-search extension. Row-counting its virtual
-tables needs the extension loaded, which a plain Node process lacks — so use `sqlite_master`
+tables needs the extension loaded, which a plain Node process lacks, so use `sqlite_master`
 to compare object inventories instead, which needs no extension:
 
 ```javascript

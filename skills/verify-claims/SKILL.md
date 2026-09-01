@@ -53,11 +53,11 @@ Use observations from distinct surfaces. Run the distinguishing observation from
 
 ## 4. Assign exactly one state
 
-- `hypothesis` — basis evidence is absent or inconclusive. Communicate only the hypothesis and the next evidence needed.
-- `basis-verified` — the basis supports the claim, while boundary evidence or the distinguishing observation is missing or inconclusive. Label the conclusion provisional.
-- `verified` — both evidence surfaces support the claim and a completed distinguishing observation does not support the counter-hypothesis. Definitive language is permitted.
-- `contradicted` — a required observation falsifies the claim or supports the counter-hypothesis. Withdraw the claim.
-- `blocked` — required evidence is unavailable and an external or irreversible action depends on the claim. Name the evidence needed to unblock it.
+- `hypothesis`: basis evidence is absent or inconclusive. Communicate only the hypothesis and the next evidence needed.
+- `basis-verified`: the basis supports the claim, while boundary evidence or the distinguishing observation is missing or inconclusive. Label the conclusion provisional.
+- `verified`: both evidence surfaces support the claim and a completed distinguishing observation does not support the counter-hypothesis. Definitive language is permitted.
+- `contradicted`: a required observation falsifies the claim or supports the counter-hypothesis. Withdraw the claim.
+- `blocked`: required evidence is unavailable and an external or irreversible action depends on the claim. Name the evidence needed to unblock it.
 
 An unavailable boundary creates an **evidence ceiling**: the claim cannot reach `verified`. Continue reversible work only when its assumption is explicit in the card; hold external and irreversible actions.
 

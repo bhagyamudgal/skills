@@ -12,7 +12,7 @@ core discovery mechanism, not an afterthought.
 ## Mode
 
 Use **guided mode** by default. Extract known facts first, then ask one unresolved
-high-impact question at a time with 2–4 options and the recommended choice first.
+high-impact question at a time with 2-4 options and the recommended choice first.
 Use **rapid mode** only when the user explicitly asks for a quick, autonomous, or
 single-pass result; apply the defaults below and skip the human remix turn.
 
@@ -27,10 +27,10 @@ table owns which steps a route runs; no later step re-decides it.
 
 | Route | Steps | What the route starts from |
 |---|---|---|
-| **Greenfield** | 1–8 | an idea; run the full funnel |
-| **Verification or ranking only** | 1, 4, 6–8 | a shortlist to score, screen, confirm, and rank. Never generates, remixes, or expands |
-| **Shortlist plus alternatives** | 1, 2, 4–8 | a shortlist that is itself the human reaction; the step 2 atom bank comes from it and the brief |
-| **Remix or refinement** | 1, 2, 5–8 | names, fragments, or one name as the human reaction, satisfying the guided-mode remix requirement; the atom bank comes from them and the brief |
+| **Greenfield** | 1-8 | an idea; run the full funnel |
+| **Verification or ranking only** | 1, 4, 6-8 | a shortlist to score, screen, confirm, and rank. Never generates, remixes, or expands |
+| **Shortlist plus alternatives** | 1, 2, 4-8 | a shortlist that is itself the human reaction; the step 2 atom bank comes from it and the brief |
+| **Remix or refinement** | 1, 2, 5-8 | names, fragments, or one name as the human reaction, satisfying the guided-mode remix requirement; the atom bank comes from them and the brief |
 
 Do not replace, silently expand, or ignore a supplied candidate set. Generate
 beyond it only when the request asks for alternatives or the user approves
@@ -52,7 +52,7 @@ Capture these fields from the conversation before asking anything:
   existing brand this name must not collide with.
 
 Default unresolved preferences to warm, clear, credible, globally pronounceable,
-5–10 characters, 2 syllables where natural, and no hyphens or digits. Default the
+5-10 characters, 2 syllables where natural, and no hyphens or digits. Default the
 describe-or-abstract field to no requirement to describe, and read
 `references/naming-lenses.md` under **Description is optional** before generating.
 When the audience's other languages, jargon field, or brand-collision targets go
@@ -97,12 +97,12 @@ by the brief's allocation.
 ### 4. Synthesize or assess
 
 Read `${CLAUDE_SKILL_DIR}/references/domain-verification.md` before any lookup;
-it owns the two-rung evidence ladder — **screen** with a registry lookup, then
-**confirm** at a registrar — and the status vocabulary both rungs record.
+it owns the two-rung evidence ladder: **screen** with a registry lookup, then
+**confirm** at a registrar, and the status vocabulary both rungs record.
 
 Score every candidate with the **Brand score** table in
 `${CLAUDE_SKILL_DIR}/references/naming-lenses.md`. Domain availability is **the
-domain gate** — the exact standard-price `.com`, confirmed at a registrar — and it
+domain gate**: the exact standard-price `.com`, confirmed at a registrar, and it
 sits outside that score.
 
 For a greenfield route, deduplicate the pool, apply the remix operators from
@@ -165,7 +165,7 @@ produce:
   complete rules and output contract as in step 3. Deduplicate and score the new
   pool, select its strongest new names, screen them, then apply these transitions
   again.
-- **Two expansion rounds exhausted:** ask which naming constraint to loosen—atom
+- **Two expansion rounds exhausted:** ask which naming constraint to loosen: atom
   vocabulary, tone, maximum length, or compound complexity. Do not weaken the domain
   gate. An answer resets the expansion counter once; a declined or fruitless
   loosening stops with **Generation shortfall**.

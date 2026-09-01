@@ -1,4 +1,4 @@
-# Grill loop — one finding at a time
+# Grill loop: one finding at a time
 
 Loaded by **main** in Phase 4 when findings remain after the Phase 3
 critic pass. Walk `findings_queue` in severity order, presenting ONE
@@ -20,16 +20,16 @@ Question:    <suggested_question>
 Recommended: <recommended_answer>
 ```
 
-Do NOT include a plain-text `(y / n / other / skip)` line — the options are encoded in the AskUserQuestion tool call.
+Do NOT include a plain-text `(y / n / other / skip)` line. The options are encoded in the AskUserQuestion tool call.
 
 ### Response handling
 
-**`y` — resolved (accept recommendation)**
+**`y`: resolved (accept recommendation)**
 
 Mark finding resolved. Append the `recommended_answer` to
 `accepted_additions[]` with its `plan_step_ref`. Move to next.
 
-**`n` — dismissed**
+**`n`: dismissed**
 
 The reason arrives from the follow-up AskUserQuestion that fires once the
 user picks Dismiss. It is REQUIRED and must be ≥ 10 characters. If missing
@@ -53,10 +53,10 @@ Valid dismissals require a SPECIFIC counter-argument:
 
 Record in `dismissed[]` with the reason. Move to next.
 
-**`other <alt>` — user provides a custom answer**
+**`other <alt>`: user provides a custom answer**
 
 Capture `alt` verbatim into `accepted_additions[]` as the resolution
-instead of the `recommended_answer`. No length check — the user knows
+instead of the `recommended_answer`. No length check. The user knows
 what they want. Move to next.
 
 **`skip`**
@@ -69,7 +69,7 @@ If the user's `n <reason>` or `other <alt>` claims "already covered by
 X" or "exists in Y" (keywords: `already`, `covered in`, `exists in`,
 `handled by`, `done in`), run a quick verification before accepting:
 
-1. Extract the reference (`X` or `Y`) — typically a file path, symbol
+1. Extract the reference (`X` or `Y`): typically a file path, symbol
    name, or step reference
 2. `Grep` the reference in cwd (if it's a symbol) or `Read` the file
    (if it's a path)
@@ -88,7 +88,7 @@ X" or "exists in Y" (keywords: `already`, `covered in`, `exists in`,
   "You've skipped 3 in a row. Want to bail out and get a summary?"
   Options: "Bail out — show summary" and "Keep going"
 
-### One question at a time — STRICT
+### One question at a time: STRICT
 
 Do NOT batch findings into a single prompt. Do NOT emit multiple
 questions in one message. Do NOT pre-answer questions for the user.

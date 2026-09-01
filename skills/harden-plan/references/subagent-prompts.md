@@ -1,16 +1,16 @@
 # Phase 2 subagent prompt templates
 
 Loaded by **main** at the Phase 2 dispatch. Both templates below take
-Phase 1 values in their `<placeholders>` — `stated_goal`, `stated_steps`,
+Phase 1 values in their `<placeholders>`, `stated_goal`, `stated_steps`,
 `stated_files`, `stated_out_of_scope`, `repo_map_files`,
 `repo_map_exports`, `existing_services_inventory`,
 `existing_history_tables`.
 
-Subagent A's template also references `${CLAUDE_SKILL_DIR}` — substitute
+Subagent A's template also references `${CLAUDE_SKILL_DIR}`. Substitute
 it too, with the absolute skill directory path main already resolved when
 it loaded SKILL.md. The subagent gets a real path, not the placeholder.
 
-## Subagent A — Category analyzer (`general-purpose`)
+## Subagent A: Category analyzer (`general-purpose`)
 
 ```
 You are grounding a WRITTEN PLAN against a real codebase to identify
@@ -128,7 +128,7 @@ For each category with no concerns, emit ONE marker line:
   ran. Empty audit = P6 findings are invalid.
 ```
 
-## Subagent B — Pattern inventory (`general-purpose`)
+## Subagent B: Pattern inventory (`general-purpose`)
 
 ```
 You are building a "conventions map" for a plan about to be executed.
