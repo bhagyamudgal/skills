@@ -29,7 +29,7 @@ Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding
 
 | Rule | Classification | Requires |
 |------|---------------|----------|
-| R1 | DISMISS: self-contradictory/wrong | — |
+| R1 | DISMISS: self-contradictory/wrong | no extra field |
 | R2 | DISMISS: hallucinated file:line | Dead-link re-anchor failed |
 | R4 | DISMISS: already fixed | `prior_commit_sha` |
 | R5 | DISMISS: contradicts CLAUDE.md | `claude_md_quote` |
@@ -57,8 +57,8 @@ Each carries its firing condition in the pointer at the point of use; load it th
 
 - `references/fetch-review-data.md`: per-input-type GraphQL/REST fetch, CodeRabbit review-body anatomy, `Comment` schema. Loaded by main in Phase 2, at the GitHub fetch step, and again at the `Comment`-schema normalisation step if the local-file path meant it was not read there.
 - `references/triage-prompt.md`: the whole Phase 3 subagent prompt (STEP 0 → STEP 6 + output format). Read by main in Phase 3, placeholder-substituted, passed verbatim.
-- `references/triage-rubric.md`: R1–R9 detail, NEEDS-INPUT calibration, `change_class` worked examples, reply formats. Loaded by the triage SUBAGENT at STEP 4.
-- `references/github-reply-resolve.md`: Steps 7a–7d posting/resolving mechanics. Loaded by main in Phase 7; never loaded for local-file input.
+- `references/triage-rubric.md`: R1-R9 detail, NEEDS-INPUT calibration, `change_class` worked examples, reply formats. Loaded by the triage SUBAGENT at STEP 4.
+- `references/github-reply-resolve.md`: Steps 7a-7d posting/resolving mechanics. Loaded by main in Phase 7; never loaded for local-file input.
 - `references/final-report.md`: the Phase 8 report template and its rendering rules. Loaded by main in Phase 8 before printing.
 
 One reference is not bundled here: `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` holds the `repo_map_files` / `repo_map_exports` shell, the one copy this skill shares with `/review-pr` and `/harden-plan`. Loaded by main in Phase 1 when `packages/` or `apps/` exists.
@@ -203,7 +203,7 @@ Manually exported or legacy `/review-pr` findings files use the existing local-f
 
 Phase 1 detected exactly one of these three input types. Load `${CLAUDE_SKILL_DIR}/references/fetch-review-data.md` now and run only that type's section. It holds the paginated GraphQL `reviewThreads` query and its `isResolved` filter, the `/pulls/<num>/reviews/<review_id>` and `/pulls/comments/<comment_id>` REST endpoints, the CodeRabbit review-body anatomy, and the parse for the `🤖 Prompt for all review comments with AI agents` block, the only place nitpicks appear, since they never get inline threads.
 
-A fetch that errors — GraphQL rate limit, 404, private repo, or a per-page failure inside the pagination loop — surfaces the error and exits, so triage never runs on a partial comment set. For 404, print `Couldn't access PR. Check repo access and run 'gh auth refresh -s repo'.`
+A fetch that errors surfaces the error and exits, so triage never runs on a partial comment set. That covers a GraphQL rate limit, a 404, a private repo, and a per-page failure inside the pagination loop. For 404, print `Couldn't access PR. Check repo access and run 'gh auth refresh -s repo'.`
 
 ### For local files (`./review.md`, `/tmp/review-pr-*-findings.md`, etc.)
 
@@ -263,7 +263,7 @@ Before anything is shown to the user, mechanically validate the classifier's out
 - Every FIX MUST have non-empty `inverse_risk` that either names a specific failure mode or is exactly `none, pure addition`. Hedges fail validation: an empty value, or anything of the shape "could have issues" / "minor risk" / "some risk" / "possible regression" / "none" on its own. A named failure mode says what breaks, where. Phase 5.5 consumes this field; an unnamed risk is unverifiable there.
 - Every FIX MUST have a `class_completeness` block with a non-empty `verdict` starting with either `COMPLETE` or `INCOMPLETE`. `INCOMPLETE` MUST name the excluded sites and give a reason for each. An `INCOMPLETE` verdict with no per-site reason fails validation.
 - Every item MUST have non-empty `grounding_a` and `grounding_b`.
-- Every item — FIX, DISMISS, DEFER and DISAGREE alike — MUST carry a `reusability_context` field, even when it is just `{ flagged: false }`. Phase 7's reply validator branches on it, so a missing field silently disables the reusability gate on that reply.
+- Every item MUST carry a `reusability_context` field, even when it is just `{ flagged: false }`. That holds for FIX, DISMISS, DEFER and DISAGREE alike. Phase 7's reply validator branches on it, so a missing field silently disables the reusability gate on that reply.
 
 On validation failure: re-dispatch the classifier with the specific missing fields listed. Max 1 retry. Second failure → abort with the validation errors printed.
 
@@ -317,7 +317,7 @@ For each selected item, use a follow-up AskUserQuestion:
        - label: "Keep as-is"
          description: "Keep the original classification, since this was selected by mistake"
 
-On "FIX": re-dispatch the classifier scoped to just this item to produce the full FIX field set — `fix_plan`, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (class sweep included; a reclassified item has never been swept), and `reusability_context` (carry the contested item's own value through unless the sweep changed it) — then re-run plan validation on the changed item. Producing a partial field set here fails validation and burns the single retry. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
+On "FIX": re-dispatch the classifier scoped to just this item to produce the full FIX field set: `fix_plan`, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (class sweep included; a reclassified item has never been swept), and `reusability_context` (carry the contested item's own value through unless the sweep changed it). Then re-run plan validation on the changed item. Producing a partial field set here fails validation and burns the single retry. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
 
 Nothing is posted or resolved during this step. Phase 7 remains the only place GitHub is touched, and it acts **only** on items that survived this confirmation. Resolving a thread is irreversible noise in the reviewer's conversation: a DISMISS, DEFER, or DISAGREE that skipped this gate stays open and unanswered until it has been through it.
 
@@ -348,7 +348,7 @@ On "Execute plan": set `EXECUTION_AUTHORIZED=true`, record the choice as `execut
 
 ### Dependency resolution
 
-Build an execution order from `dependencies:` fields with a simple topological sort. On a **cycle** (A→B→A): abort with `Cyclic fix dependencies detected — correct the dependency fields and rerun /fix-pr-review <original-input>.` Restore stash. Exit non-zero.
+Build an execution order from `dependencies:` fields with a simple topological sort. On a **cycle** (A→B→A): abort with `Cyclic fix dependencies detected. Correct the dependency fields and rerun /fix-pr-review <original-input>.` Restore stash. Exit non-zero.
 
 ### Pre-edit snapshots (revert mechanism; Edit tool has no undo)
 
@@ -386,13 +386,13 @@ For each FIX item in topological order:
        - label: "Skip remaining"
          description: "Stop here and skip all remaining fixes"
 
-   On "Apply fix": continue with steps 2-7. In ordinary Phase 5, "Skip" marks `fix_status[idx] = skipped` and advances to the next fix; "Skip remaining" marks every remaining fix `skipped` and jumps to Phase 6. In Phase 8 context, "Skip" restores every declared path from `active_snapshot` through the state-preserving restore rule with fallback `skipped`, sets `needs_input_status[idx]=skipped` and `convergence[idx]=not-run, user skipped before edit`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, user skipped before edit` otherwise. Phase 8 "Skip remaining" performs that same restore and settlement for the current item; it marks each not-yet-run fix skipped unless its current status is `inverse_risk_applied`, which remains unchanged with its publication blocker. Earlier landed fixes remain untouched. Both choices clear `phase8_triage_context`, terminate the nested Phase 5 path immediately, bypass Phases 5.5–6, and rejoin Phase 8 at the next independent item. On "Other": treat as freeform instruction (e.g., "modify the fix plan for this item").
+   On "Apply fix": continue with steps 2-7. In ordinary Phase 5, "Skip" marks `fix_status[idx] = skipped` and advances to the next fix; "Skip remaining" marks every remaining fix `skipped` and jumps to Phase 6. In Phase 8 context, "Skip" restores every declared path from `active_snapshot` through the state-preserving restore rule with fallback `skipped`, sets `needs_input_status[idx]=skipped` and `convergence[idx]=not-run, user skipped before edit`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, user skipped before edit` otherwise. Phase 8 "Skip remaining" performs that same restore and settlement for the current item; it marks each not-yet-run fix skipped unless its current status is `inverse_risk_applied`, which remains unchanged with its publication blocker. Earlier landed fixes remain untouched. Both choices clear `phase8_triage_context`, terminate the nested Phase 5 path immediately, bypass Phases 5.5-6, and rejoin Phase 8 at the next independent item. On "Other": treat as freeform instruction (e.g., "modify the fix plan for this item").
 
 2. In ordinary context, first add any never-edited declared path to `preedit_snapshot`, then capture every declared path in `perfix_snapshot[idx]` and bind it as `active_snapshot` before editing. In Phase 8 context, require every declared path in `active_snapshot`; a missing entry violates the declared-path gate, so stop the item and use Phase 8's expansion rule to append that new path and baseline before editing while existing entries remain immutable.
 3. Apply the change(s) via `Edit` tool.
 4. **Narrow type-check (this file only)**:
    - Detect project type: if `turbo.json` exists → turborepo mode; else if `tsconfig.json` exists → plain TS mode; else → skip the check.
-   - Turborepo: route through `turbo run` — `bun turbo run check-types --filter=<package>` (or `pnpm turbo run check-types --filter=<package>` if the repo uses pnpm), targeting the workspace package containing the edited file. The `turbo run` form is what carries `--filter` through; `bun` alone drops unknown flags instead of forwarding them to the underlying script.
+   - Turborepo: run `bun turbo run check-types --filter=<package>` (or `pnpm turbo run check-types --filter=<package>` if the repo uses pnpm), targeting the workspace package containing the edited file. The `turbo run` form is what carries `--filter` through; `bun` alone drops unknown flags instead of forwarding them to the underlying script.
    - Plain TS: `bunx tsc --noEmit` or `npx tsc --noEmit`.
    - No TS tooling: skip the check with a one-line note, and let `/done` in Phase 6 catch what it would have caught.
 5. **Compare diagnostic-identity multisets**: parse the current output with Phase 1's parser, then subtract `active_baseline_errors[path]` from the current multiset by identity and count. Ordinary Phase 5 uses the Phase 1 run baseline; a Phase 8 item uses the baseline captured immediately before that item's edits. Classifications:
@@ -416,8 +416,8 @@ For each FIX item in topological order:
          description: "Ordinary: revert all run-level edits and exit | Phase 8: restore only this item"
 
    On "Retry fix": restore the fix's declared paths from `active_snapshot`, re-dispatch the fix plan to a fresh `general-purpose` subagent with the new-errors context, loop (max 2 retries; on 3rd failure, auto-treat as "Skip this fix").
-   In ordinary context, "Skip this fix" restores the current `perfix_snapshot[idx]`, marks `fix_status[idx]=skipped` and `[<idx>] NEEDS-INPUT`, skips its Phase 7 reply/resolve, and continues with the remaining fixes. In Phase 8 context, it restores every `phase8_item_files[idx]` path through the state-preserving restore rule with fallback `skipped`, sets `needs_input_status[idx]=skipped` and `convergence[idx]=not-run, user skipped after type-check failure`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, user skipped after type-check failure` otherwise. Clear `phase8_triage_context`, terminate before Phases 5.5–6, and rejoin Phase 8 at the next independent item.
-   Present "Abort all" only in ordinary context and "Abort item" only in Phase 8 context. On "Abort all", restore every run-level path, restore the stash, and exit non-zero. On "Abort item", restore only `phase8_item_files[idx]` through the state-preserving restore rule with fallback `aborted`, set `needs_input_status[idx]=failed` and `convergence[idx]=not-run, user aborted after type-check failure`, then set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, user aborted after type-check failure` otherwise. Clear `phase8_triage_context`, terminate before Phases 5.5–6, and rejoin Phase 8 at the next independent item without touching the stash or earlier fixes.
+   In ordinary context, "Skip this fix" restores the current `perfix_snapshot[idx]`, marks `fix_status[idx]=skipped` and `[<idx>] NEEDS-INPUT`, skips its Phase 7 reply/resolve, and continues with the remaining fixes. In Phase 8 context, it restores every `phase8_item_files[idx]` path through the state-preserving restore rule with fallback `skipped`, sets `needs_input_status[idx]=skipped` and `convergence[idx]=not-run, user skipped after type-check failure`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, user skipped after type-check failure` otherwise. Clear `phase8_triage_context`, terminate before Phases 5.5-6, and rejoin Phase 8 at the next independent item.
+   Present "Abort all" only in ordinary context and "Abort item" only in Phase 8 context. On "Abort all", restore every run-level path, restore the stash, and exit non-zero. On "Abort item", restore only `phase8_item_files[idx]` through the state-preserving restore rule with fallback `aborted`, set `needs_input_status[idx]=failed` and `convergence[idx]=not-run, user aborted after type-check failure`, then set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, user aborted after type-check failure` otherwise. Clear `phase8_triage_context`, terminate before Phases 5.5-6, and rejoin Phase 8 at the next independent item without touching the stash or earlier fixes.
 
 ### Fix execution tracking
 
@@ -518,7 +518,7 @@ note `convergence checked inline`.
 
 After all fixes are applied, run `/done` on the pending fix diff (`git diff HEAD`). `/done` is a four-section acceptance workflow, not a fixed three-command pipeline: §1 binds the run and selects the acceptance lanes, §2 verifies each required lane at its boundary, §3 assigns a state to every request item, lane, and evidence facet, and §4 builds the readiness card. Bind the originating request to the validated fix plan and scope every check to the fix diff, not the entire PR.
 
-The Code lane always applies here. It runs `/fix-ts-errors` to green (catching the cross-file errors a per-file narrow check cannot see, and running the full workspace check at least once), runs `/parallel-review` over the fix diff and applies its `converge-reviews` result, runs `/simplify` including its blocking added-comment scan, and accounts for each fix against the diff. Select every other lane the fixes actually touched — UI, documentation, global configuration or skills, external metadata or data, publication or deployment — by the rule `/done` §1 states, and record the rest as `not-applicable` with their exclusion reason.
+The Code lane always applies here. It runs `/fix-ts-errors` to green (catching the cross-file errors a per-file narrow check cannot see, and running the full workspace check at least once), runs `/parallel-review` over the fix diff and applies its `converge-reviews` result, runs `/simplify` including its blocking added-comment scan, and accounts for each fix against the diff. Using the rule `/done` §1 states, select every other lane the fixes actually touched: UI, documentation, global configuration or skills, external metadata or data, publication or deployment. Record the rest as `not-applicable` with their exclusion reason.
 
 Do not take `/done` §4's handoffs. This skill owns publication: `git-commit` and `file-pr` are unavailable in Phase 6, and Phase 8's post-completion prompt is the only place a commit or push may start.
 

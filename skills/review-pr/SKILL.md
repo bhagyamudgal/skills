@@ -27,7 +27,7 @@ Each one is loaded only on the branch that reaches it, some by main, some by a s
 - `references/repo-map.md`: the `repo_map_files` / `repo_map_exports` shell, local and cross-repo modes. The one copy in the repo; `/fix-pr-review` and `/harden-plan` load it from here too. Loaded by **main** in Phase 1 when `packages/` or `apps/` exists.
 - `references/q6-reusability-search.md`: STEP A enumeration + STEP B search algorithm + Q6 control-flow gap. Loaded by **Subagent 1** when the diff has 1+ new top-level definitions.
 - `references/finding-output-format.md`: the per-finding field block, the `class_completeness:` audit shape, and the run-level closing block. The one copy of the finding shape. Loaded by **Subagent 1**, **Subagent 3** and **V3** before they write any finding.
-- `references/schema-design-checks.md`: Q7 (overlap), Q8 (1:1 consolidation), Q9 (cross-table FK) checks. Loaded by **Subagent 1** when `INCLUDE_SCHEMA_CHECKS = true`, and by **V3** when the gap check covers Q7–Q9.
+- `references/schema-design-checks.md`: Q7 (overlap), Q8 (1:1 consolidation), Q9 (cross-table FK) checks. Loaded by **Subagent 1** when `INCLUDE_SCHEMA_CHECKS = true`, and by **V3** when the gap check covers Q7-Q9.
 - `references/verification-subagents.md`: V1/V2/V3 dispatch conditions + the exact prompt each is given. Loaded by **main** in Phase 3 at the first of steps 4.55 / 4.9 / 6 that fires.
 - `references/false-positive-rules.md`: the four-rule YAML table (`wrapped-coercion`, `intent-alignment`, `library-behavior-citation`, `default-fallback`) each surviving finding is run through. Loaded by **main** at Phase 3 step 4.6 when any finding survives step 4.5.
 - `references/finding-state-schema.md`: both persistence files: `.claude/review-state/<pr>.yml` (schema, finding-ID strategy, state machine, Phase 4 write-back) and the run-over-run cache (schema + the three replay branches). Loaded by **main** in Phase 1 before the review-state read and the cache check, and again in Phase 4 before the state write-back.
@@ -94,7 +94,7 @@ GitHub documents that [pull request authors cannot approve their own pull reques
 1. Prefer `closingIssuesReferences` (each carries its own `repository.nameWithOwner`; use that, not the PR's repo).
 2. Fall back to body regex: `(?i)(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)` (same-repo only).
 3. For each linked issue: `gh issue view <num> --repo <owner>/<repo> --json title,body,state`.
-4. If ≥ 2 linked issues, note `multiple linked issues — intent may be ambiguous`. If their goals plainly contradict, route to stop-and-ask fallback.
+4. If ≥ 2 linked issues, note `multiple linked issues, so intent may be ambiguous`. If their goals plainly contradict, route to stop-and-ask fallback.
 
 ### Build the intent model
 
@@ -321,7 +321,7 @@ suppressions:
 
 `pattern` (required): case-insensitive substring matched against finding's `Issue` text. `category`/`file` (optional): scope the suppression. `reason` (required): logged in Filtered Out for auditability.
 
-If file exists, pass into Subagent 1 prompt as "Review suppressions — patterns this project has already accepted; skip them". Phase 3 step 5.5 also applies as safety net.
+If file exists, pass into Subagent 1 prompt as "Review suppressions: patterns this project has already accepted; skip them". Phase 3 step 5.5 also applies as safety net.
 
 Cross-repo: fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<head-sha>`. Skip on 404.
 
@@ -337,10 +337,10 @@ Launch in a **single message with multiple Agent tool calls** based on `SIZE_MOD
 - Run Subagent 1 prompt inline in main context (no Agent tool call). Main reads stashed diff once, answers questions, populates `reusability_searches:`, outputs in same format as subagent.
 - Still dispatch silent-failure hunter (if triggered): fixed-cost subagent saves main context, runs in parallel.
 
-**`SIZE_MODE == "parallel-standard"`** (100–500 lines, default):
+**`SIZE_MODE == "parallel-standard"`** (100-500 lines, default):
 - Dispatch Subagent 1 (Claude reviewer) + conditional Subagent 2 (silent-failure hunter) in parallel.
 
-**`SIZE_MODE == "parallel-chunked"`** (500–2000 lines):
+**`SIZE_MODE == "parallel-chunked"`** (500-2000 lines):
 - Split diff by file into ~500-line chunks (don't split a file across chunks).
 - Dispatch ONE Subagent 1 PER CHUNK with full intent model + prior review timeline + repo map + schema context, but only its chunk's files in scope. Prompt: "Your scope is the files listed above. Do not report findings in other files."
 - Dispatch ONE silent-failure hunter at full PR scope.
@@ -489,7 +489,7 @@ reads a short prior-state list, V3 runs one gap check. Only V1 batches, so it ge
 2, at 10 findings per subagent. Findings past V1's first 20, ordered Critical → Minor,
 are verified inline in main.
 If a verifier errors or returns empty, run its step inline in main and note
-`<verifier> unavailable — verified inline` in the Phase 4 header.
+`<verifier> unavailable, so verified inline` in the Phase 4 header.
 
 The dispatch condition and the exact prompt for each of V1 (class-sweep), V2 (regression
 sweep) and V3 (deep gap check) live in `references/verification-subagents.md`. Load it when
@@ -578,11 +578,11 @@ Match `(?:reusability|reuse)_searches?:` (canonical: `reusability_searches:`).
 
 Three outcomes:
 
-1. **Field entirely missing**: PROMPT NON-COMPLIANCE. Drop ALL Q6 "No issues" claims AND add a Serious finding "Reviewer did not include `reusability_searches:` audit — Q6 was not performed."
+1. **Field entirely missing**: PROMPT NON-COMPLIANCE. Drop ALL Q6 "No issues" claims AND add a Serious finding "Reviewer did not include `reusability_searches:` audit, so Q6 was not performed."
 
 2. **Field present with sentinel `N/A (no new top-level definitions in diff)`**: verify `new_definitions_count == 0`. If holds, audit is valid. If not, treat as shallow per outcome 3.
 
-3. **Field present with entries**: count entries. If `searches_count < new_definitions_count`, drop "Q6 No issues" claims AND add a Moderate finding "Reusability check was shallow (<S> searches for <N> new definitions) — manual scan recommended before merging."
+3. **Field present with entries**: count entries. If `searches_count < new_definitions_count`, drop "Q6 No issues" claims AND add a Moderate finding "Reusability check was shallow (<S> searches for <N> new definitions). Manual scan recommended before merging."
 
    Additionally: for each entry where `N > 0` but `verified:` is missing or says `no`, mark the corresponding Q6a claim (if any) as low-confidence and log `search returned hits but reviewer did not verify semantic match`.
 
@@ -605,7 +605,7 @@ alongside V2/V3. Main applies the rules below to what V1 returns.
 
 1. **Field missing entirely**: the sweep was not run. Keep the finding and let V1 run the
    sweep. Derive the signature from `Rule-class`, and append V1's result to the finding. Log
-   `class sweep run by verifier — reviewer omitted audit`.
+   `class sweep run by verifier because the reviewer omitted the audit`.
 
 2. **`verdict: INCOMPLETE`**: the reviewer found sites it did not report. Fold every
    unreported site into the finding's `Class-sites` count and list them in the finding
@@ -634,7 +634,7 @@ For each surviving finding with a `Suggested fix:`:
 
 2. **Inverse risk is worse than the finding**: the suggestion is not a fix. Either
    rewrite it into one that doesn't trade the defect for a bigger one, or keep the
-   finding and replace the suggestion with `no safe one-line fix — needs design`.
+   finding and replace the suggestion with `no safe one-line fix, needs design`.
 
 3. **Record it.** The `inverse_risk` string is persisted to `.claude/review-state/<pr>.yml`
    on the finding. Round N+1 checks it FIRST, before hunting anything new. See step 4.9.
@@ -758,15 +758,15 @@ If ALL specified conditions match: DROP, log `suppressed by .claude/review-suppr
 
 **Critical/Serious override**: suppressions drop findings at any severity. A team that explicitly decided a pattern is acceptable outranks the review, and `reason` keeps the drop auditable.
 
-### 6. Gap check (Q1–Q6, Q7–Q9 if schema PR)
+### 6. Gap check (Q1-Q6, Q7-Q9 if schema PR)
 
-For any question category where Subagent 1 said nothing, briefly think about whether the diff has anything in that category. Add findings if you spot misses. Include Q7–Q9 only if `INCLUDE_SCHEMA_CHECKS = true`.
+For any question category where Subagent 1 said nothing, briefly think about whether the diff has anything in that category. Add findings if you spot misses. Include Q7-Q9 only if `INCLUDE_SCHEMA_CHECKS = true`.
 
 **Large-PR routing**: if `additions + deletions >= 500` AND main lacks the full diff,
 route this check to **V3: Deep gap check** and fold its findings in here. V3 has the
 context budget to answer from the diff itself, where main would be guessing from a
 file list. Pass V3 `INCLUDE_SCHEMA_CHECKS` and `SCHEMA_DIR`. It is dispatched precisely
-on the large PRs where schema changes live, so dropping the flag drops Q7–Q9 exactly
+on the large PRs where schema changes live, so dropping the flag drops Q7-Q9 exactly
 where they are most likely to fire.
 
 **Re-run the cascade gates on everything this step adds.** Findings created here, main's
@@ -813,8 +813,7 @@ prints it. Neither recomputes it: one number, one definition, one round.
 - One or more surviving findings → `request-changes`
 - No findings → `approve`
 
-At any round, if `cascade_share > 0.5` — the single value computed at step 7.5 just above,
-never recomputed here — prepend to the verdict reason:
+At any round, if `cascade_share > 0.5`, prepend to the verdict reason:
 
 > Over half of this round's findings were introduced by the previous round's fixes.
 > Patching site-by-site is not converging. This module needs a design pass.

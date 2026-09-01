@@ -11,7 +11,7 @@ Repo: <owner/repo>
 PR goal (from description + linked issue if available): <one sentence>
 
 ## PR diff (for grounding)
-<output of `git diff <BASE_SHA>...HEAD`, truncated at ~2000 lines with a "[truncated — use git diff yourself for full context]" marker if longer>
+<output of `git diff <BASE_SHA>...HEAD`, truncated at ~2000 lines with a "[truncated, use git diff yourself for full context]" marker if longer>
 
 ## Shared package repo map (for reusability classification)
 ### Files

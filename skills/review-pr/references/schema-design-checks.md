@@ -1,4 +1,4 @@
-# Schema design checks (Q7–Q9)
+# Schema design checks (Q7-Q9)
 
 Loaded by Subagent 1 only when `INCLUDE_SCHEMA_CHECKS = true` (PR adds new database tables, detected in Phase 1 by grepping the diff for `pgTable\(`, `createTable\(`, `CREATE TABLE`, `knex.schema.createTable`, etc.).
 
@@ -77,5 +77,5 @@ d. **Flag ONLY** when a related table in the SAME domain has MORE entity types. 
 ## When to skip these checks entirely
 
 - The new table is in a **migrations file** rather than the schema source. Schema-checks operate on the canonical schema definition (`pgTable()`-style), not migration DDL. If the schema file isn't touched, treat the migration as opaque.
-- `SCHEMA_DIR` is empty AND no schema file is detectable from the diff or repo tree. Write `Q7-Q9: SKIPPED — schema directory not found` and continue.
+- `SCHEMA_DIR` is empty AND no schema file is detectable from the diff or repo tree. Write `Q7-Q9: SKIPPED, schema directory not found` and continue.
 - The PR is a refactor of existing schema (renaming, splitting, FK adjustments) without genuinely-new table domains. Q7 is unlikely to apply.
