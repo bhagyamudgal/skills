@@ -1,6 +1,6 @@
 # Phase 8 final report template
 
-Loaded by main in Phase 8 only after every NEEDS-INPUT item has a non-pending status and the run-level stash restoration has finished. Render exactly once from final workflow state. Nothing this report prints carries an em or en dash, whether you compose it or interpolate it from workflow state. The `Test:` lines and the three-way fix partition are how the user decides what to re-test.
+Loaded by main in Phase 8 only after every NEEDS-INPUT item has a non-pending status and the run-level stash restoration has finished. Render exactly once from final workflow state. Nothing this report prints carries an em or en dash, whether you compose it or interpolate it, except text quoted verbatim from a reviewer or from code, which is evidence and prints exactly as found. The `Test:` lines and the three-way fix partition are how the user decides what to re-test.
 
 ---
 
