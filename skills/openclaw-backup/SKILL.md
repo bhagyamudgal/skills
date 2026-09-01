@@ -30,7 +30,8 @@ df -h "$STATE_DIR"
 find "$STATE_DIR" -name '*.sqlite' -not -path '*/node_modules/*' | sort
 ```
 
-Discover the databases with `find` on every run. OpenClaw relocates them between versions. 2026.7 moved the memory database from `memory/main.sqlite` to
+Discover the databases with `find` on every run. OpenClaw relocates them
+between versions. 2026.7 moved the memory database from `memory/main.sqlite` to
 `agents/<id>/agent/openclaw-agent.sqlite`, so a hardcoded path silently finds nothing.
 
 Locate the workspace, which may sit outside the state dir: check `OPENCLAW_WORKSPACE_DIR`
