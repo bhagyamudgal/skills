@@ -1,4 +1,4 @@
-# GitHub posting flow (Phase 4) — REST + GraphQL hybrid + rolling-review
+# GitHub posting flow (Phase 4): REST + GraphQL hybrid + rolling-review
 
 Loaded by SKILL.md when posting findings to a real PR. SKILL.md keeps a ~30-line dispatch step that delegates to this reference.
 
@@ -18,18 +18,18 @@ This file owns:
 **DO NOT regress this to a single REST call with `subject_type: "file"` comments.** That shape is rejected by GitHub:
 
 - **Line-level review comments** (`{path, line, side: "RIGHT"}`): Supported by REST `POST /pulls/:n/reviews` AND by GraphQL `addPullRequestReviewThread`.
-- **File-level review comments** (no line anchor): Supported ONLY by GraphQL `addPullRequestReviewThread` with `subjectType: FILE`. The REST endpoint uses `DraftPullRequestReviewComment` which has no `subjectType` field — passing `subject_type: "file"` returns `422 Unprocessable Entity`. This was the bug that silently collapsed past runs to a monolithic body and lost every resolvable thread.
+- **File-level review comments** (no line anchor): Supported ONLY by GraphQL `addPullRequestReviewThread` with `subjectType: FILE`. The REST endpoint uses `DraftPullRequestReviewComment` which has no `subjectType` field. Passing `subject_type: "file"` returns `422 Unprocessable Entity`. This was the bug that silently collapsed past runs to a monolithic body and lost every resolvable thread.
 
 The hybrid flow:
-1. **Phase A (REST)** — create PENDING review with line-level comments.
-2. **Phase B (GraphQL)** — attach file-level threads.
-3. **Phase C (GraphQL)** — submit with the verdict event.
+1. **Phase A (REST)**: create PENDING review with line-level comments.
+2. **Phase B (GraphQL)**: attach file-level threads.
+3. **Phase C (GraphQL)**: submit with the verdict event.
 
 When a prior `/review-pr` review exists on the PR, the rolling path may replace Phase A only for a body-only update whose complete current thread set already belongs to that submitted review.
 
 ---
 
-## Step 0 — Detect prior `/review-pr` review (rolling-review path)
+## Step 0: Detect prior `/review-pr` review (rolling-review path)
 
 Every review posted by `/review-pr` includes a hidden marker comment in the body:
 
@@ -96,13 +96,13 @@ Treat missing ownership fields, multiple matches, an unvalidated cache contract,
 - **Prior self-review has a different semantic verdict** → create a fresh pending review through Step 4. Both verdicts have GitHub state `COMMENTED`, so state equality alone cannot make a reversal safe to roll onto the old threads.
 - **Prior tagged review found but any current file-referenced finding lacks a thread owned by that review** → create a fresh pending review through Step 4 with the complete current finding set. This covers both line-level and file-level additions; submitted reviews cannot accept new pending-review threads.
 - **Prior tagged review found but its state differs from the required GitHub state** → create a fresh review through Step 4. Updating a submitted review body cannot change its state among `APPROVED`, `CHANGES_REQUESTED`, and `COMMENTED`.
-- **Prior tagged review found BUT submittedAt > 30 days ago** → treat as legacy, fall through to Step 4 (new review). Don't try to edit reviews older than a month — they likely belong to a different commit history.
+- **Prior tagged review found BUT submittedAt > 30 days ago** → treat as legacy, fall through to Step 4 (new review). Don't try to edit reviews older than a month. They likely belong to a different commit history.
 
 The state and ownership checks keep body-only re-reviews compact without dropping new findings or attempting to attach them to a submitted review.
 
 ---
 
-## Step 0b — Verdict-body sync check (re-runs)
+## Step 0b: Verdict-body sync check (re-runs)
 
 If `last_posted_review_id` exists in cache, map the last-posted body verdict through the current self-review status before comparing it with GitHub state:
 
@@ -131,7 +131,7 @@ If `LAST_POSTED_BODY_REQUIRED_STATE` differs from `LAST_POSTED_STATE`:
 
 ---
 
-## Step 0c — Re-review thread resolution (before posting)
+## Step 0c: Re-review thread resolution (before posting)
 
 If this is a re-review AND `posted_comments` cache exists:
 
@@ -153,7 +153,7 @@ If this is a re-review AND `posted_comments` cache exists:
 
 3. **Reconcile every result** by querying that exact thread ID after the mutation, including when the mutation command failed or returned an ambiguous response. Mark the finding resolved only when the authoritative query returns `isResolved: true`. Record an authoritative `false` as `confirmed-open`; record a failed or inconclusive query as `reconcile-required`, preserve the exact settling query, and do not retry that thread. On either non-resolved result, retire the current card and preflight the remaining items without this unresolved thread before the next write.
 
-4. **Track resolved findings** for the "Resolved since last review" line in the summary body only after the authoritative `isResolved: true` read-back. Use exact wording: `Resolved since last review: S1 (<file:line> <one-line issue>, round 4 commit <sha>), ...`. NEVER use "deferred", "fixed", or other ambiguous wording — use `resolved` with the commit SHA.
+4. **Track resolved findings** for the "Resolved since last review" line in the summary body only after the authoritative `isResolved: true` read-back. Use exact wording: `Resolved since last review: S1 (<file:line> <one-line issue>, round 4 commit <sha>), ...`. NEVER use "deferred", "fixed", or other ambiguous wording. Use `resolved` with the commit SHA.
 
 5. **Preserve the complete payload decision**: `ROLLING_PATH=true` already proves every current file-referenced finding has a thread owned by the reused review, so Steps 4–6 add no comments. A fresh review posts the complete surviving finding set even when older reviews or cache entries contain matching IDs.
 
@@ -161,9 +161,9 @@ If this is a re-review AND `posted_comments` cache exists:
 
 ---
 
-## Step 1 — Compose the summary body
+## Step 1: Compose the summary body
 
-Build a lean summary body (NO "Filtered out" section — internal only). **Always** include the marker comment so future runs can detect this review:
+Build a lean summary body (NO "Filtered out" section, internal only). **Always** include the marker comment so future runs can detect this review:
 
 ```markdown
 <!-- review-pr:run sha=<head_sha> round=<round_number> -->
@@ -186,17 +186,17 @@ Build a lean summary body (NO "Filtered out" section — internal only). **Alway
 
 When there are zero findings, replace the findings table and details line with `### Findings\nNo findings.` The body posts with `APPROVE` for another author's PR or `COMMENT` for a self-review.
 
-**Severity count badges**: `🔴 <N> Critical · 🟠 <M> Serious · 🟡 <K> Moderate · 🔵 <J> Minor` — only include levels that have findings.
+**Severity count badges**: `🔴 <N> Critical · 🟠 <M> Serious · 🟡 <K> Moderate · 🔵 <J> Minor`. Only include levels that have findings.
 
-**Finding numbering**: assign sequential IDs by severity: `C1, C2…` Critical, `S1, S2…` Serious, `M1, M2…` Moderate, `m1, m2…` Minor. Use these IDs consistently in the summary table and review comments. **Note**: per-round visible labels (M3, S1, etc.) do NOT have to match across rounds — internal stability comes from the `findings[].id` hash in `.claude/review-state/<pr>.yml` (see `references/finding-state-schema.md`).
+**Finding numbering**: assign sequential IDs by severity: `C1, C2…` Critical, `S1, S2…` Serious, `M1, M2…` Moderate, `m1, m2…` Minor. Use these IDs consistently in the summary table and review comments. **Note**: per-round visible labels (M3, S1, etc.) do NOT have to match across rounds. Internal stability comes from the `findings[].id` hash in `.claude/review-state/<pr>.yml` (see `references/finding-state-schema.md`).
 
-**Comment routing — three tiers**:
+**Comment routing, three tiers**:
 
 - **Line-level thread** (REST, Phase A): finding has a valid `file:line` where the line exists on the post-image side of the diff → attach with `{path, line, side: "RIGHT", body}`.
 - **File-level thread** (GraphQL, Phase B): finding has a file reference but no valid diff line (file/module-scope, schema overlap, line not in diff) → attach via `addPullRequestReviewThread` with `subjectType: FILE`.
 - **Body fallback** (rare): finding has NO file reference at all → use `*(general)*` in the summary table and append the full detail to the body under `### Additional findings`.
 
-All three tiers create resolvable, replyable GitHub threads. Body fallback is the only acceptable reason for a finding to lack its own thread — never use it to work around an API error (Step 7 covers that).
+All three tiers create resolvable, replyable GitHub threads. Body fallback is the only acceptable reason for a finding to lack its own thread. Never use it to work around an API error (Step 7 covers that).
 
 **Re-review "Resolved since last review" line**: replace the prior "Fixed" wording with explicit `resolved`. After the table:
 
@@ -204,11 +204,11 @@ All three tiers create resolvable, replyable GitHub threads. Body fallback is th
 **Resolved since last review**: S1 (`auth.ts:47` missing null check, round 4 commit `abc1234`), S4 (`db.ts:123` N+1 query, round 5 commit `def5678`) *(threads resolved)*
 ```
 
-Every finding status is exactly one of `active`, `resolved` (with commit SHA), `dismissed` (with reason), `wontfix` (with reason), or `regression` — the enum in `references/finding-state-schema.md`. "Deferred" is not one of them: it leaves the reader unable to tell a shipped fix from an open one.
+Every finding status is exactly one of `active`, `resolved` (with commit SHA), `dismissed` (with reason), `wontfix` (with reason), or `regression`: the enum in `references/finding-state-schema.md`. "Deferred" is not one of them: it leaves the reader unable to tell a shipped fix from an open one.
 
 ---
 
-## Step 2 — Compose review comments (per finding)
+## Step 2: Compose review comments (per finding)
 
 Each finding with a valid file reference becomes a review comment. Format as self-contained markdown:
 
@@ -233,17 +233,17 @@ Severity emojis: 🔴 Critical, 🟠 Serious, 🟡 Moderate, 🔵 Minor.
 **Inverse risk and Class-sites are not decoration.** They are the two cascade fields Phase 3
 steps 4.56 and 4.55 derived, and `/fix-pr-review` seeds its own inverse-risk check and class
 sweep straight off these two lines instead of re-deriving them. Emit both on every finding
-that proposes a code change — `none — pure addition` is a valid `Inverse risk`, an omitted
+that proposes a code change. `none — pure addition` is a valid `Inverse risk`, an omitted
 line is not.
 
 **Comment payload shape**:
 
-- **Line-level (REST, Phase A)**: `{"path": "<file>", "line": <post-image>, "side": "RIGHT", "body": "<markdown>"}` — goes into the `comments` array of the REST review creation call.
-- **File-level (GraphQL, Phase B)**: `path: "<file>"`, `subjectType: FILE`, `body: "<markdown>"`, `pullRequestReviewId: <node_id from Phase A>`. GitHub doesn't anchor code for file-level threads — include a brief code reference in the body (e.g., "near the `<symbol>` definition").
+- **Line-level (REST, Phase A)**: `{"path": "<file>", "line": <post-image>, "side": "RIGHT", "body": "<markdown>"}`. Goes into the `comments` array of the REST review creation call.
+- **File-level (GraphQL, Phase B)**: `path: "<file>"`, `subjectType: FILE`, `body: "<markdown>"`, `pullRequestReviewId: <node_id from Phase A>`. GitHub doesn't anchor code for file-level threads. Include a brief code reference in the body (e.g., "near the `<symbol>` definition").
 
 ---
 
-## Step 3 — Pre-posting hunk validation
+## Step 3: Pre-posting hunk validation
 
 Before Phase A (or rolling-review path), fetch hunks once and verify each line-level comment's `(path, line)` is on the post-image side. Demote mismatches to file-level (Phase B).
 
@@ -252,7 +252,7 @@ gh api "repos/<owner>/<repo>/pulls/<number>/files" --paginate \
   --jq '.[] | {filename, patch}'
 ```
 
-**Output format**: `--paginate` with `--jq` emits NDJSON (one `{filename, patch}` per line across pages), NOT a JSON array. Process line-by-line; do NOT pipe to another `jq '.[]'` expecting an array — fails on page 2.
+**Output format**: `--paginate` with `--jq` emits NDJSON (one `{filename, patch}` per line across pages), NOT a JSON array. Process line-by-line; do NOT pipe to another `jq '.[]'` expecting an array. Fails on page 2.
 
 Parse each `patch`: each `@@ -<oldStart>,<oldLen> +<newStart>,<newLen> @@` header starts a new hunk. Within the hunk, `+` lines and space-prefixed context lines advance the post-image counter (start at `newStart`); `-` lines do not. A line is "in the diff" only if it matches a counter value on some hunk for that file.
 
@@ -262,13 +262,13 @@ With routing now exact, render the complete summary body, canonical ordered line
 
 ---
 
-## Step 4 — Phase A: create PENDING review with line-level comments (REST)
+## Step 4, Phase A: create PENDING review with line-level comments (REST)
 
 **Skip this step only if rolling-review path is active (Step 0 proved a recent prior review has the required GitHub state and owns every current thread).** Use Step 4-rolling instead.
 
 Pass ALL fields in a single `--input` JSON. **Omit the `event` field** so the review stays PENDING while Phase B attaches file-level threads:
 
-**Note**: call Phase A even with zero line-level findings — pass `comments: []`. The REST endpoint accepts an empty array with a body-only PENDING review; this is the only way to get the `pullRequestReviewId` Phase B's mutations need.
+**Note**: call Phase A even with zero line-level findings. Pass `comments: []`. The REST endpoint accepts an empty array with a body-only PENDING review; this is the only way to get the `pullRequestReviewId` Phase B's mutations need.
 
 ```bash
 COMMENTS_JSON='[
@@ -302,7 +302,7 @@ A timeout, interrupted response, or missing ID is `reconcile-required`, not proo
 
 ---
 
-## Step 4-rolling — Update existing review's body (GraphQL)
+## Step 4-rolling: Update existing review's body (GraphQL)
 
 When Step 0 found a recent prior `/review-pr` review whose state matches the required GitHub state and proved it owns every current thread:
 
@@ -333,9 +333,9 @@ For `FRESH_REVIEW_FALLBACK=true`, refresh the PR and review guards and treat the
 
 ---
 
-## Step 5 — Phase B: attach file-level threads to the fresh pending review (GraphQL)
+## Step 5, Phase B: attach file-level threads to the fresh pending review (GraphQL)
 
-**Skip if `ROLLING_PATH=true`** — rolling eligibility proves there are no new threads to attach.
+**Skip if `ROLLING_PATH=true`**: rolling eligibility proves there are no new threads to attach.
 
 For each entry in the frozen canonical file-level set, in order (originals + Step 3 demotions), use that entry's exact finding ID, path, and body:
 
@@ -364,13 +364,13 @@ else
 fi
 ```
 
-Loop **sequentially, not in parallel** — thread order in the submitted review follows call order. Capture each returned `thread.id` and `comments.nodes[0].databaseId` for caching.
+Loop **sequentially, not in parallel**: thread order in the submitted review follows call order. Capture each returned `thread.id` and `comments.nodes[0].databaseId` for caching.
 
 An ambiguous thread result stops the sequential loop and requires an authoritative query of that review's threads for the exact review ID, path, and frozen comment body. Reconcile the result back to the one frozen `(finding ID, path, body)` ledger entry; do not substitute another finding merely because its path matches. One exact match captures its IDs against that finding ID, increments `ATTACHED_THREADS`, and resumes the loop. Confirmed absence permits Step 7 without incrementing; multiple matches or inconclusive state blocks posting. Never retry the thread or enter recovery while its placement is unresolved.
 
-## Step 6 — Phase C: submit the review (GraphQL)
+## Step 6, Phase C: submit the review (GraphQL)
 
-**Skip if `ROLLING_PATH=true`** — the prior review is already submitted; rolling onto it doesn't re-submit.
+**Skip if `ROLLING_PATH=true`**: the prior review is already submitted; rolling onto it doesn't re-submit.
 
 ```bash
 SUBMIT_RESP=$(gh api graphql -f query='
@@ -417,13 +417,13 @@ Phase C succeeds when the authoritative read-back equals `REQUIRED_REVIEW_STATE`
 
 ---
 
-## Step 7 — Posting failed recovery (NEVER silent)
+## Step 7: Posting failed recovery (NEVER silent)
 
 If Phase A, B, or C fails: **DO NOT silently collapse to a monolithic body.** The prior silent fallback was the root cause of past zero-resolvable-comment runs.
 
 ### Rolling or submitted review exists
 
-If authoritative read-back shows the target review is already submitted — including `ROLLING_PATH=true` — do not enter either cleanup branch below. Preserve the submitted review and query its complete body, line comments, and file-level threads. Reconcile every thread against the frozen canonical file-level entries and classify each entry as exactly one of `landed`, `confirmed-absent`, or `ambiguous`; cache exact landed IDs immediately. A body mismatch, multiple matches, or inconclusive query is `reconcile-required` and blocks further mutation.
+If authoritative read-back shows the target review is already submitted, including `ROLLING_PATH=true`, do not enter either cleanup branch below. Preserve the submitted review and query its complete body, line comments, and file-level threads. Reconcile every thread against the frozen canonical file-level entries and classify each entry as exactly one of `landed`, `confirmed-absent`, or `ambiguous`; cache exact landed IDs immediately. A body mismatch, multiple matches, or inconclusive query is `reconcile-required` and blocks further mutation.
 
 When one or more entries are `confirmed-absent`, offer only `Create supplemental review for confirmed-absent threads`, `Abort — preserve submitted review`, or `Show payload & preserve review`. The supplemental path refreshes the submitted-review and PR guards, freezes a summary naming the original review plus only the confirmed-absent entries, and invokes `preflight-mutations` with those exact payloads and digests. It then creates a new pending review through Step 4, attaches its file-level entries through Step 5, submits the same `REVIEW_EVENT` through Step 6, and reconciles every result before advancing. Record each new cached thread as owned by the supplemental review; the split ownership makes later rolling reuse ineligible. Abort and show-payload leave the submitted review unchanged. Never attach a thread to a submitted review, delete it, route it through pending cleanup, or replace it with a monolithic review.
 
@@ -487,15 +487,15 @@ The cleanup result is authoritative only when the exact pending review node is a
 
 **On "Post as monolithic"**: require `cleanup_pending_review` to confirm absence, refresh the PR guard, then invoke a new preflight for the exact frozen monolithic body before `gh pr review <url> "$REVIEW_FLAG" --body-file /tmp/review-pr-<num>-monolithic.md`. Reconcile every result by exact author, head, required GitHub state, semantic verdict in the body, and complete body before any retry. After one exact match, run the monolithic publication write-back below before convergence.
 
-**Monolithic publication write-back**: freeze the authoritative match as `publication_evidence` with `publication_mode: monolithic`, the exact review database and node IDs, author, head SHA, GitHub state, verdict, complete-body SHA-256, every surviving finding ID, and verification timestamp. Merge it into `$CACHE_FILE` with `contract_version: REVIEW_CACHE_CONTRACT_VERSION`, `last_posted_review_id`, `last_posted_review_node_id`, `last_posted_verdict`, `last_posted_at`, `last_posted_finding_ids`, and `publication_evidence`; preserve existing `posted_comments` only as historical ownership records because a monolithic review creates no per-finding threads. A later run must not treat those entries as owned by the monolithic review. Follow `references/finding-state-schema.md` "Phase 4 — write back" for every surviving finding, then merge the same `publication_evidence` as a top-level `publication` block in `$STATE_FILE`, preserving its `findings` and `convergence` blocks. Write both files atomically. A failed write-back is reported and blocks convergence; publication already landed, so never repost it.
+**Monolithic publication write-back**: freeze the authoritative match as `publication_evidence` with `publication_mode: monolithic`, the exact review database and node IDs, author, head SHA, GitHub state, verdict, complete-body SHA-256, every surviving finding ID, and verification timestamp. Merge it into `$CACHE_FILE` with `contract_version: REVIEW_CACHE_CONTRACT_VERSION`, `last_posted_review_id`, `last_posted_review_node_id`, `last_posted_verdict`, `last_posted_at`, `last_posted_finding_ids`, and `publication_evidence`; preserve existing `posted_comments` only as historical ownership records because a monolithic review creates no per-finding threads. A later run must not treat those entries as owned by the monolithic review. Follow `references/finding-state-schema.md` "Phase 4: write back" for every surviving finding, then merge the same `publication_evidence` as a top-level `publication` block in `$STATE_FILE`, preserving its `findings` and `convergence` blocks. Write both files atomically. A failed write-back is reported and blocks convergence; publication already landed, so never repost it.
 
 **On "Abort"**: require authoritative cleanup read-back, then stop. Report `reconcile-required` instead of claiming an abort when cleanup is unresolved.
 
-**On "Show payload"**: print the offending JSON/mutation. Do NOT clean up — user explicitly chose to keep the draft. Print the pending review URL.
+**On "Show payload"**: print the offending JSON/mutation. Do NOT clean up. User explicitly chose to keep the draft. Print the pending review URL.
 
 ---
 
-## Step 8 — Cache + state write-back
+## Step 8: Cache + state write-back
 
 After successful Phase C or Step 4-rolling:
 
@@ -503,13 +503,13 @@ After successful Phase C or Step 4-rolling:
 
 Merge into existing cache (do NOT overwrite). Add/update:
 
-- `contract_version` — `REVIEW_CACHE_CONTRACT_VERSION`; a successful write upgrades the complete cache atomically.
-- `last_posted_review_id` — integer `databaseId` from Phase C, `PRIOR_REVIEW_DB_ID` only when `ROLLING_PATH=true`, or the new `REVIEW_DB_ID` when `FRESH_REVIEW_FALLBACK=true`. Never cache the stale prior ID after Step 4 creates a fallback review.
-- `last_posted_review_node_id` — GraphQL node ID
-- `last_posted_verdict` — verdict string
-- `last_posted_at` — ISO timestamp
-- `publication_evidence` — authoritative review facts with `publication_mode: threaded` for successful Phase C or rolling publication.
-- `posted_comments` — array of comment entries (preserve existing entries; merge new ones)
+- `contract_version`: `REVIEW_CACHE_CONTRACT_VERSION`; a successful write upgrades the complete cache atomically.
+- `last_posted_review_id`: integer `databaseId` from Phase C, `PRIOR_REVIEW_DB_ID` only when `ROLLING_PATH=true`, or the new `REVIEW_DB_ID` when `FRESH_REVIEW_FALLBACK=true`. Never cache the stale prior ID after Step 4 creates a fallback review.
+- `last_posted_review_node_id`: GraphQL node ID
+- `last_posted_verdict`: verdict string
+- `last_posted_at`: ISO timestamp
+- `publication_evidence`: authoritative review facts with `publication_mode: threaded` for successful Phase C or rolling publication.
+- `posted_comments`: array of comment entries (preserve existing entries; merge new ones)
 
 For each newly-posted comment, construct `finding_key` using the dedupe key format (line-level: `(file, line, symbol)`, file-level: `(file, file-level:<category>, symbol)`) and record `review_node_id: REVIEW_NODE_ID` plus `review_database_id: REVIEW_DB_ID`. These ownership fields decide whether a later submitted review is thread-complete; legacy or cross-review entries never qualify.
 
@@ -538,13 +538,13 @@ Match each line-level comment's `databaseId` (from REST `.comments[].id`) to a t
 
 ### 8c. Update `.claude/review-state/<pr>.yml`
 
-`references/finding-state-schema.md` is the single source of truth for what Phase 4 writes — the full entry shape, which fields are required, and every status transition. Follow its "Phase 4 — write back" section; do NOT reconstruct the entry shape from this file. An entry written without `file`, `enclosing_symbol`, and `rule_class` breaks the next round's ID computation, and one written without the cascade fields silently disables the next round's regression sweep.
+`references/finding-state-schema.md` is the single source of truth for what Phase 4 writes: the full entry shape, which fields are required, and every status transition. Follow its "Phase 4: write back" section; do NOT reconstruct the entry shape from this file. An entry written without `file`, `enclosing_symbol`, and `rule_class` breaks the next round's ID computation, and one written without the cascade fields silently disables the next round's regression sweep.
 
 The only part specific to posting: `github_thread_id` (from 8b) and `github_comment_id` (REST `databaseId`) are written onto the entry of each finding posted this round.
 
 ### 8d. Resolve threads for findings now in `status: resolved`
 
-For each finding transitioning to `resolved` this round (a fix shipped between rounds and the state file records it — see the writer caveat in `references/finding-state-schema.md`; that transition is currently made by hand), first refresh the current PR head, review ID/state/body, and every target thread's exact `isResolved` value and complete comment-ID set. Invoke `preflight-mutations` immediately before this resolution batch with those current guards, exact thread IDs, prior/current finding states, and the posting authorization. This is a fresh card: Steps 4–6 changed publication and review state, so the posting card is stale.
+For each finding transitioning to `resolved` this round (a fix shipped between rounds and the state file records it; see the writer caveat in `references/finding-state-schema.md`; that transition is currently made by hand), first refresh the current PR head, review ID/state/body, and every target thread's exact `isResolved` value and complete comment-ID set. Invoke `preflight-mutations` immediately before this resolution batch with those current guards, exact thread IDs, prior/current finding states, and the posting authorization. This is a fresh card: Steps 4–6 changed publication and review state, so the posting card is stale.
 
 Immediately before each resolution write, refresh the PR head and thread. If `isResolved: true`, record the thread as resolved from that authoritative read-back, skip the mutation, retire the current card, and preflight the remaining items without this thread before the next write. Otherwise compare the current guards with the fresh card and re-run preflight for the pending remainder when a guard changed. Then call:
 

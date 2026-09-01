@@ -1,14 +1,14 @@
-# Batch mode — reviewing multiple PRs in one run
+# Batch mode: reviewing multiple PRs in one run
 
 Loaded by main at the start of Phase 1, and only when the user provides **2+ PR URLs** or asks to review **all open PRs**. A single-PR run never reaches any of this.
 
-For "all open PRs", enumerate via `gh pr list --json number,url,title --limit 50`, print the list in the kickoff message, then start — no confirmation prompt (batch mode is unattended by design; a wrong list is visible in the report).
+For "all open PRs", enumerate via `gh pr list --json number,url,title --limit 50`, print the list in the kickoff message, then start: no confirmation prompt (batch mode is unattended by design; a wrong list is visible in the report).
 
 ---
 
 ## Orchestration
 
-- Main context is the **orchestrator** — oversight only. It never reviews a PR inline, regardless of `SIZE_MODE` (solo-main routing applies inside each subagent, not in main).
+- Main context is the **orchestrator**: oversight only. It never reviews a PR inline, regardless of `SIZE_MODE` (solo-main routing applies inside each subagent, not in main).
 - Spawn **ONE `general-purpose` subagent PER PR**. Each subagent runs the single-PR flow (Phases 1–3) independently against its own PR and returns its Phase 4 terminal block as its result. Dispatch in parallel batches of 3–4.
 - Subagents NEVER post to GitHub and NEVER ask questions. They return the complete surviving finding set, semantic verdict, and `IS_SELF_REVIEW` value to the orchestrator, which posts each review after every subagent has returned.
 
@@ -37,12 +37,12 @@ Do not post to GitHub and do not ask questions. Return your Phase 4 terminal blo
 
 ## "Don't stop" semantics
 
-The run continues unattended through the WHOLE list — batch mode implies the user may be away. Do NOT stop between PRs. Resolve review-only checkpoints as follows:
+The run continues unattended through the WHOLE list. Batch mode implies the user may be away. Do NOT stop between PRs. Resolve review-only checkpoints as follows:
 
 - Stop-and-ask intent gap → review with just the diff; tag that PR's report `intent not grounded — findings may be generic`.
 - PR > 2000 lines → proceed with chunked review; note the size in that PR's report header.
 - Completed review → queue every surviving finding for automatic posting. Queue a clean review for automatic approval, or for a comment when `IS_SELF_REVIEW=true`.
-- A failed subagent doesn't stop the batch — record `<pr>: review failed (<reason>)` in the consolidated report and continue with the rest.
+- A failed subagent doesn't stop the batch: record `<pr>: review failed (<reason>)` in the consolidated report and continue with the rest.
 
 ---
 

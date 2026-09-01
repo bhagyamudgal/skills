@@ -1,10 +1,10 @@
 # Phase 8 final report template
 
-Loaded by main in Phase 8 only after every NEEDS-INPUT item has a non-pending status and the run-level stash restoration has finished. Render exactly once from final workflow state — the `Test:` lines and the three-way fix partition are how the user decides what to re-test.
+Loaded by main in Phase 8 only after every NEEDS-INPUT item has a non-pending status and the run-level stash restoration has finished. Render exactly once from final workflow state. The `Test:` lines and the three-way fix partition are how the user decides what to re-test.
 
 ---
 
-## Failure section (TOP — only if any Phase 7 or Phase 8 GitHub op failed)
+## Failure section (TOP, only if any Phase 7 or Phase 8 GitHub op failed)
 
 If any applicable `gh_status[idx]` has `reply_ok == false` OR `resolve_ok == false`, print this section at the **top** of the report. Exclude entries whose reply and resolution states are both `not-applicable`:
 

@@ -1,14 +1,14 @@
 # Phase 3 verification subagents (V1 / V2 / V3)
 
-Loaded by main in Phase 3, at the first of steps 4.55 / 4.9 / 6 whose dispatch condition holds — keep it loaded for the others, since all three go out in one message. SKILL.md keeps the rules main itself must obey: the judgment-vs-evidence split, the 4-subagent cap, and the degraded-mode rule. This file holds each verifier's dispatch condition and its exact prompt.
+Loaded by main in Phase 3, at the first of steps 4.55 / 4.9 / 6 whose dispatch condition holds. Keep it loaded for the others, since all three go out in one message. SKILL.md keeps the rules main itself must obey: the judgment-vs-evidence split, the 4-subagent cap, and the degraded-mode rule. This file holds each verifier's dispatch condition and its exact prompt.
 
-All three are `general-purpose`, dispatched in ONE message so they run in parallel, and all three fetch what they need themselves (`gh pr diff`, Grep, Read) rather than being handed the diff. Each returns a compact block — no prose, no restated file contents.
+All three are `general-purpose`, dispatched in ONE message so they run in parallel, and all three fetch what they need themselves (`gh pr diff`, Grep, Read) rather than being handed the diff. Each returns a compact block, no prose, no restated file contents.
 
-Substitute `<SKILL_DIR>` in every prompt below before dispatching, exactly as for Subagent 1 (SKILL.md, Phase 2). Verifiers inherit the user's repo as their working directory, so a bare `references/...` path resolves against that repo and silently finds nothing. V3's prompt also carries `<PROMPT_PREAMBLE>` — the shared reference-paths + output-format block defined in that same SKILL.md section; substitute it there with `<SKILL_DIR>` already resolved.
+Substitute `<SKILL_DIR>` in every prompt below before dispatching, exactly as for Subagent 1 (SKILL.md, Phase 2). Verifiers inherit the user's repo as their working directory, so a bare `references/...` path resolves against that repo and silently finds nothing. V3's prompt also carries `<PROMPT_PREAMBLE>`: the shared reference-paths + output-format block defined in that same SKILL.md section; substitute it there with `<SKILL_DIR>` already resolved.
 
 ---
 
-## V1 — Class-sweep verifier (step 4.55)
+## V1: Class-sweep verifier (step 4.55)
 
 Dispatch when ANY finding has a missing `class_completeness` audit, a verdict of `INCOMPLETE`, or an `Enclosing-symbol` that is exported or lives in a shared package.
 
@@ -34,7 +34,7 @@ Do not judge severity. Do not suggest fixes. Report sites.
 
 ---
 
-## V2 — Regression sweep verifier (step 4.9)
+## V2: Regression sweep verifier (step 4.9)
 
 Dispatch when `CURRENT_ROUND >= 2` and `PRIOR_STATE.findings` contains any entry with `status in {resolved, dismissed, wontfix}`. Pass each entry's `id`, `rule_class`, `class_sites`, `inverse_risk`, `depends_on`, `commit_sha_resolved`, and the current `head_sha`.
 
@@ -60,9 +60,9 @@ Default to still-closed when you cannot find evidence of a regression.
 
 ---
 
-## V3 — Deep gap check (step 6)
+## V3: Deep gap check (step 6)
 
-Dispatch when `additions + deletions >= 500` **AND** main lacks the full diff — the same
+Dispatch when `additions + deletions >= 500` **AND** main lacks the full diff, the same
 pair of conditions SKILL.md step 6 states. Size alone is not the trigger: when main still
 holds the whole diff it runs the gap check inline. A subagent has the context budget to run
 the check against the diff itself where main would be guessing from a file list.

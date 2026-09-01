@@ -2,7 +2,7 @@
 
 The single shape every reviewer and verifier emits a finding in. Loaded by **Subagent 1**
 (Phase 2 reviewer), **Subagent 3** (Phase 2 cross-cutting reviewer) and **V3** (Phase 3
-deep gap check) — all three produce findings that Phase 3 dedupes, sweeps and persists,
+deep gap check). All three produce findings that Phase 3 dedupes, sweeps and persists,
 and without this file each invents a shape that dedupe and step 4.55 cannot parse.
 `q6-reusability-search.md` points here too, so a Q6a finding comes out in the same shape
 as every other finding.
@@ -11,7 +11,7 @@ Emit the fields verbatim, one per line, in the order below.
 
 ## Line number convention
 
-`File: <path:line>` must use the **post-image line number** — the line as it appears in
+`File: <path:line>` must use the **post-image line number**, the line as it appears in
 the new version (the `+` side of the unified diff hunk, or unchanged context on the new
 side). NOT old-side. NOT the diff hunk header offset. Omit `:line` for module-scope
 findings; they route to file-level review comments.
@@ -37,11 +37,11 @@ Class-sites:    <A>/<N> — affected sites over sites searched, from the
 ```
 
 `Inverse risk` and `Class-sites` are REQUIRED on every finding that proposes a code
-change — one field per cascade feeder. `/fix-pr-review` seeds its own inverse-risk check
+change, one field per cascade feeder. `/fix-pr-review` seeds its own inverse-risk check
 and class sweep from these two lines, so a finding printed without them costs the next
 skill a full re-derivation.
 
-`Rule-class` and `Enclosing-symbol` are required too — they let the critic compute a
+`Rule-class` and `Enclosing-symbol` are required too. They let the critic compute a
 stable finding ID (`sha1(file::enclosing_symbol::rule_class)`) that survives line shifts
 and rewordings across review rounds. Load
 `<SKILL_DIR>/references/finding-state-schema.md` for the exact ID derivation, the
@@ -70,7 +70,7 @@ the total number of entries in `sites:`.
 Do NOT write `handled` in this audit. `handled` belongs to a different, later layer:
 `class_sites[].handled` in `<SKILL_DIR>/references/finding-state-schema.md` records
 whether the PR has since COVERED an affected site, and only affected sites are carried
-into that list. One word per layer — conflating them makes a merely-swept finding look
+into that list. One word per layer. Conflating them makes a merely-swept finding look
 fixed.
 
 If the finding proposes no code change, write exactly:
@@ -88,5 +88,5 @@ Summary: <3 sentences — what the PR does, biggest concern, overall verdict>
 Verdict: approve | request-changes
 ```
 
-Chunk reviewers, Subagent 3 and V3 report findings only — their scope is partial, so main
+Chunk reviewers, Subagent 3 and V3 report findings only. Their scope is partial, so main
 composes the run-level verdict in Phase 3.
