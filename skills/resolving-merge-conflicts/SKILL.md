@@ -1,6 +1,6 @@
 ---
 name: resolving-merge-conflicts
-description: "Resolve an in-progress git conflict without a silent drop. Use when the worktree is mid-merge, mid-rebase, mid-cherry-pick or mid-stash-pop — `CONFLICT (content)`, `<<<<<<<` markers, `Unmerged paths`, or `fix conflicts and then commit the result`."
+description: "Resolve an in-progress git conflict without a silent drop. Use when the worktree is mid-merge, mid-rebase, mid-cherry-pick or mid-stash-pop: `CONFLICT (content)`, `<<<<<<<` markers, `Unmerged paths`, or `fix conflicts and then commit the result`."
 ---
 
 1. **Orient before you touch anything.** Establish from `git status` whether you are in a merge, a rebase, or a cherry-pick. Under a rebase `ours` is the upstream you are replaying onto and `theirs` is your own commit, the inverse of a merge, and getting this backwards is the most common wrong resolution.

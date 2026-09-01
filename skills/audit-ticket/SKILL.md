@@ -136,7 +136,7 @@ The audit is read by whoever inherits this ticket, and Phase 5 may post it to Gi
 Then print:
 
 ```
-# Ticket Audit: <title> (#<n>)
+# Ticket audit: <title> (#<n>)
 
 **State**: <open|closed> · opened <date> · last activity <date>
 **Audited against**: <full HEAD SHA> at content snapshot <tree hash> on <today>
@@ -147,7 +147,7 @@ Then print:
 |---|-------------|-----------------|---------|---------------|
 | R1 | <short text> | R1 → E1 | ✅ done | `<file:line>` |
 | R2 | <short text> | R2 → E2, E4 | 🟡 partial | `<file:line>`: <gap, short> |
-| R3 | <short text> | R3 → E3 | ❌ not done | — |
+| R3 | <short text> | R3 → E3 | ❌ not done | none |
 | R4 | <short text> | R4 → E5 | 🪦 obsolete | <reason, short> |
 
 ## Source evidence map

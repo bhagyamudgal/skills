@@ -1,6 +1,6 @@
 ---
 name: project-discovery
-description: Discovery interview before writing code on a new project — interrogate
+description: Discovery interview before writing code on a new project. Interrogate
   requirements, stack, and conventions, then emit CLAUDE.md, PATTERNS.md and the
   project's lib/ scaffolding. Use when the user starts a new project, or when they
   seem unsure about a technical decision that will be expensive to reverse.
@@ -48,7 +48,7 @@ the trade-off you quote is the one you'd quote next time.
 
 - Group related decisions: "So for the data layer, we're going with Postgres on Supabase with Drizzle ORM. That gives us..."
 - Flag decisions that need more thought: "Let's come back to the auth flow once we understand the user types better"
-- Challenge weak reasoning: "You said 'because everyone uses it' — is that the right reason for your specific case?"
+- Challenge weak reasoning: "You said 'because everyone uses it'. Is that the right reason for your specific case?"
 
 ### Closing Discovery
 
