@@ -302,8 +302,8 @@ For each remaining finding:
 1. Compute its `id` from the subagent-emitted `(file, enclosing_symbol, rule_class)`.
 2. Look up `id` in `PRIOR_STATE.findings`.
 3. If a match exists with `status in {resolved, dismissed, wontfix}`:
-   - If `status == resolved`: verify the diff doesn't reintroduce the issue at `commit_sha_resolved..HEAD`. If reintroduced → mark as `regression`, keep the finding. Otherwise drop with reason: `prior-state suppression — resolved in round <round_resolved> (commit <commit_sha_resolved>)`.
-   - If `status in {dismissed, wontfix}`: drop with reason: `prior-state suppression — <status> in round <round_resolved>: "<dismissal_reason>"`.
+   - If `status == resolved`: verify the diff doesn't reintroduce the issue at `commit_sha_resolved..HEAD`. If reintroduced → mark as `regression`, keep the finding. Otherwise drop with reason: `prior-state suppression, resolved in round <round_resolved> (commit <commit_sha_resolved>)`.
+   - If `status in {dismissed, wontfix}`: drop with reason: `prior-state suppression, <status> in round <round_resolved>: "<dismissal_reason>"`.
 
 ### Phase 4: write back
 

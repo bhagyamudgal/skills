@@ -131,7 +131,7 @@ Verify each returned `file:line` exists in the recorded content snapshot before 
 
 Every `Rn` from Phase 1 appears exactly once in the table; N equals d + p + nd + o + u. A requirement with no returned verdict is `unverified`, not omitted. Put only evidence IDs in table cells, then render every complete `Rn → E<n>` edge in a block-form source map; code citations remain separate verdict evidence.
 
-The audit is read by whoever inherits this ticket, and Phase 5 may post it to GitHub unchanged. Apply `unslop` to it.
+The audit is read by whoever inherits this ticket, and Phase 5 may post it to GitHub unchanged. Write it with no em or en dashes. `unslop` carries the rest of the rules where it is installed.
 
 Then print:
 

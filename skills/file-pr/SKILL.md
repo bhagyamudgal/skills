@@ -96,7 +96,7 @@ Read the composed title and body once as someone with no session context. Name a
 - **Terms**: every file, flag, or term is introduced where it first appears
 - **Back-references**: no "as mentioned", "the above", "the earlier issue"
 - **Verification**: describes what ran, not what should work
-- **Voice**: no stock phrases, no em dashes, no agent or session references
+- **Voice**: no stock phrases, no em or en dashes, no agent or session references
 
 A bar you did not name is a bar you did not check. A failed bar is rewritten and re-read, never shipped as a noted exception.
 

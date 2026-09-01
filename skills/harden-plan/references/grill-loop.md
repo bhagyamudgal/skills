@@ -86,7 +86,7 @@ X" or "exists in Y" (keywords: `already`, `covered in`, `exists in`,
   remaining findings as `skipped`
 - User provides 3 consecutive `skip`s → present via AskUserQuestion:
   "You've skipped 3 in a row. Want to bail out and get a summary?"
-  Options: "Bail out — show summary" and "Keep going"
+  Options: "Bail out and show a summary" and "Keep going"
 
 ### One question at a time: STRICT
 

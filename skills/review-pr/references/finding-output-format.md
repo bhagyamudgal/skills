@@ -9,6 +9,8 @@ as every other finding.
 
 Emit the fields verbatim, one per line, in the order below.
 
+Every finding is posted to GitHub verbatim, so write it as an engineer writes to another engineer. No em or en dashes: a period or a comma does the same work, and a range takes a hyphen. No bold label that restates the line it opens.
+
 ## Line number convention
 
 `File: <path:line>` must use the **post-image line number**, the line as it appears in

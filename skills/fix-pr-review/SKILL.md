@@ -124,7 +124,7 @@ Set `EXECUTION_AUTHORIZED=true` when the original request explicitly invokes `/f
          - label: "Checkout PR branch"
            description: "Run 'gh pr checkout <num>' to switch to the PR's head branch"
          - label: "Abort"
-           description: "Stop here — I'll sort out my branch state manually"
+           description: "Stop here. I'll sort out my branch state manually"
 
      On "Checkout PR branch": run `gh pr checkout <num>`. On failure (conflicts, missing refs), surface the error and abort. On "Abort": exit.
 
@@ -137,7 +137,7 @@ Set `EXECUTION_AUTHORIZED=true` when the original request explicitly invokes `/f
          - label: "Switch branch"
            description: "Run 'gh pr checkout <num>' to move to the PR branch"
          - label: "Abort"
-           description: "Stop — I'll checkout the right branch manually"
+           description: "Stop. I'll checkout the right branch manually"
 
      On "Switch branch": run `gh pr checkout <num>`. On gh failure (conflicts, missing refs), surface the error and abort. On "Abort": exit.
 
@@ -156,9 +156,9 @@ If non-empty, use AskUserQuestion:
      text: "Uncommitted changes detected. Auto-stash before applying fixes? Contents will be restored via 'git stash pop' at the end."
      options:
        - label: "Auto-stash"
-         description: "Stash changes now — they'll be restored when the run completes"
+         description: "Stash changes now. They'll be restored when the run completes"
        - label: "Abort"
-         description: "Stop — I'll commit or stash my work manually first"
+         description: "Stop. I'll commit or stash my work manually first"
 
 On "Auto-stash": run `git stash push -u -m "fix-pr-review auto-stash $(date +%s)"` and set `STASH_PUSHED=true`. If the run aborts, the user can find their work in `git stash list` as `fix-pr-review auto-stash <timestamp>`.
 On "Abort": print "Commit or stash your uncommitted work first." and exit.
@@ -203,7 +203,7 @@ Manually exported or legacy `/review-pr` findings files use the existing local-f
 
 Phase 1 detected exactly one of these three input types. Load `${CLAUDE_SKILL_DIR}/references/fetch-review-data.md` now and run only that type's section. It holds the paginated GraphQL `reviewThreads` query and its `isResolved` filter, the `/pulls/<num>/reviews/<review_id>` and `/pulls/comments/<comment_id>` REST endpoints, the CodeRabbit review-body anatomy, and the parse for the `🤖 Prompt for all review comments with AI agents` block, the only place nitpicks appear, since they never get inline threads.
 
-A fetch that errors — GraphQL rate limit, 404, private repo, or a per-page failure inside the pagination loop — surfaces the error and exits, so triage never runs on a partial comment set. For 404, print `Couldn't access PR — check repo access and run 'gh auth refresh -s repo'.`
+A fetch that errors — GraphQL rate limit, 404, private repo, or a per-page failure inside the pagination loop — surfaces the error and exits, so triage never runs on a partial comment set. For 404, print `Couldn't access PR. Check repo access and run 'gh auth refresh -s repo'.`
 
 ### For local files (`./review.md`, `/tmp/review-pr-*-findings.md`, etc.)
 
@@ -219,7 +219,7 @@ Every input path ends here. The `Comment` schema, the exact field names Phases 3
 
 ### Short-circuit cases
 
-- **Empty list** (all threads resolved, local file has no findings): print `Nothing to triage — no unresolved comments found.` → restore stash → exit 0.
+- **Empty list** (all threads resolved, local file has no findings): print `Nothing to triage. No unresolved comments found.` → restore stash → exit 0.
 - **Only nitpicks remain AND `--all-nitpicks` not set**: print `Only nitpicks found (N). Pass --all-nitpicks to triage them, or ignore.` → restore stash → exit 0.
 
 ---
@@ -298,8 +298,8 @@ Skip this step if there are zero contested items. Otherwise, use AskUserQuestion
 
    Question:
      header: "Triage"
-     text: "<C> item(s) will get a reply + thread resolution with no code change. Select any to RECLASSIFY — unselected items proceed as planned."
-     options: [one option per DISMISS/DEFER/DISAGREE item: "[<id>] <file:line> — <classification> (<rubric>): <reason, first ~60 chars>"]
+     text: "<C> item(s) will get a reply + thread resolution with no code change. Select any to RECLASSIFY. Unselected items proceed as planned."
+     options: [one option per DISMISS/DEFER/DISAGREE item: "[<id>] <file:line>: <classification> (<rubric>), <reason, first ~60 chars>"]
      multiSelect: true
 
 If contested items exceed the option limit, split into multiple multiSelect questions. DISMISS first (the most costly to get wrong).
@@ -308,14 +308,14 @@ For each selected item, use a follow-up AskUserQuestion:
 
    Question:
      header: "Item <id>"
-     text: "<file:line> — currently <classification>: <reason>. Reclassify as?"
+     text: "<file:line>, currently <classification>: <reason>. Reclassify as?"
      options:
        - label: "FIX (Recommended)"
-         description: "Treat as a real issue — add to the FIX list with a fix plan"
+         description: "Treat as a real issue and add it to the FIX list with a fix plan"
        - label: "NEEDS-INPUT"
-         description: "Park it — no reply, no resolution; surfaces in the final report"
+         description: "Park it. No reply, no resolution; surfaces in the final report"
        - label: "Keep as-is"
-         description: "Selected by mistake — keep the original classification"
+         description: "Selected by mistake. Keep the original classification"
 
 On "FIX": re-dispatch the classifier scoped to just this item to produce the full FIX field set — `fix_plan`, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (class sweep included; a reclassified item has never been swept), and `reusability_context` (carry the contested item's own value through unless the sweep changed it) — then re-run plan validation on the changed item. Producing a partial field set here fails validation and burns the single retry. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
 
@@ -323,7 +323,7 @@ Nothing is posted or resolved during this step. Phase 7 remains the only place G
 
 ### Execution
 
-If `--dry-run`: print the plan, print `dry run — not executing`, restore stash, exit 0.
+If `--dry-run`: print the plan, print `dry run, not executing`, restore stash, exit 0.
 
 If `EXECUTION_AUTHORIZED=true`, proceed directly to Phase 5. The invocation already authorizes execution of every validated FIX item. If `--interactive` was set, ask for per-item confirmation in Phase 5; it does not add a plan-level confirmation.
 
@@ -377,14 +377,14 @@ For each FIX item in topological order:
 
    Question:
      header: "Fix <idx>"
-     text: "[<idx>/<total>] <file:line> — <fix_plan summary, first 80 chars>"
+     text: "[<idx>/<total>] <file:line>: <fix_plan summary, first 80 chars>"
      options:
        - label: "Apply fix"
          description: "Execute this fix and continue to the next"
        - label: "Skip"
-         description: "Skip this fix — mark as NEEDS-INPUT in the final report"
+         description: "Skip this fix and mark it NEEDS-INPUT in the final report"
        - label: "Skip remaining"
-         description: "Stop here — skip all remaining fixes"
+         description: "Stop here and skip all remaining fixes"
 
    On "Apply fix": continue with steps 2-7. In ordinary Phase 5, "Skip" marks `fix_status[idx] = skipped` and advances to the next fix; "Skip remaining" marks every remaining fix `skipped` and jumps to Phase 6. In Phase 8 context, "Skip" restores every declared path from `active_snapshot` through the state-preserving restore rule with fallback `skipped`, sets `needs_input_status[idx]=skipped` and `convergence[idx]=not-run — user skipped before edit`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — user skipped before edit` otherwise. Phase 8 "Skip remaining" performs that same restore and settlement for the current item; it marks each not-yet-run fix skipped unless its current status is `inverse_risk_applied`, which remains unchanged with its publication blocker. Earlier landed fixes remain untouched. Both choices clear `phase8_triage_context`, terminate the nested Phase 5 path immediately, bypass Phases 5.5–6, and rejoin Phase 8 at the next independent item. On "Other": treat as freeform instruction (e.g., "modify the fix plan for this item").
 
@@ -592,20 +592,20 @@ Keep the run-level stash untouched throughout this step. Build `needs_input_item
        - label: "Triage now"
          description: "Walk through each NEEDS-INPUT item and decide: fix, defer, or dismiss"
        - label: "Skip for now"
-         description: "Leave them unresolved — handle manually later"
+         description: "Leave them unresolved and handle them manually later"
 
 On "Triage now": for each `needs_input_items` entry, use AskUserQuestion:
 
    Question:
      header: "Item N<idx>"
-     text: "<file:line> — <why_unclear>"
+     text: "<file:line>: <why_unclear>"
      options:
        - label: "Fix it"
          description: "Provide guidance and have the agent apply a fix"
        - label: "Defer"
          description: "Mark as out-of-scope, post a DEFER reply on GitHub"
        - label: "Dismiss"
-         description: "Not a real issue — post a DISMISS reply on GitHub"
+         description: "Not a real issue. Post a DISMISS reply on GitHub"
 
 For every automatic `Other` freeform path in the batch prompt or an item prompt, honor an instruction that unambiguously maps named items to `Fix it`, `Defer`, `Dismiss`, or `Skip for now`. Preserve the exact freeform text with the item. If the mapping is ambiguous, set each affected item's `needs_input_status=skipped` and carry the text into its manual-handling reason. Do not leave it pending.
 
@@ -705,7 +705,7 @@ After printing the final report and completing the suppression step when applica
        - label: "Re-run on remaining"
          description: "Run /fix-pr-review again for skipped/needs-input items"
        - label: "Done"
-         description: "Exit — I'll handle the rest manually"
+         description: "Exit. I'll handle the rest manually"
 
 On "Commit changes" or "Push to remote", require `inverse_risk_blockers` to be empty, `stash_restored != conflict`, and a valid `done_verified_snapshot`. Recompute the blocker set instead of trusting the rendered report; a non-empty set stops the action. Invoke `git-commit` in Verified content snapshot sealed-index mode with that snapshot; never stage or restage the live worktree. Require the created commit tree to equal the snapshot tree. Ordinary restored WIP remains in the worktree and outside the candidate commit.
 

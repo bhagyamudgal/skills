@@ -157,7 +157,7 @@ fi
 
 Record `$verified_content_snapshot` only after the reverse scope check passes for every declared path and every changed hunk or logical change within it. Every index operation uses the isolated temporary index, so the real index remains untouched. `GIT_INDEX_FILE` redirects the index but not the object database, which is shared: only the declared paths are ever hashed with `git hash-object -w`, so undeclared worktree content is never written into the repository. The command fails closed if setup, hashing, staging, tree creation, or cleanup fails; its exit trap removes the temporary index on both success and failure. The snapshot is `HEAD` plus exactly the declared paths: their current bytes where they exist, their removal where they were deleted. External-only work uses its target currency and read-back ledger instead of a Git snapshot.
 
-Every prose cell below is read by someone deciding what to do next. Apply `unslop` to it.
+Every prose cell below is read by someone deciding what to do next. Write it with no em or en dashes. `unslop` carries the rest of the rules where it is installed.
 
 Render the drafted mapping with every originating request item exactly once, in request order, and name all lanes that apply to it:
 

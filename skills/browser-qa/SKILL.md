@@ -42,7 +42,7 @@ Settle this before the subagent exists. A dispatched subagent has no channel to 
 
 If {URL} is production-like or any parsed step mutates shared data, invoke `preflight-mutations` here. Pass the exact environment URL, authenticated account/workspace, action and record IDs, ownership, pre-test record snapshot, restoration/compensation steps, and user authorization. Apply its result contract in the main agent: on `confirmation-required`, present the card and get that decision from the user before dispatching; on `blocked`, report its **Next action** and dispatch nothing. Only a `ready` card is interpolated into the prompt below as `{ready card}`.
 
-Local flows that touch only disposable data do not use this gate. Pass `not-applicable — local flow, disposable data only` as `{ready card}`.
+Local flows that touch only disposable data do not use this gate. Pass `not-applicable, local flow, disposable data only` as `{ready card}`.
 
 ### Subagent Prompt Template
 

@@ -702,9 +702,9 @@ For each remaining finding:
 
    - **`status == resolved`**: verify the diff between `commit_sha_resolved..HEAD` doesn't reintroduce the issue.
      - Re-introduced (resolving change reverted) → set this finding's status to `regression`, keep it (will be flagged as a fresh active finding with regression history in Phase 4).
-     - Not re-introduced → DROP, log `prior-state suppression — resolved in round <round_resolved> by commit <commit_sha_resolved>`.
+     - Not re-introduced → DROP, log `prior-state suppression, resolved in round <round_resolved> by commit <commit_sha_resolved>`.
 
-   - **`status in {dismissed, wontfix}`** → DROP, log `prior-state suppression — <status> in round <round_resolved>: "<dismissal_reason>"`.
+   - **`status in {dismissed, wontfix}`** → DROP, log `prior-state suppression, <status> in round <round_resolved>: "<dismissal_reason>"`.
 
 3. Report every finding's state as exactly one of: `active`, `resolved` (with commit), `dismissed` (with reason), `wontfix` (with reason), `regression`. The enum is closed, and it is the only status vocabulary that appears in output, logs, or comments.
 
@@ -826,7 +826,7 @@ A binary assessment:
 - **No**: one or more findings survived the critic pass, OR Q1 identified an intent gap
 - **Yes**: otherwise
 
-Write a one-sentence approval reason grounded in the most important finding or the absence of findings.
+Write a one-sentence approval reason grounded in the most important finding or the absence of findings. Write it, and the Summary in the block below, with no em or en dashes: both are printed to the terminal and posted to GitHub verbatim.
 
 ---
 

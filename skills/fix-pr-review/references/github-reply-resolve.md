@@ -21,6 +21,8 @@ For each FIX item with `fix_status ∈ {ok, retried_ok, inconclusive, type_check
 
 4. Store as `reply_final[idx]`.
 
+This reply is yours, not the classifier's: SKILL.md Phase 3 states that main never reads `triage-rubric.md`, so its reply rules cannot reach you here. Write it with no em or en dashes.
+
 `type_check_skipped` is a landed fix, not a failure. It means the repo has no TS tooling for the narrow check to run (Phase 5 step 4), and `/done` in Phase 6 still covered it. Excluding it would leave every fix in a non-TypeScript repo without a reply, so it replies like any other landed fix.
 
 Skipped/aborted FIX items get no reply (they land in NEEDS-INPUT for the final report instead). The same applies to Phase 5.5's outcomes: `fix_status ∈ {partial, reverted_inverse_risk, inverse_risk_applied}` gets no reply and no thread resolution. A partial, reverted, or known-risk fix must not close the reviewer's conversation. All three surface in the Phase 8 report. So the no-reply set is exactly `fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk, inverse_risk_applied}`; Step 7c excludes it.
@@ -79,7 +81,7 @@ Concretely this catches:
 - `"Valid but requires packages/shared refactor; tracking in #4321"` → PASSES (DEFER with scope reason)
 - `"Will do later"` → FAILS (no reason, no target)
 
-**Missing `reusability_context` field**: if the classifier omitted the field entirely (Phase 3 non-compliance), default to `reusability_context = { flagged: false }` and fall through to the generic validator. But log a `reusability_context missing — Phase 3 schema gap` warning in the final report so the user knows the reusability check didn't gate this reply.
+**Missing `reusability_context` field**: if the classifier omitted the field entirely (Phase 3 non-compliance), default to `reusability_context = { flagged: false }` and fall through to the generic validator. But log a `reusability_context missing, Phase 3 schema gap` warning in the final report so the user knows the reusability check didn't gate this reply.
 
 On failure: dispatch a 1-off `general-purpose` subagent with the original comment + failing reply + which rule failed, ask for a compliant rewrite. Max 1 rewrite. If the rewrite still fails, log as `reply_invalid` and SKIP posting for this item (thread stays unresolved; surfaced in the top of the final report).
 
@@ -123,4 +125,4 @@ After an expected `landed` reply and authoritative `resolved` result, advance th
 
 ## Step 7d: Promoted nitpicks handling
 
-Promoted nitpicks (sanity-flagged in Phase 3, STEP 3(e)) have `thread_id = null` because they live only in the review body. Phase 5 applies the fix for them; Phase 7 has **nothing to post**. They are tracked separately for the final report so the user sees: "fix applied, no thread to resolve — mention in commit message; CodeRabbit's next review will regenerate the body and the old nitpick disappears."
+Promoted nitpicks (sanity-flagged in Phase 3, STEP 3(e)) have `thread_id = null` because they live only in the review body. Phase 5 applies the fix for them; Phase 7 has **nothing to post**. They are tracked separately for the final report so the user sees: "Fix applied. No inline thread to resolve. Mention in commit message; CodeRabbit's next review will regenerate the body and the old nitpick disappears."

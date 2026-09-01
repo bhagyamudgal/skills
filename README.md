@@ -15,6 +15,10 @@ npx skills add bhagyamudgal/skills@done
 npx skills add bhagyamudgal/skills -l
 ```
 
+## Prerequisite
+
+`done`, `audit-ticket` and `git-commit` name a separate `unslop` skill for the voice of the text they produce. It is not bundled here. Without it those three still apply the punctuation rule each states inline; install `unslop` to get the rest.
+
 ## Update
 
 ```bash

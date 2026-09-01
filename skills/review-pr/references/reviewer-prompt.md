@@ -138,7 +138,6 @@ If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` f
 - If a question (Q1-Q9, except Q6) has nothing to report, write "No issues". That is a complete answer.
 - **Permission to abstain**: if answering needs code you haven't seen, fetch it via `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>` or write `Cannot assess: would need <file>`. Both are complete answers.
 - Low-confidence findings at Moderate or Minor WILL be dropped by the critic. Only flag if a human should still take a second look.
-- Every finding you write is posted to GitHub verbatim. Write it the way an engineer writes to another engineer: no em dashes, since a period or a comma does the same work, and no bold label that restates the line it opens.
 - Steps 4, 5 and 6 each require an audit field: `reusability_searches:`, `class_completeness:` and `Inverse risk:`. Write all three exactly as those steps specify, with real tool calls or the step's own N/A sentinel. What a missing one costs: an empty or missing `reusability_searches:` makes the Q6 claims INVALID, and a missing `class_completeness:` has the finding treated as UNSWEPT so the critic runs the sweep itself.
 
 ## Output format
