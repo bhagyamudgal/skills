@@ -20,7 +20,7 @@ The default, and the only mode `/fix-pr-review` and `/harden-plan` ever run. Bot
 on the clone they are standing in.
 
 ```bash
-# Repo map files — inventory of TS/TSX in shared roots (capped 500 lines, truncation marked)
+# Repo map files: inventory of TS/TSX in shared roots (capped 500 lines, truncation marked)
 bash -c '
 if [ -d packages ] || [ -d apps ]; then
   { [ -d packages ] && find packages -type f \( -name "*.ts" -o -name "*.tsx" \) \
@@ -29,18 +29,18 @@ if [ -d packages ] || [ -d apps ]; then
     [ -d apps ] && find apps -type f \( -name "*.ts" -o -name "*.tsx" \) \
       -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
       -not -path "*/.next/*" -not -name "*.test.*" -not -name "*.spec.*" 2>/dev/null
-  } | awk "NR<=500{print} END{if(NR>500)print \"[truncated at 500 of \" NR \" lines — use Glob directly for ground truth]\"}"
+  } | awk "NR<=500{print} END{if(NR>500)print \"[truncated at 500 of \" NR \" lines, use Glob directly for ground truth]\"}"
 fi
 '
 
-# Repo map exports — top-level exports across src/lib/source dirs (capped 500 lines, truncation marked)
+# Repo map exports: top-level exports across src/lib/source dirs (capped 500 lines, truncation marked)
 bash -c '
 if [ -d packages ] || [ -d apps ]; then
   find packages apps 2>/dev/null -type d \( -name src -o -name lib -o -name source \) \
     -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
     -not -path "*/.next/*" 2>/dev/null \
     | xargs -I{} grep -rhnE "^export (default (async )?function|function|const|class|type|interface|async function) \w+" {} 2>/dev/null \
-    | awk "NR<=500{print} END{if(NR>500)print \"[truncated at 500 of \" NR \" lines — grep packages/ apps/ directly for more]\"}"
+    | awk "NR<=500{print} END{if(NR>500)print \"[truncated at 500 of \" NR \" lines, grep packages/ apps/ directly for more]\"}"
 fi
 '
 ```
@@ -58,7 +58,7 @@ if [ "$CROSS_REPO_MODE" = "true" ]; then
     --jq '.tree[] | select(.type == "blob" and (.path | test("^(packages|apps)/.*\\.(ts|tsx)$")) and (.path | test("node_modules|dist|build|\\.test\\.|\\.spec\\.") | not)) | .path' \
     | awk 'NR<=500{print} END{if(NR>500)print "[truncated at 500 of " NR " lines]"}'
   repo_map_files="<output>"
-  repo_map_exports="N/A (cross-repo mode — fetch via 'gh api repos/<owner>/<repo>/contents/<path>?ref=<sha>' on-demand)"
+  repo_map_exports="N/A (cross-repo mode, fetch via 'gh api repos/<owner>/<repo>/contents/<path>?ref=<sha>' on-demand)"
 fi
 ```
 

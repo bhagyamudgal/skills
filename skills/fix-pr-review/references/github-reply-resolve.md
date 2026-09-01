@@ -15,7 +15,7 @@ For each FIX item with `fix_status ∈ {ok, retried_ok, inconclusive, type_check
 3. Synthesize `reply_final[idx]` from the actual diff, in the form:
 
    ```
-   Fixed — <1-sentence description of what the diff actually changed, 
+   Fixed: <1-sentence description of what the diff actually changed, 
    citing the new post-image line number and a concrete verb>
    ```
 
@@ -38,7 +38,7 @@ min_length = 40 characters
 must_contain_any_of = [
     a file path  (e.g., /\w+\.\w{1,4}/)
     a line reference (e.g., /:\d+/ or /\bline \d+/)
-    a quoted string (e.g., /"[^"]+"/ or /'[^']+'/ — for CLAUDE.md quotes)
+    a quoted string (e.g., /"[^"]+"/ or /'[^']+'/, for CLAUDE.md quotes)
     a short commit SHA (/\b[a-f0-9]{7,}\b/)
     a concrete verb ("changed", "added", "removed", "renamed", "refactored",
                      "fixed", "scoped", "extracted", "inlined")
@@ -55,7 +55,7 @@ The validator reads the `reusability_context:` field stored on each comment duri
 if comment.reusability_context?.flagged:
     reusability_rule_passes =
         (classification == "FIX" AND reply contains a destination file path
-            that points at an existing module — one of:
+            that points at an existing module, one of:
               - a `@<scope>/...` package reference
               - a `packages/.../<file>.ts` path
               - an `apps/.../<file>.ts` path
@@ -73,8 +73,8 @@ if comment.reusability_context?.flagged:
 ```
 
 Concretely this catches:
-- `"Fixed — now importing from @<scope>/utils/format.ts:45 instead of reimplementing"` → PASSES (FIX with destination)
-- `"Fixed — refactored to a helper"` → FAILS (no destination)
+- `"Fixed: now importing from @<scope>/utils/format.ts:45 instead of reimplementing"` → PASSES (FIX with destination)
+- `"Fixed: refactored to a helper"` → FAILS (no destination)
 - `"Moved to helpers"` → FAILS (no concrete target)
 - `"Valid but requires packages/shared refactor; tracking in #4321"` → PASSES (DEFER with scope reason)
 - `"Will do later"` → FAILS (no reason, no target)
@@ -95,7 +95,7 @@ For each item with a non-null `thread_id` (actionables only, NOT nitpicks, NOT N
 4. Run the resolve mutation below, then query the exact thread by `thread_id`. Record `resolved` only when the authoritative result has `isResolved: true`; record an authoritative `false` as `confirmed-open`, and a failed or inconclusive query as `reconcile-required`. On either non-resolved result, retire the current card and preflight the remaining items without this unresolved thread before the next write. Never infer resolution from the mutation response or retry an indeterminate result.
 
 ```bash
-# 1. Post reply — pass every ID with -f (raw string); -F applies JSON type
+# 1. Post reply. Pass every ID with -f (raw string); -F applies JSON type
 #    coercion and mangles all-numeric IDs into numbers
 gh api graphql \
   -f threadId="<thread_id>" \

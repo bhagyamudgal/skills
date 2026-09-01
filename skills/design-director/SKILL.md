@@ -36,14 +36,14 @@ Before normal mode detection, check whether the thread already contains a select
    Question: "Which design-director mode fits this request?"
    Header: "Mode"
    Options:
-     1. Brief Simplify       — extract objective, audience, message, tone, deliverables from a client brief
-     2. Logo Concepts        — staged logo directions and controlled refinements
-     3. Layout Compose       — 5 layout ideas for a poster / post / section
-     4. Typography System    — font pairing, hierarchy, usage guidelines
-     5. Color Palette        — primary/secondary/accent palette with WCAG contrast notes
-     6. Design Critique      — honest, specific feedback on an existing design
-     7. Brand Identity       — full visual identity system (logo + color + type + style)
-     8. Finalize Identity    — production SVG/PNG assets, theme variants, and package checks
+     1. Brief Simplify:        extract objective, audience, message, tone, deliverables from a client brief
+     2. Logo Concepts:         staged logo directions and controlled refinements
+     3. Layout Compose:        5 layout ideas for a poster / post / section
+     4. Typography System:     font pairing, hierarchy, usage guidelines
+     5. Color Palette:         primary/secondary/accent palette with WCAG contrast notes
+     6. Design Critique:       honest, specific feedback on an existing design
+     7. Brand Identity:        full visual identity system (logo + color + type + style)
+     8. Finalize Identity:     production SVG/PNG assets, theme variants, and package checks
    ```
 
 5. Acknowledge the chosen mode in one short sentence ("Running Logo Concepts.").

@@ -13,21 +13,21 @@ Substitute `<SKILL_DIR>` in every prompt below before dispatching, exactly as fo
 Dispatch when ANY finding has a missing `class_completeness` audit, a verdict of `INCOMPLETE`, or an `Enclosing-symbol` that is exported or lives in a shared package.
 
 ```
-For each finding below, find EVERY site in the repo matching its rule_class signature —
-its whole blast radius, callers included when the symbol is exported.
+For each finding below, find EVERY site in the repo matching its rule_class signature,
+meaning its whole blast radius, callers included when the symbol is exported.
 
-Report per finding, nothing else — the SAME shape the reviewer's `class_completeness:`
+Report per finding, nothing else, in the SAME shape the reviewer's `class_completeness:`
 audit uses (canonical copy: `<SKILL_DIR>/references/finding-output-format.md`), so main
 never reconciles two schemas:
   finding: <id>
   signature: <the literal/pattern actually searched>
   search: <tool>("<query>", "<path>") → <N> sites
   sites:
-    - <file:line or symbol>: affected | not-affected — <one clause why>
+    - <file:line or symbol>: affected | not-affected, <one clause why>
   verdict: COMPLETE (all N sites reported) | INCOMPLETE (<M> unreported sites)
 
 `affected` means the site exhibits this rule_class; `not-affected` means you looked and it
-does not. Never write `handled` — that is the state file's separate, later question.
+does not. Never write `handled`. That is the state file's separate, later question.
 
 Do not judge severity. Do not suggest fixes. Report sites.
 ```
@@ -41,11 +41,11 @@ Dispatch when `CURRENT_ROUND >= 2` and `PRIOR_STATE.findings` contains any entry
 ```
 These findings were closed in earlier rounds. At the CURRENT head, verify each is still
 closed. For each, check in this order:
-  1. class_sites — is every listed site still handled? Are there NEW sites of this
+  1. class_sites: is every listed site still handled? Are there NEW sites of this
      rule_class that the current diff introduced?
-  2. inverse_risk — has that specific failure mode appeared in the resolving code?
-  3. depends_on — is the code condition the dismissal rested on still true?
-  4. lineage, one hop only, and only when 1-3 put this finding at `regressed` — blame the
+  2. inverse_risk: has that specific failure mode appeared in the resolving code?
+  3. depends_on: is the code condition the dismissal rested on still true?
+  4. lineage, one hop only, and only when 1-3 put this finding at `regressed`, blame the
      cited line (`git blame -L <line>,<line>` locally,
      `gh api repos/<owner>/<repo>/commits?path=<path>&sha=<head_sha>` cross-repo). Name a
      prior finding ONLY when the blame commit is one of the `commit_sha_resolved` values
@@ -53,7 +53,7 @@ closed. For each, check in this order:
 Report per finding, nothing else:
   id: <id>
   verdict: still-closed | regressed | dismissal-void
-  evidence: <file:line + one sentence — REQUIRED when not still-closed>
+  evidence: <file:line + one sentence. REQUIRED when not still-closed>
   caused_by: <id of the prior finding whose commit_sha_resolved is the blame commit, or null>
 Default to still-closed when you cannot find evidence of a regression.
 ```
@@ -80,7 +80,7 @@ whether it was overlooked:
 
 INCLUDE_SCHEMA_CHECKS: <true|false>
 SCHEMA_DIR: <path>
-If true, ALSO cover Q7 (table overlap), Q8 (1:1 consolidation) and Q9 (cross-table FK) —
+If true, ALSO cover Q7 (table overlap), Q8 (1:1 consolidation) and Q9 (cross-table FK):
 load `<SKILL_DIR>/references/schema-design-checks.md` and follow it. If false, omit Q7-Q9
 entirely; do not emit lines for them.
 
@@ -89,7 +89,7 @@ Report findings only; main composes the run-level verdict.
 
 Report ONE entry per category, nothing else:
   Q<N>: no gap
-  Q<N>: gap — followed by the full finding block in the shape above
+  Q<N>: gap, followed by the full finding block in the shape above
 
 A cleared category is exactly one line. Every category in scope gets exactly one entry.
 "no gap" on all of them is a complete answer.

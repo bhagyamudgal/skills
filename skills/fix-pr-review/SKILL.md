@@ -92,7 +92,7 @@ Every reviewer's comments go through the same triage: CodeRabbit, humans, and ot
 
 ```bash
 command -v gh >/dev/null 2>&1 || { echo "Install gh CLI: https://cli.github.com"; exit 1; }
-git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "Not inside a git repo — cd into your clone first."; exit 1; }
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "Not inside a git repo. cd into your clone first."; exit 1; }
 gh auth status 2>&1 | grep -q "Logged in" || { echo "Run 'gh auth login' first"; exit 1; }
 ```
 
@@ -259,8 +259,8 @@ Before anything is shown to the user, mechanically validate the classifier's out
 - Every DISAGREE MUST have non-empty `disagree_rationale` (and it MUST NOT be a pure style preference; check for keywords like "prefer", "cleaner", "nicer" without a concrete counter-argument).
 - Every FIX MUST have `fix_plan` length >= 30 characters.
 - Every FIX MUST have `change_class` set to exactly `hardening` or `logic-change` (the calibration the classifier applied is in `references/triage-rubric.md`; this check is purely the literal value).
-- Every FIX MUST have non-empty `test_scenario`. For `change_class: hardening`, the value MUST be exactly `smoke test — happy path unchanged`. For `change_class: logic-change`, the value MUST be a 1-sentence concrete repro (not just "verify it works").
-- Every FIX MUST have non-empty `inverse_risk` that either names a specific failure mode or is exactly `none — pure addition`. Hedges fail validation: an empty value, or anything of the shape "could have issues" / "minor risk" / "some risk" / "possible regression" / "none" on its own. A named failure mode says what breaks, where. Phase 5.5 consumes this field; an unnamed risk is unverifiable there.
+- Every FIX MUST have non-empty `test_scenario`. For `change_class: hardening`, the value MUST be exactly `smoke test, happy path unchanged`. For `change_class: logic-change`, the value MUST be a 1-sentence concrete repro (not just "verify it works").
+- Every FIX MUST have non-empty `inverse_risk` that either names a specific failure mode or is exactly `none, pure addition`. Hedges fail validation: an empty value, or anything of the shape "could have issues" / "minor risk" / "some risk" / "possible regression" / "none" on its own. A named failure mode says what breaks, where. Phase 5.5 consumes this field; an unnamed risk is unverifiable there.
 - Every FIX MUST have a `class_completeness` block with a non-empty `verdict` starting with either `COMPLETE` or `INCOMPLETE`. `INCOMPLETE` MUST name the excluded sites and give a reason for each. An `INCOMPLETE` verdict with no per-site reason fails validation.
 - Every item MUST have non-empty `grounding_a` and `grounding_b`.
 - Every item — FIX, DISMISS, DEFER and DISAGREE alike — MUST carry a `reusability_context` field, even when it is just `{ flagged: false }`. Phase 7's reply validator branches on it, so a missing field silently disables the reusability gate on that reply.
@@ -272,7 +272,7 @@ On validation failure: re-dispatch the classifier with the specific missing fiel
 Print the plan with a header:
 
 ```
-# Fix Plan — PR #<num>: <title>
+# Fix Plan, PR #<num>: <title>
 # <N> findings triaged: <F> fix, <D> dismiss, <E> defer, <G> disagree, <I> needs-input, <n> nitpicks
 ```
 
@@ -281,7 +281,7 @@ Print the plan with a header:
 If any DISMISS has `rubric: R5`, print a **separate highlighted section BEFORE** the main plan:
 
 ```
-## ⚠ Dismissed because they contradict CLAUDE.md — review and override if any are exceptions
+## ⚠ Dismissed because they contradict CLAUDE.md: review and override if any are exceptions
 
 [D<n>] <file:line>: <comment ask>
        CLAUDE.md rule: "<verbatim quote>"
@@ -445,24 +445,24 @@ It fetches whatever else it needs. Keep it in a subagent: it re-reads files and 
 the repo, and main only needs verdicts.
 
 ```
-For each fix below, verify against the working tree — not against the fix plan's claims.
+For each fix below, verify against the working tree, not against the fix plan's claims.
 
-1. CLASS COMPLETENESS — every site the class sweep marked `affected` in
+1. CLASS COMPLETENESS: every site the class sweep marked `affected` in
    `class_completeness.sites` must actually be changed. A fix that landed on 3 of 4
    sites is INCOMPLETE, not done.
    (Sites the plan's `verdict` deliberately excluded are not counted as unfixed.)
-2. INVERSE RISK — the named failure mode must NOT be present in the applied code.
-3. NEW SIBLINGS — did the fix itself introduce a new instance of the pattern it fixes,
+2. INVERSE RISK: the named failure mode must NOT be present in the applied code.
+3. NEW SIBLINGS: did the fix itself introduce a new instance of the pattern it fixes,
    or a new branch (error state, empty state, early return) that its siblings have but
    this one lacks?
 
 Report per fix, nothing else:
   fix: <idx>
-  class_complete: yes | no — <unfixed site if no>
-  inverse_risk_present: no | yes — <file:line + one sentence>
+  class_complete: yes | no, <unfixed site if no>
+  inverse_risk_present: no | yes, <file:line + one sentence>
   new_siblings: none | <file:line + one sentence>
 
-Evidence rules differ per check — "I lack evidence" is not an answer for check 1:
+Evidence rules differ per check. "I lack evidence" is not an answer for check 1:
   - Check 1 is decided MECHANICALLY by `git diff HEAD`. Each affected site either
     appears in the diff or it does not; there is no undecidable state. Report `no`
     with the unfixed site whenever a site is absent from the diff.
@@ -670,9 +670,9 @@ Use AskUserQuestion:
 
 For each selected item, append to `.claude/review-suppressions.yml`:
 ```yaml
-  - pattern: "<normalized pattern from finding — key phrase, not full text>"
+  - pattern: "<normalized pattern from finding: key phrase, not full text>"
     category: "<finding category if available>"
-    file: "<finding's file path — include only if the rationale is specific to one file, omit for generic patterns>"
+    file: "<finding's file path. Include only if the rationale is specific to one file, omit for generic patterns>"
     reason: "<dismiss/disagree rationale from triage>"
     added: <today's date YYYY-MM-DD>
 ```

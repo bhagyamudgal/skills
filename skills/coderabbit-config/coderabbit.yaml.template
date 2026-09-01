@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
-# CodeRabbit configuration template — copy to <repo-root>/.coderabbit.yaml and customize.
+# CodeRabbit configuration template. Copy to <repo-root>/.coderabbit.yaml and customize.
 # Docs: https://docs.coderabbit.ai/guides/configure-coderabbit
 #
 # This template encodes the conventions in ~/.claude/CLAUDE.md so CodeRabbit catches

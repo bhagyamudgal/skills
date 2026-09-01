@@ -41,7 +41,7 @@ the trade-off you quote is the one you'd quote next time.
 ### Opening
 
 ```
-"Before we write any code, I want to understand what we're building and make sure we make good foundational decisions. This might take 15-30 minutes but will save hours later. Let's start with the big picture — what are we building and who is it for?"
+"Before we write any code, I want to understand what we're building and make sure we make good foundational decisions. This might take 15-30 minutes but will save hours later. Let's start with the big picture. What are we building and who is it for?"
 ```
 
 ### During Discovery

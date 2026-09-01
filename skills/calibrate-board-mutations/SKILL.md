@@ -20,7 +20,7 @@ Create one ledger in the existing authorized artifact that owns the batch:
 - **Board / field:** <stable board ID and estimate field ID>
 - **Eligible scope:** <owner rule and exact candidate IDs>
 - **Unit / scale:** <agent-assisted hours, person-hours, points, allowed values, rounding>
-- **Calibration source:** <applicable policy or 3–5 user-approved anchors>
+- **Calibration source:** <applicable policy or 3-5 user-approved anchors>
 - **Sample approval:** <approval source or pending>
 - **Umbrella rule:** <classification and aggregation rule>
 

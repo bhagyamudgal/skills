@@ -208,11 +208,11 @@ and the anti-slop reply formats STEP 6 needs.
 STEP 5. For each FIX, write a concrete fix plan:
   - Which file(s) to edit: ALL sites from the STEP 1.5 class sweep, not just
     the cited one
-  - What change to make (1–3 sentences, >= 30 chars)
+  - What change to make (1-3 sentences, >= 30 chars)
   - Any dependencies on other fixes ("depends on F1" if F1 renames a symbol
     this fix calls)
   - `inverse_risk:` what this fix trades INTO if applied literally, or
-    `none — pure addition`
+    `none, pure addition`
   - `class_completeness:` carry through the STEP 1.5 block verbatim
     (`signature` / `search` / `sites` / `verdict`). Phase 4 validates the
     `verdict`; Phase 5.5 verifies the `sites` list against the working tree
@@ -264,7 +264,7 @@ Return the plan in this EXACT format. Missing required fields cause rejection.
 # Triage plan
 
 ## FIX (<count>)
-[F1] <file:line> — <comment ask, truncated ~80 chars>
+[F1] <file:line>: <comment ask, truncated ~80 chars>
      thread_id: <id>               # NULL for promoted nitpicks
      promoted_from_nitpick: <bool>
      grounding_a: <what code this points at>
@@ -274,26 +274,26 @@ Return the plan in this EXACT format. Missing required fields cause rejection.
                    # hardening = happy path unchanged; logic-change = a user might
                    # observe a difference. Burden of proof is on `hardening`.
                    # Worked examples + test_scenario detail: triage-rubric.md
-     test_scenario: <for hardening: "smoke test — happy path unchanged";
+     test_scenario: <for hardening: "smoke test, happy path unchanged";
                      for logic-change: 1-sentence concrete user-visible repro>
-     inverse_risk: <named failure mode, or "none — pure addition">
+     inverse_risk: <named failure mode, or "none, pure addition">
      class_completeness:                        # from STEP 1.5, verbatim
        signature: <what you actually searched>
        search: <tool>("<query>", "<path>") → <N> sites
        sites:
-         - <file:line>: affected | not-affected — <one clause why>
+         - <file:line>: affected | not-affected, <one clause why>
        verdict: COMPLETE (all N sites folded into the fix plan)
-                | INCOMPLETE (<M> sites deliberately excluded — reason each)
+                | INCOMPLETE (<M> sites deliberately excluded, reason each)
      reusability_context: { flagged: <bool>, matches: [...], verified: <yes|no> }
                                                 # from STEP 2.5; { flagged: false } when
                                                 # the keyword scan found nothing
-     reply_placeholder: "Fixed — <specific>"
+     reply_placeholder: "Fixed: <specific>"
      dependencies: []
      member_threads: []            # for dedup'd groups
 
 ## DISMISS (<count>)
-[D1] <file:line> — <comment ask>
-     thread_id: <id>               # or "nitpick — no thread"
+[D1] <file:line>: <comment ask>
+     thread_id: <id>               # or "nitpick, no thread"
      rubric: R1|R2|R3|R4|R5
      prior_commit_sha: <short sha> # REQUIRED if rubric == R4
      claude_md_quote: "<rule>"     # REQUIRED if rubric == R5
@@ -305,34 +305,34 @@ Return the plan in this EXACT format. Missing required fields cause rejection.
      reply: "<specific reply per rubric format>"
 
 ## DEFER (<count>)
-[E1] <file:line> — <comment ask>
+[E1] <file:line>: <comment ask>
      thread_id: <id>
      grounding_a: <what code>
      grounding_b: <what ask>
      reason: <why out of scope>
      reusability_context: { flagged: <bool>, matches: [...], verified: <yes|no> }
                                    # from STEP 2.5; { flagged: false } when nothing found
-     reply: "Valid but out of scope — <specific>"
+     reply: "Valid but out of scope: <specific>"
 
 ## DISAGREE (<count>)
-[G1] <file:line> — <comment ask>
+[G1] <file:line>: <comment ask>
      thread_id: <id>
      grounding_a: <what code>
      grounding_b: <what ask>
      disagree_rationale: <concrete counter-argument>
      reusability_context: { flagged: <bool>, matches: [...], verified: <yes|no> }
                                    # from STEP 2.5; { flagged: false } when nothing found
-     reply: "Disagree — <specific>. Keeping current approach."
+     reply: "Disagree: <specific>. Keeping current approach."
 
 ## NEEDS-INPUT (<count>)
-[N1] <file:line> — <comment ask>
+[N1] <file:line>: <comment ask>
      html_url: <direct URL>
      grounding_a: <what code>
      grounding_b: <what ask>
      why_unclear: <1 sentence>
 
 ## Nitpicks auto-dismissed (<count>)
-[n1] <file:line> — <comment ask>
+[n1] <file:line>: <comment ask>
      reply_local_only: "<stock dismissal with specific rationale>"
-     sanity_scan: passed             # or "escalated — see [F<n>]"
+     sanity_scan: passed             # or "escalated, see [F<n>]"
 ```

@@ -109,7 +109,7 @@ Derive the file set from git rather than typing paths: it respects
 BASE=<merge-base or the commit you branched from>
 FILES=$(git ls-files 'apps' 'packages' 'src' 2>/dev/null | grep -vE '\.d\.ts$')
 
-# 1. Literals repeated 3+ times — the ones worth naming, or already named
+# 1. Literals repeated 3+ times: the ones worth naming, or already named
 #    somewhere you never searched because a name search cannot find a value.
 printf '%s\n' "$FILES" | xargs grep -hoE "['\"][A-Za-z][A-Za-z0-9:._/-]{5,}['\"]" \
   | tr -d "\"'" | sort | uniq -c | sort -rn | awk '$1 >= 3'

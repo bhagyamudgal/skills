@@ -36,7 +36,7 @@ examples:
   - "widen the backend gate" → frontend mirror still restricts; inverts the bug
 
 Write it into the finding's `Inverse risk:` field. If the fix is a pure addition
-with no behavior traded away, say `none — pure addition`.
+with no behavior traded away, say `none, pure addition`.
 
 A fix whose inverse risk is worse than the original finding is the cascade with
 extra steps. Rewrite the suggestion or downgrade the finding to an observation.

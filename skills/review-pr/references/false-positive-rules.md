@@ -20,7 +20,7 @@ rules:
         return\s+(Number|parseFloat|parseInt|\+)\s*\(\s*<call>
       Do NOT match across lines, do NOT match sibling args (e.g., foo(bar.toFixed(1), Number(y))).
     action: drop
-    log_reason: "wrapped-coercion FP — call wrapped in Number(...) on same line"
+    log_reason: "wrapped-coercion FP: call wrapped in Number(...) on same line"
 
   - id: intent-alignment
     trigger: |
@@ -35,8 +35,8 @@ rules:
       If overlap >= 0.5 → return evidence_present (downgrade).
       If overlap = 1.0 AND severity = Minor → return evidence_present_drop (drop).
     action: downgrade-1-and-note   # plus drop-if-Minor for overlap=1.0 case
-    note: "Note: this change aligns with PR intent (\"<keywords>\"). Re-verify before merging — may be intentional."
-    log_reason: "intent-alignment downgrade — <N>/<M> finding tokens match PR intent"
+    note: "Note: this change aligns with PR intent (\"<keywords>\"). Re-verify before merging. It may be intentional."
+    log_reason: "intent-alignment downgrade: <N>/<M> finding tokens match PR intent"
 
   - id: library-behavior-citation
     trigger: |
@@ -53,8 +53,8 @@ rules:
         Moderate → DROP
         Minor    → DROP
     action: severity-conditional   # see severity ladder above
-    note: "Note: unverified library-behavior claim — empirical check required before acting."
-    log_reason: "library-claim — <severity> with no citation"
+    note: "Note: unverified library-behavior claim. Empirical check required before acting."
+    log_reason: "library-claim: <severity> with no citation"
 
   - id: default-fallback
     trigger: |
@@ -72,6 +72,6 @@ rules:
       If a "by design" / "only X makes sense" / "always X" comment is found → evidence_present_drop (DROP).
       Else if any named-default signal → evidence_present (downgrade).
     action: downgrade-1-and-note   # plus DROP if "by design" comment found
-    note: "Note: a named default (<CONST>) handles the absent value — likely intentional design, not a propagation bug."
-    log_reason: "default-fallback — found <CONST>"
+    note: "Note: a named default (<CONST>) handles the absent value. Likely intentional design, not a propagation bug."
+    log_reason: "default-fallback: found <CONST>"
 ```

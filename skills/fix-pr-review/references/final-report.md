@@ -12,8 +12,8 @@ If any applicable `gh_status[idx]` has `reply_ok == false` OR `resolve_ok == fal
 ## ⚠ GitHub operations needing attention (<count>)
 
   [<idx>] <file:line>
-    reply:       <reply_state> — <reply_err or authoritative observation>
-    resolution:  <resolve_state> — <resolve_err or authoritative observation>
+    reply:       <reply_state>, <reply_err or authoritative observation>
+    resolution:  <resolve_state>, <resolve_err or authoritative observation>
     disposition: <state-specific next action>
     thread:      <html_url>
 ```
@@ -27,41 +27,41 @@ and its exact settling query; authorize no retry until that query settles the st
 ## Main body
 
 ```
-# Fix PR Review — PR #<num>: <title>
+# Fix PR Review, PR #<num>: <title>
 
-Convergence: converged — all <F> fixes class-complete, inverse risk absent, no new siblings
-             | NOT converged — <n> of <F> fixes partial or reverted (see below)
+Convergence: converged. All <F> fixes class-complete, inverse risk absent, no new siblings
+             | NOT converged. <n> of <F> fixes partial or reverted (see below)
 
 ## Fixes applied (<count>)
 
-### Hardening-only fixes (<H count>) — no user-visible change expected, smoke-test the happy path
-  [1] ✓ src/modules/.../meal-menu-portions.service.ts:26 — atomic onConflictDoUpdate replaces findExisting+branch
+### Hardening-only fixes (<H count>): no user-visible change expected, smoke-test the happy path
+  [1] ✓ src/modules/.../meal-menu-portions.service.ts:26: atomic onConflictDoUpdate replaces findExisting+branch
       type-check (this file): pass
       convergence: class-complete 2/2, inverse risk absent, no new siblings
-      Test: smoke test — happy path unchanged
-  [2] ✓ src/modules/.../meal-menu-portions-validation-helper.ts:9 — cross-FK ownership validation added
+      Test: smoke test, happy path unchanged
+  [2] ✓ src/modules/.../meal-menu-portions-validation-helper.ts:9: cross-FK ownership validation added
       type-check (this file): pass
       convergence: class-complete 1/1, inverse risk absent, no new siblings
-      Test: smoke test — happy path unchanged
+      Test: smoke test, happy path unchanged
 
-### Logic-changing fixes (<L count>) — user-visible behavior differs, exercise each scenario below
-  [3] ✓ src/modules/.../client-portions.service.ts:100 — hoist mealMenuPortions fetch above early exits
+### Logic-changing fixes (<L count>): user-visible behavior differs, exercise each scenario below
+  [3] ✓ src/modules/.../client-portions.service.ts:100: hoist mealMenuPortions fetch above early exits
       type-check (this file): pass
       convergence: class-complete 3/3, inverse risk absent, no new siblings
       Test: Set a meal-level portion, navigate to a week where no components are scheduled;
             stored value should still render in the cell (was blank before).
-  [4] ✓ src/.../planned-aggregation.ts:94 — round-trip stored ordered/produced/sold fields
+  [4] ✓ src/.../planned-aggregation.ts:94: round-trip stored ordered/produced/sold fields
       type-check (this file): pass
       convergence: class-complete 1/1, inverse risk absent, no new siblings
       Test: Edit a meal-row ordered value, reload the page; the value should persist
             in the cell (was resetting to child-sum before).
 
 ### Skipped / not landed clean (<S count>)
-  [5] ⚠ src/utils/parser.ts:88 — narrow type-check failed twice, needs manual attention
+  [5] ⚠ src/utils/parser.ts:88: narrow type-check failed twice, needs manual attention
       convergence: not run (fix reverted before Phase 5.5)
-  [6] ⚠ src/api/session.ts:44 — partial: 2 of 3 sites fixed after one re-verify pass
-      convergence: class-complete NO — src/api/session-worker.ts:91 still unfixed
-  [7] ⚠ src/cache/store.ts:30 — reverted after inverse risk was confirmed
+  [6] ⚠ src/api/session.ts:44: partial, 2 of 3 sites fixed after one re-verify pass
+      convergence: class-complete NO, src/api/session-worker.ts:91 still unfixed
+  [7] ⚠ src/cache/store.ts:30: reverted after inverse risk was confirmed
       convergence: inverse risk was present at src/cache/store.ts:38; risky owned
                    components removed and current content verified clear
 
@@ -76,11 +76,11 @@ Convergence: converged — all <F> fixes class-complete, inverse risk absent, no
 #     Skipped / not landed clean. The two sets cover the whole fix_status enum,
 #     so every item lands in exactly one subsection. fix_status carries the
 #     type-check result already (a type-check that failed twice ends the item
-#     as `skipped` or `aborted`), and it outranks that result — a fix that
+#     as `skipped` or `aborted`), and it outranks that result. A fix that
 #     type-checked clean but was reverted or left partial by Phase 5.5 belongs
 #     in the third subsection, never in the first two.
 #   - The `type-check (this file):` line renders the Phase 5 outcome for that
-#     item — `pass`, `inconclusive — preexisting errors`, or `skipped (no TS
+#     item: `pass`, `inconclusive, preexisting errors`, or `skipped (no TS
 #     tooling)` for fix_status=type_check_skipped. Never print `pass` for a
 #     check that did not run.
 #   - The `Convergence:` line under the title reads `converged` only when
@@ -91,22 +91,22 @@ Convergence: converged — all <F> fixes class-complete, inverse risk absent, no
 #     `convergence: not run (<reason>)`. For fix_status=inverse_risk_applied,
 #     the line MUST state that the risky fix is STILL APPLIED.
 #   - For each fix, render the `Test:` line using the `test_scenario` field
-#     from the classifier plan verbatim. Do NOT paraphrase — the user needs
+#     from the classifier plan verbatim. Do NOT paraphrase. The user needs
 #     the exact validated repro.
 #   - If a subsection's count is 0, omit the subsection entirely (do not
 #     print an empty header).
 
 ## Dismissed (<count>)
-  [D1] src/db/schema/index.ts:41 (nitpick) — export ordering matches alphabetical pattern
+  [D1] src/db/schema/index.ts:41 (nitpick): export ordering matches alphabetical pattern
        Original (first 80 chars): "Consider maintaining consistent schema export ordering..."
-  [D2] src/auth/util.ts:12 — contradicts CLAUDE.md: "use type not interface"
+  [D2] src/auth/util.ts:12: contradicts CLAUDE.md, "use type not interface"
        Original: "Consider using interface for User type..."
 
 ## Deferred (<count>)
-  [E1] src/legacy/parser.ts:210 — streaming refactor out of scope for this PR
+  [E1] src/legacy/parser.ts:210: streaming refactor out of scope for this PR
 
 ## Disagree (<count>)
-  [G1] src/api/routes.ts:55 — inlining is clearer here than extraction
+  [G1] src/api/routes.ts:55: inlining is clearer here than extraction
 
 # Render a DEFER or DISMISS item under its classification only when its
 # required GitHub operations are successful or not applicable. An unsettled
@@ -115,30 +115,30 @@ Convergence: converged — all <F> fixes class-complete, inverse risk absent, no
 
 ## /done results
   Lanes required:   Code<, plus any other lane the fixes touched>
-  Code lane:        verified — type-check clean; parallel-review 1 Moderate finding
+  Code lane:        verified, type-check clean; parallel-review 1 Moderate finding
                     (consider extracting helper, see output above); simplify no changes,
                     added-comment scan clean
-  Other lanes:      <lane: state — evidence, or "none required">
-  Readiness:        <ready | ready-to-publish | not ready — evidence ceiling>
+  Other lanes:      <lane: state, then evidence, or "none required">
+  Readiness:        <ready | ready-to-publish | not ready> with the evidence ceiling
   Remaining after self-heal: <list or "none">
 
 ## GitHub reply/resolve (<count>)
-  [1]  posted ✓  resolved ✓  — src/db/schema/meal-menu-portions.ts:53
-  [2]  posted ✓  resolved ✓  — src/modules/.../meal-menu-portions.service.ts:143
-  [D1] (nitpick — no GitHub op)
-  [D2] posted ✓  resolved ✓  — src/auth/util.ts:12
-  [E1] posted ✓  resolved ✓  — src/legacy/parser.ts:210
+  [1]  posted ✓  resolved ✓  src/db/schema/meal-menu-portions.ts:53
+  [2]  posted ✓  resolved ✓  src/modules/.../meal-menu-portions.service.ts:143
+  [D1] (nitpick, no GitHub op)
+  [D2] posted ✓  resolved ✓  src/auth/util.ts:12
+  [E1] posted ✓  resolved ✓  src/legacy/parser.ts:210
 
 # Omit every entry whose reply_state and resolve_state are both not-applicable;
 # `has_github_surface=false` means there is no GitHub acceptance surface,
 # regardless of whether the input came from GitHub or a local file.
 
-## Promoted nitpicks — no GitHub thread (<count>)
-  [F4] src/foo.ts:22 — promoted from nitpick (sanity scan caught a real issue)
+## Promoted nitpicks, no GitHub thread (<count>)
+  [F4] src/foo.ts:22: promoted from nitpick (sanity scan caught a real issue)
        Fix applied. No inline thread to resolve. Mention in commit message;
        CodeRabbit's next review will regenerate the body.
 
-## NEEDS INPUT — handle manually (<count>)
+## NEEDS INPUT, handle manually (<count>)
   [N1] https://github.com/owner/repo/pull/123#discussion_r<id>
        CodeRabbit: <short description>
        Why unclear: <reason from classifier>

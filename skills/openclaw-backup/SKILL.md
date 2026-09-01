@@ -216,7 +216,7 @@ raw archive. State that omission in the report.
 ## Step 9: Report
 
 ```
-OPENCLAW BACKUP — <host or "local">
+OPENCLAW BACKUP: <host or "local">
 
 Install:  OpenClaw <version>, state dir <path> (<size>)
 Service:  <unit/manager>, <running|stopped during backup>
@@ -229,13 +229,13 @@ Artifacts (<total size>, mode 0700):
   meta/                      <size>   unit + drop-ins, env, inventory
   MANIFEST.sha256 + RESTORE.md
 
-Official archive skipped <N> volatile files — covered by the raw archive.
+Official archive skipped <N> volatile files, covered by the raw archive.
 
 VERIFIED:  <what was run, and the evidence each produced>
 ASSUMED:   <what was inspected but not executed>
 NOT DONE:  restore has not been rehearsed against this backup
 
-VERDICT: <BACKUP COMPLETE | INCOMPLETE — reason>
+VERDICT: <BACKUP COMPLETE | INCOMPLETE, reason>
 ```
 
 **Gate:** every gate from Steps 0-8 appears under `VERIFIED` with its evidence, or under

@@ -49,9 +49,9 @@ One reference is not bundled here: `${CLAUDE_SKILL_DIR}/../review-pr/references/
    inline plan text. Set `PLAN_SOURCE=inline`.
 5. Otherwise: stop-and-ask:
    > **Need a plan to harden.** Usage:
-   > - `/harden-plan <path>` — harden a plan file
-   > - `/harden-plan "pasted text"` — harden inline text
-   > - `/harden-plan` — harden a plan pasted earlier in this conversation
+   > - `/harden-plan <path>`: harden a plan file
+   > - `/harden-plan "pasted text"`: harden inline text
+   > - `/harden-plan`: harden a plan pasted earlier in this conversation
 
 Once the plan text is in hand: if it is empty or under 10 lines, print
 `Plan is too short to harden — expand it first` and abort.
@@ -103,7 +103,7 @@ exist:
 > **cwd does not match the plan's target repo.**
 > Plan references: `<list of top-level dirs>`
 > Cwd has: `<list of top-level dirs in cwd>`
-> Grounding will be unreliable — continue anyway?
+> Grounding will be unreliable. Continue anyway?
 
 Present via AskUserQuestion with options: "Continue anyway" and "Abort".
 
@@ -225,7 +225,7 @@ For each entry in Subagent B's `patterns` map:
 id: P11-<i>
 category: Pattern-consistency
 severity: Moderate (Serious if the missing pattern is security-
-          relevant — auth middleware, ownership validation, tenant
+          relevant: auth middleware, ownership validation, tenant
           scoping)
 plan_step_ref: "<S for the file creation>"
 concern: "Plan creates <file> without <pattern>, which sibling files
@@ -317,7 +317,7 @@ of the AskUserQuestion's `question` field, not standalone text output.
 ### 1. Print summary
 
 ```
-# /harden-plan results — <PLAN_SOURCE>
+# /harden-plan results: <PLAN_SOURCE>
 
 **Verdict**: <computed in Phase 5 step 3>
 
@@ -341,7 +341,7 @@ of the AskUserQuestion's `question` field, not standalone text output.
 
   ...
 
-## Skipped — still need your decision (<count>)
+## Skipped, still need your decision (<count>)
 
   [<id>] <plan_step_ref>
     Finding:     <concern>
