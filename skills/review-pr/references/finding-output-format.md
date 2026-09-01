@@ -9,7 +9,7 @@ as every other finding.
 
 Emit the fields verbatim, one per line, in the order below.
 
-Every finding is posted to GitHub verbatim, so write it as an engineer writes to another engineer. No em or en dashes: a period or a comma does the same work, and a range takes a hyphen. No bold label that restates the line it opens.
+Every finding is posted to GitHub verbatim, so write it as an engineer writes to another engineer. Nothing you compose carries an em or en dash: a period or a comma does the same work, and a range takes a hyphen. Text you quote from the diff or the issue stays exactly as you found it, and the arrows and pipes in the field templates below are structure rather than prose. No bold label that restates the line it opens.
 
 ## Line number convention
 

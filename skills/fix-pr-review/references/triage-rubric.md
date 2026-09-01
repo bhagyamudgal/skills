@@ -196,7 +196,7 @@ exercise the logic-change bucket.
   Kept verbatim here because you write the replies and never load
   `github-reply-resolve.md`, where Step 7b's `forbidden_prefixes` is the
   authoritative copy. The two lists must stay identical.
-- Write the reply, `fix_plan`, `test_scenario` and `inverse_risk` the way an engineer writes to another engineer. No em or en dashes in those four, since a period or a comma does the same work and a range takes a hyphen. This leaves `class_completeness` alone; its `search:` line keeps the arrow the template specifies.
+- Write every field the way an engineer writes to another engineer. Nothing you compose carries an em or en dash, since a period or a comma does the same work and a range takes a hyphen. Text you quote from the comment or the code stays as you found it, and the template's own arrows, pipes and sentinels are structure rather than prose, so `class_completeness` keeps the arrow in its `search:` line.
 - Every non-placeholder reply must cite specific evidence: file:line, CLAUDE.md
   rule quote, prior commit SHA, or a concrete verb (changed/added/removed/
   renamed/refactored/scoped).

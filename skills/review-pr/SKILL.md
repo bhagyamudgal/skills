@@ -826,7 +826,7 @@ A binary assessment:
 - **No**: one or more findings survived the critic pass, OR Q1 identified an intent gap
 - **Yes**: otherwise
 
-Write a one-sentence approval reason grounded in the most important finding or the absence of findings. Write it, and the Summary in the block below, with no em or en dashes: both are printed to the terminal and posted to GitHub verbatim.
+Write a one-sentence approval reason grounded in the most important finding or the absence of findings. Nothing you compose for this review carries an em or en dash, this reason and the `Goal`, Summary and one-line issue cells alike. Text quoted from the issue or the diff stays as you found it.
 
 ---
 

@@ -163,7 +163,7 @@ If this is a re-review AND `posted_comments` cache exists:
 
 ## Step 1: Compose the summary body
 
-The approval reason, the Summary, each finding's one-line issue cell, and the resolved-findings line below all post verbatim, so none of them carries an em or en dash. The `·` separators in the template are not prose and stay as they are.
+Every field you compose for this body posts verbatim, so none of them carries an em or en dash: the `Goal`, the approval reason, the Summary, each one-line issue cell and the resolved-findings line below. Text quoted from the issue or the diff stays as you found it, and the `·` separators are structure rather than prose.
 
 Build a lean summary body (NO "Filtered out" section, internal only). **Always** include the marker comment so future runs can detect this review:
 

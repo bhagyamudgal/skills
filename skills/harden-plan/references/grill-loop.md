@@ -74,7 +74,7 @@ X" or "exists in Y" (keywords: `already`, `covered in`, `exists in`,
 2. `Grep` the reference in cwd (if it's a symbol) or `Read` the file
    (if it's a path)
 3. If found AND matches the user's claim → silently DROP the finding
-   (don't count as dismissed), log `Self-heal drop: <id> — <user
+   (don't count as dismissed), log `Self-heal drop: <id>, <user
    claim> verified`, move to next
 4. If not found → push back:
    > Couldn't find `<X>` in the codebase. Can you point me at the exact
