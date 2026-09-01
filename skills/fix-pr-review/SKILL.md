@@ -313,9 +313,9 @@ For each selected item, use a follow-up AskUserQuestion:
        - label: "FIX (Recommended)"
          description: "Treat as a real issue and add it to the FIX list with a fix plan"
        - label: "NEEDS-INPUT"
-         description: "Park it. No reply, no resolution; surfaces in the final report"
+         description: "Park it and post nothing; it surfaces in the final report"
        - label: "Keep as-is"
-         description: "Selected by mistake. Keep the original classification"
+         description: "Keep the original classification, since this was selected by mistake"
 
 On "FIX": re-dispatch the classifier scoped to just this item to produce the full FIX field set — `fix_plan`, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (class sweep included; a reclassified item has never been swept), and `reusability_context` (carry the contested item's own value through unless the sweep changed it) — then re-run plan validation on the changed item. Producing a partial field set here fails validation and burns the single retry. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
 
