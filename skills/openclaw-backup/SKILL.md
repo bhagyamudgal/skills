@@ -4,14 +4,14 @@ description: Verified, restorable backup of an OpenClaw install, with a restore 
 disable-model-invocation: true
 ---
 
-Every step ends on a **gate** — a check that produces evidence. A gate you did not run is a
+Every step ends on a **gate**, a check that produces evidence. A gate you did not run is a
 gate that failed. The failure this skill is built against is **silent**: an archive that
 writes cleanly, verifies cleanly, and turns out to be missing the thing you needed.
 
 ## Input
 
-- **Nothing** — the OpenClaw install on the current machine.
-- **A host** — `user@host`. Prefix every command with your SSH invocation; the steps are
+- **Nothing**: the OpenClaw install on the current machine.
+- **A host**: `user@host`. Prefix every command with your SSH invocation; the steps are
   otherwise identical.
 
 Detect what you can. Ask only for the backup destination (default
@@ -30,16 +30,15 @@ df -h "$STATE_DIR"
 find "$STATE_DIR" -name '*.sqlite' -not -path '*/node_modules/*' | sort
 ```
 
-Discover the databases with `find` on every run. OpenClaw relocates them between versions —
-2026.7 moved the memory database from `memory/main.sqlite` to
+Discover the databases with `find` on every run. OpenClaw relocates them between versions. 2026.7 moved the memory database from `memory/main.sqlite` to
 `agents/<id>/agent/openclaw-agent.sqlite`, so a hardcoded path silently finds nothing.
 
 Locate the workspace, which may sit outside the state dir: check `OPENCLAW_WORKSPACE_DIR`
 and `agents.defaults.workspace` in the config. A workspace outside the state dir is a
 separate archive source.
 
-Identify how the gateway runs — systemd user unit (`openclaw-gateway.service`), system unit,
-pm2, Docker, or launchd — by inspecting the host. A **user** unit needs `systemctl --user`
+Identify how the gateway runs: systemd user unit (`openclaw-gateway.service`), system unit,
+pm2, Docker, or launchd, by inspecting the host. A **user** unit needs `systemctl --user`
 on every command; plain `systemctl` reports "unit not found", which reads as stopped while
 the service is still writing.
 
@@ -79,7 +78,7 @@ confirm it returned healthy afterwards.
 
 ## Step 3: Snapshot every SQLite database
 
-Load `${CLAUDE_SKILL_DIR}/references/sqlite-snapshot.md` and follow it — the `VACUUM INTO`
+Load `${CLAUDE_SKILL_DIR}/references/sqlite-snapshot.md` and follow it: the `VACUUM INTO`
 script, and why a live WAL database needs it.
 
 **Gate:** every database reports `integrity_check` = `ok` on **both** source and snapshot,
@@ -92,7 +91,7 @@ and what it said.
 cd "$HOME" && openclaw backup create --verify --output "$BACKUP_DIR/official"
 ```
 
-Large installs take minutes — run it in the background and poll.
+Large installs take minutes. Run it in the background and poll.
 
 This archive omits live-mutation files: `.jsonl`, `.log`, `.json`, `.tmp`, `.sock`, `.pid`
 under sessions, logs and delivery queues. Session transcripts are `.jsonl`, which is why
@@ -102,7 +101,7 @@ Step 5 follows.
 files` count is recorded for the report. Without that verification line the archive counts
 as unverified.
 
-## Step 5: Raw archive — the one holding the transcripts
+## Step 5: Raw archive, the one holding the transcripts
 
 ```bash
 tar --use-compress-program="zstd -3 -T0" \
@@ -127,7 +126,7 @@ grep -c 'node_modules' /tmp/rawlist.txt
 ```
 
 **Gate:** `zstd -t` passes and the session `.jsonl` count is greater than zero on an install
-with conversation history. A zero count means the exclude pattern is wrong — fix it and
+with conversation history. A zero count means the exclude pattern is wrong. Fix it and
 re-run. `tar` exits non-zero when a file changes mid-read; on a hot backup record that as a
 warning in the report.
 
@@ -135,7 +134,7 @@ warning in the report.
 
 Capture each of these into `meta/`:
 
-- Service unit file **and its drop-in directory** — overrides live in the drop-ins
+- Service unit file **and its drop-in directory**: overrides live in the drop-ins
 - Environment files the unit references
 - `openclaw --version`, `node --version`, global npm packages
 - Listening ports, running OpenClaw processes, crontab
@@ -186,7 +185,7 @@ grep -v ' \./official/' MANIFEST.sha256 > /tmp/check.sha256   # if official/ was
 sha256sum -c /tmp/check.sha256    # macOS: shasum -a 256 -c
 ```
 
-Confirm the checksum output covers a non-empty file list before reading it as a pass — a
+Confirm the checksum output covers a non-empty file list before reading it as a pass; a
 verifier fed an empty list reports success having checked nothing.
 
 A checksum mismatch retires that transfer card. Preserve its `failed` result and the observed
@@ -210,7 +209,7 @@ available. A mismatched file clears the gate only through the fresh-card retry c
 a failed security control blocks completion while the sensitive partial state is preserved or
 separately deleted. `--partial` makes the new transfer resume.
 
-Omitting the official archive from the pull is reasonable — its contents are a subset of the
+Omitting the official archive from the pull is reasonable. Its contents are a subset of the
 raw archive. State that omission in the report.
 
 ## Step 9: Report

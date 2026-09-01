@@ -152,7 +152,7 @@ Score names before applying the domain gate.
 | Pronunciation and spelling | 20 | Passes the radio test in both directions |
 | Tone fit | 10 | Matches the brief's desired signal and avoids forbidden associations |
 
-Prefer 5–10 characters and 2 syllables, but use those as heuristics rather than
+Prefer 5-10 characters and 2 syllables, but use those as heuristics rather than
 hard gates. Eliminate a name regardless of score when it has an unacceptable
 meaning, an impossible pronunciation, or a direct contradiction with the brief.
 Domain availability is the domain gate; do not award points for it.

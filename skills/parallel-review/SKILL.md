@@ -17,7 +17,7 @@ description: Run every code reviewer in parallel over a local diff and merge the
 
 Name the roster first, then launch every member in parallel with the Agent tool.
 
-Members 1-3 are `subagent_type` values, passed to the Agent tool as-is. Member 4 is a **skill-running agent**: `/web-interface-guidelines`, `/ui-skills`, and `/rams` are skills, not agent types, so they cannot be passed as `subagent_type` — dispatch a `general-purpose` agent that invokes them instead.
+Members 1-3 are `subagent_type` values, passed to the Agent tool as-is. Member 4 is a **skill-running agent**: `/web-interface-guidelines`, `/ui-skills`, and `/rams` are skills, not agent types, so they cannot be passed as `subagent_type`. Dispatch a `general-purpose` agent that invokes them instead.
 
 **Size the roster to the diff before naming it.** `done` runs this skill after every task, so an unsized roster charges a one-line fix what a rewrite costs. Measure the Step 1 scope with `git diff --shortstat HEAD`:
 
@@ -33,8 +33,8 @@ Always on the roster:
 
 Add to the roster when the condition holds:
 
-3. **Silent Failure Hunter** (`subagent_type: "pr-review-toolkit:silent-failure-hunter"`) — the diff touches error handling, try-catch, or fallback logic
-4. **UI Review Agent** (`subagent_type: "general-purpose"`) — the diff touches frontend/UI code. Prompt it to invoke `/web-interface-guidelines`, `/ui-skills`, and `/rams` against the diff and return their merged findings.
+3. **Silent Failure Hunter** (`subagent_type: "pr-review-toolkit:silent-failure-hunter"`): the diff touches error handling, try-catch, or fallback logic
+4. **UI Review Agent** (`subagent_type: "general-purpose"`): the diff touches frontend/UI code. Prompt it to invoke `/web-interface-guidelines`, `/ui-skills`, and `/rams` against the diff and return their merged findings.
 
 Shared prompt, plus the per-agent lens: "Review these changed files for bugs, logic errors, and adherence to project CLAUDE.md conventions: [files]."
 
@@ -42,9 +42,9 @@ Shared prompt, plus the per-agent lens: "Review these changed files for bugs, lo
 
 ### Step 3: Merge
 
-The merge is not done while any reviewer on the roster is outstanding. Account for **every** member by name — reported, or failed and re-dispatched.
+The merge is not done while any reviewer on the roster is outstanding. Account for **every** member by name: reported, or failed and re-dispatched.
 
 1. Merge all findings, collapsing duplicates across reviewers
-2. Assign each merged finding a stable ID from its file, enclosing symbol, normalized defect class, and defect-instance fingerprint. Derive the fingerprint from the smallest stable semantic code anchor—such as a callee, accessed field, branch label, or data-flow endpoints—plus the violated invariant. If two defects still share an anchor, extend it with the nearest distinct semantic parent or operand. Normalize incidental formatting, literals, and reviewer wording; exclude raw line numbers. Merge only when all four parts match, and preserve every source reviewer. The caller owns these IDs and their dispositions; do not create a shared finding-ID authority.
+2. Assign each merged finding a stable ID from its file, enclosing symbol, normalized defect class, and defect-instance fingerprint. Derive the fingerprint from the smallest stable semantic code anchor, such as a callee, accessed field, branch label, or data-flow endpoints, plus the violated invariant. If two defects still share an anchor, extend it with the nearest distinct semantic parent or operand. Normalize incidental formatting, literals, and reviewer wording; exclude raw line numbers. Merge only when all four parts match, and preserve every source reviewer. The caller owns these IDs and their dispositions; do not create a shared finding-ID authority.
 3. Rank: Critical > Serious > Moderate > Minor, then present one traceable list
 4. Invoke `converge-reviews` with the originating request, local baseline and current diff hash, reviewed paths, roster and lenses, merged findings, dispositions, and prior convergence artifact. Apply its result contract, then hand the ranked list and convergence result back to the caller.

@@ -24,7 +24,7 @@ gh issue list --repo "$repository" --search "<the symptom in the reporter's word
 
 Search twice with different vocabulary, because the existing ticket was filed by someone who described it differently. `--state all` matters: a closed near-match is either the thing to reopen or the context the new issue needs.
 
-Resolve every near match before filing — duplicate, related, or genuinely new. A related one is linked with `Refs #N` and one line saying what is different about this one.
+Resolve every near match before filing: duplicate, related, or genuinely new. A related one is linked with `Refs #N` and one line saying what is different about this one.
 
 **Gate:** both searches ran and every near match has a resolution.
 
@@ -32,7 +32,7 @@ Resolve every near match before filing — duplicate, related, or genuinely new.
 
 Prefix it under the issue-title rule in `CLAUDE.md`: conventional-commit type plus the module the work actually lives in, named the way the board reads it rather than the way the directory spells it.
 
-The description clears the same bar as the title step in `file-pr` — name what is observed, never the mechanism you suspect, and no generic verb standing alone as the description.
+The description clears the same bar as the title step in `file-pr`. Name what is observed, never the mechanism you suspect, and no generic verb standing alone as the description.
 
 **Tell:** a bug title names the wrong behaviour, not the suspected cause. `fix(auth): session drops on tab switch` survives being wrong about the cause; `fix(auth): cookie expiry miscalculated` becomes a lie the moment the cause turns out to be something else.
 
@@ -42,12 +42,12 @@ The description clears the same bar as the title step in `file-pr` — name what
 
 Four parts, in this order, each one prose rather than a fragment:
 
-- **What happens** — the observed behaviour, opening the body with no heading above it
-- **How to see it** — exact steps, command, URL, or `file:line` evidence. Someone with repo access and nothing else has to reach the same observation from this alone.
-- **What should happen instead** — stated separately from the observation, because the gap between them is the actual request
-- **Done looks like** — one condition a reviewer can check. "Works properly" is not one.
+- **What happens**: the observed behaviour, opening the body with no heading above it
+- **How to see it**: exact steps, command, URL, or `file:line` evidence. Someone with repo access and nothing else has to reach the same observation from this alone.
+- **What should happen instead**: stated separately from the observation, because the gap between them is the actual request
+- **Done looks like**: one condition a reviewer can check. "Works properly" is not one.
 
-Then only what carries content: `Refs #N` links, and the environment when it matters. Take the environment from evidence — the URL bar in a screenshot tells you whether this was production or dev — never from assumption.
+Then only what carries content: `Refs #N` links, and the environment when it matters. Take the environment from evidence: the URL bar in a screenshot tells you whether this was production or dev, never from assumption.
 
 Attach screenshots rather than describing them. A described screenshot loses everything the describer did not notice, and the person fixing this needs the image itself.
 
@@ -57,8 +57,8 @@ Attach screenshots rather than describing them. A described screenshot loses eve
 
 Run the cold-read bars from `file-pr` against the composed title and body, then two more that only an issue has:
 
-- **Reproduction** — someone with repo access and no other context reaches the observation
-- **Acceptance** — the done condition is checkable by someone who did not write it
+- **Reproduction**: someone with repo access and no other context reaches the observation
+- **Acceptance**: the done condition is checkable by someone who did not write it
 
 A bar you did not name is a bar you did not check.
 

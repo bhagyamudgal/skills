@@ -3,7 +3,7 @@ name: audit-ticket
 description: Audit a stale GitHub issue against the current codebase, then update or sunset it. Use when the user says "audit this ticket", or asks whether an old issue is still needed or should be sunset.
 ---
 
-# /audit-ticket — Audit a Stale Issue Against Current Code
+# /audit-ticket: Audit a Stale Issue Against Current Code
 
 Takes a GitHub issue that was written weeks or months ago and checks every requirement in it against the codebase AS IT IS TODAY. Old tickets rot: half the items ship in unrelated PRs, some become obsolete after a refactor, and the rest silently block planning because nobody trusts the ticket anymore. This skill produces a per-item verdict with evidence, then lets the user decide the ticket's fate.
 
@@ -15,7 +15,7 @@ Takes a GitHub issue that was written weeks or months ago and checks every requi
 /audit-ticket            # no arg → ask for the issue number or URL
 ```
 
-If no issue is given, ask for the number or URL. Don't infer from the current branch, recent commits, or open issues — auditing the wrong ticket wastes a full subagent fan-out.
+If no issue is given, ask for the number or URL. Don't infer from the current branch, recent commits, or open issues. Auditing the wrong ticket wastes a full subagent fan-out.
 
 If the URL points at a different repo than cwd, pass `--repo <owner>/<repo>` to every `gh` call. If the ISSUE repo differs from the CODE being audited, stop and confirm which working tree to ground against.
 
@@ -31,7 +31,7 @@ Read `${CLAUDE_SKILL_DIR}/references/ticket-evidence.md` in full before extracti
 gh issue view <n> --comments --json number,title,body,state,author,createdAt,updatedAt,labels,assignees,comments,url
 ```
 
-Fetch ALL comments, not just the body — later comments routinely amend, narrow, or drop requirements from the original body. When a comment contradicts the body, the comment wins (it's newer).
+Fetch ALL comments, not just the body. Later comments routinely amend, narrow, or drop requirements from the original body. When a comment contradicts the body, the comment wins (it's newer).
 
 ### Download attached images
 
@@ -48,13 +48,13 @@ curl -fsSL -H "Authorization: token $(gh auth token)" -o /tmp/audit-ticket-<n>-i
 
 `-f` is load-bearing: without it a 404 exits 0 and writes the error body into the `.png`, and you Read a non-image believing it is the spec. Check the exit code before the Read.
 
-Screenshots and mockups often ARE the spec — a UI mock in the body can carry requirements no text mentions. Fold what the images show into the requirement list below. If the download exits non-zero, note `image <i> unavailable` in the report instead of pretending it didn't exist.
+Screenshots and mockups often ARE the spec. A UI mock in the body can carry requirements no text mentions. Fold what the images show into the requirement list below. If the download exits non-zero, note `image <i> unavailable` in the report instead of pretending it didn't exist.
 
 ### Extract the requirement list
 
 Walk body + comments in chronological order and enumerate every discrete requirement or claim, numbered `R1..Rn`:
 
-- Task-list items (`- [ ]` / `- [x]`) — carry over their checked state as the ticket's OWN claim, to be verified, not trusted
+- Task-list items (`- [ ]` / `- [x]`): carry over their checked state as the ticket's OWN claim, to be verified, not trusted
 - Imperative statements ("add X", "fix Y", "should Z", "migrate to W")
 - Acceptance criteria and follow-up asks buried in comments
 - Requirements implied by attached mocks/screenshots
@@ -73,7 +73,7 @@ Every verdict in the report is "as of `<full HEAD SHA>` at committed tree `<tree
 
 ## Phase 2: Investigate (parallel subagents)
 
-Dispatch **ONE `general-purpose` subagent PER requirement**, in parallel batches of 3-4. Main context is the orchestrator — it never greps for a verdict itself, which also keeps the verdicts independent. Share a subagent only when two requirements are the same edit to the same file (e.g., "add the column" + "expose it in the API response").
+Dispatch **ONE `general-purpose` subagent PER requirement**, in parallel batches of 3-4. Main context is the orchestrator. It never greps for a verdict itself, which also keeps the verdicts independent. Share a subagent only when two requirements are the same edit to the same file (e.g., "add the column" + "expose it in the API response").
 
 ### Subagent prompt
 
@@ -121,13 +121,13 @@ obsolete_reason: <REQUIRED for obsolete — what changed and where (file:line)>
 
 ### Degraded-mode rule
 
-A failed or empty subagent doesn't stop the audit — mark that requirement `unverified` in the report and continue. Abort only if ALL subagents fail.
+A failed or empty subagent doesn't stop the audit. Mark that requirement `unverified` in the report and continue. Abort only if ALL subagents fail.
 
 ---
 
 ## Phase 3: Report (main)
 
-Verify each returned `file:line` exists in the recorded content snapshot before printing by reading the cited range from `git show <verified_content_snapshot>:<path>` — drop fabricated citations and downgrade that verdict's confidence to `low`.
+Verify each returned `file:line` exists in the recorded content snapshot before printing by reading the cited range from `git show <verified_content_snapshot>:<path>`. Drop fabricated citations and downgrade that verdict's confidence to `low`.
 
 Every `Rn` from Phase 1 appears exactly once in the table; N equals d + p + nd + o + u. A requirement with no returned verdict is `unverified`, not omitted. Put only evidence IDs in table cells, then render every complete `Rn → E<n>` edge in a block-form source map; code citations remain separate verdict evidence.
 
@@ -165,7 +165,7 @@ Recommendation logic:
 
 - **Everything done or obsolete** → recommend sunset (close as `completed` if mostly done, `not planned` if mostly obsolete)
 - **Mix of done and open items** → recommend update-in-place (comment + edited body)
-- **Nothing done, still valid** → recommend update-in-place with a "still fully open, re-triaged <date>" note — or leave unchanged if the ticket body is already accurate
+- **Nothing done, still valid** → recommend update-in-place with a "still fully open, re-triaged <date>" note, or leave unchanged if the ticket body is already accurate
 
 ---
 
@@ -181,13 +181,13 @@ options:
   - "Leave unchanged" — Keep the report local; ticket untouched
 ```
 
-When every requirement is done or obsolete, reorder: "Sunset (close)" goes first and takes the "(Recommended)" marker — updating a body that has no remaining work is churn.
+When every requirement is done or obsolete, reorder: "Sunset (close)" goes first and takes the "(Recommended)" marker. Updating a body that has no remaining work is churn.
 
 ---
 
 ## Phase 5: Execute (gh)
 
-Phase 5 runs on the Phase 4 fate choice, and only on it — the report is always safe to print, but every `gh` write waits for that explicit choice. Read `${CLAUDE_SKILL_DIR}/references/execute.md` for the chosen fate's recipe.
+Phase 5 runs on the Phase 4 fate choice, and only on it. The report is always safe to print, but every `gh` write waits for that explicit choice. Read `${CLAUDE_SKILL_DIR}/references/execute.md` for the chosen fate's recipe.
 
 For any rewrite or split, reread `${CLAUDE_SKILL_DIR}/references/ticket-evidence.md` before composing issue bodies and again for its rendered closeout gate. The chosen fate cannot close while required source evidence is missing.
 

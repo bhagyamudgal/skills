@@ -1,4 +1,4 @@
-# Phase 5 — Execute the chosen fate
+# Phase 5: Execute the chosen fate
 
 Multi-line bodies always go through the frozen `--body-file` paths recorded by the caller. Recheck every payload digest and the current step's protected issue fields immediately before its write; approved content changes only through the caller's re-render and approval-currency gates.
 
@@ -8,7 +8,7 @@ Use the already-rendered `Investigation and successors` section and evidence map
 
 1. Confirm fresh approval still matches the exact frozen comment and body bytes and digests, current guards, source evidence, scope, verdicts, recommendation, fate, and ordered comment → edit actions.
 2. Post the frozen status comment containing the Phase 3 table, complete evidence map, recommendation, required investigation section, and `Audited against <sha> on <date>` via `gh issue comment "$issue_number" --repo "$repository" --body-file "$status_comment_path"`.
-3. Use the frozen edited body that preserves the author's original intent/context paragraphs, then a task list — `- [x]` for done items, `- [ ]` with a one-line status for partial/not-done, `- [x] ~<text>~ (obsolete: <reason>)` for obsolete — followed by the complete evidence map. Its footer is `_Audited <date> against <sha>._`
+3. Use the frozen edited body that preserves the author's original intent/context paragraphs, then a task list: `- [x]` for done items, `- [ ]` with a one-line status for partial/not-done, `- [x] ~<text>~ (obsolete: <reason>)` for obsolete, followed by the complete evidence map. Its footer is `_Audited <date> against <sha>._`
 4. Apply that body via `gh issue edit "$issue_number" --repo "$repository" --body-file "$edited_body_path"`.
 5. Run the rendered closeout gate from the evidence reference against the edited issue.
 

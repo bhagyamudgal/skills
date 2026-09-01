@@ -1,8 +1,8 @@
-# CodeRabbit Learnings — copy-paste-ready
+# CodeRabbit Learnings: copy-paste-ready
 
 Rules that attach to a file glob live in `coderabbit.yaml.template`; these are the ones that cannot. Registration steps are in `README.md`.
 
-Recommended scope: **global** — these are personal conventions that should apply to every project.
+Recommended scope: **global**. These are personal conventions that should apply to every project.
 
 ---
 

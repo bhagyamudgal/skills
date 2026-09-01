@@ -1,10 +1,10 @@
-# Write-back — applying accepted additions to the plan file
+# Write-back: applying accepted additions to the plan file
 
 Loaded by **main** in Phase 5 when `PLAN_SOURCE=file`.
 
-**External-modification check — before anything else**: compare
+**External-modification check, before anything else**: compare
 `PLAN_FILE`'s current mtime against the one stashed in Phase 1. If it
-changed, the plan was edited during Phase 4 — skip write-back, print the
+changed, the plan was edited during Phase 4. Skip write-back, print the
 diff instead, and say why.
 
 **Only if `PLAN_SOURCE=file`**:
@@ -12,9 +12,9 @@ diff instead, and say why.
 Present via AskUserQuestion: "Apply accepted plan additions back to `<PLAN_FILE>`?"
 
 Options:
-- "Write — insert additions in place" — inserts additions as sub-steps directly into the plan file
-- "Diff — print only" — shows a unified diff; you apply manually
-- "Exit — leave untouched" — keeps the plan file as-is
+- "Write — insert additions in place": inserts additions as sub-steps directly into the plan file
+- "Diff — print only": shows a unified diff; you apply manually
+- "Exit — leave untouched": keeps the plan file as-is
 
 On **Write**:
   - For each `accepted_additions[]` entry, locate its `plan_step_ref`
@@ -34,7 +34,7 @@ On **Write**:
 On **Diff**:
   - Generate a unified diff showing what WOULD be inserted
   - Print to terminal, do NOT write anything
-  - Remind user: `git apply` does not work on printed diffs — they
+  - Remind user: `git apply` does not work on printed diffs; they
     must save to a file first
 
 On **Exit**: print nothing; leave the plan file untouched.

@@ -3,7 +3,7 @@ name: harden-plan
 description: Hardens a written plan against the real codebase before any code exists — a plan edit is cheaper than a code refactor. Use when the user asks to harden, check, or lint a plan they are about to execute, and proactively when `/grill-me` or `/grilling` hands off a written plan. Fires while the plan is still text; once code exists the review is `/review-pr`'s.
 ---
 
-# /harden-plan — Pre-code Plan Quality Gate
+# /harden-plan: Pre-code Plan Quality Gate
 
 A shift-left gate: the fix is a plan edit, not a code refactor. Takes a
 WRITTEN plan and runs the `/review-pr` anti-slop lens against it while
@@ -11,12 +11,12 @@ the plan is still text.
 
 ## Reference files
 
-Each one is loaded only on the branch that reaches it — some by main, some by a subagent. Loader and firing condition:
+Each one is loaded only on the branch that reaches it, some by main, some by a subagent. Loader and firing condition:
 
-- `references/subagent-prompts.md` — both Phase 2 prompt templates (Subagent A category analyzer, Subagent B pattern inventory) and the Phase 1 placeholders each takes. Loaded by **main** at the Phase 2 dispatch.
-- `references/category-checks.md` — P1–P11: each category's scope, its default severity, its invalidity gate, and one worked example. Loaded by **Subagent A** before it answers any category; main never applies these categories itself.
-- `references/grill-loop.md` — question-block format, the four response branches, forbidden dismiss reasons, self-heal verification, abort ramps, one-at-a-time rule. Loaded by **main** in Phase 4 when findings remain (`verdict != ready-to-code`).
-- `references/write-back.md` — external-modification check, the three write-back options, the insertion format, and the write-failure fallback. Loaded by **main** in Phase 5 when `PLAN_SOURCE=file`.
+- `references/subagent-prompts.md`: both Phase 2 prompt templates (Subagent A category analyzer, Subagent B pattern inventory) and the Phase 1 placeholders each takes. Loaded by **main** at the Phase 2 dispatch.
+- `references/category-checks.md`: P1-P11, each category's scope, its default severity, its invalidity gate, and one worked example. Loaded by **Subagent A** before it answers any category; main never applies these categories itself.
+- `references/grill-loop.md`: question-block format, the four response branches, forbidden dismiss reasons, self-heal verification, abort ramps, one-at-a-time rule. Loaded by **main** in Phase 4 when findings remain (`verdict != ready-to-code`).
+- `references/write-back.md`: external-modification check, the three write-back options, the insertion format, and the write-failure fallback. Loaded by **main** in Phase 5 when `PLAN_SOURCE=file`.
 
 One reference is not bundled here: `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` holds the `repo_map_files` / `repo_map_exports` shell, the one copy this skill shares with `/review-pr` and `/fix-pr-review`. Loaded by **main** in Phase 1 when `packages/` or `apps/` exists.
 
@@ -58,28 +58,28 @@ Once the plan text is in hand: if it is empty or under 10 lines, print
 
 Don't attempt to infer from the current branch, git status, or any
 recent file. Intent grounding depends on the exact plan the user wants
-checked — guessing defeats the anti-slop gate.
+checked. Guessing defeats the anti-slop gate.
 
 ### Plan parsing
 
 Extract these four fields and stash them as main-context variables:
 
-- **`stated_goal`** — 1-sentence intent. Look (in order):
+- **`stated_goal`**: 1-sentence intent. Look (in order):
   1. Content after `## Context` / `## Goal` / `## What we're adding`
      header (first paragraph only)
   2. First H1 / H2 followed by first paragraph
   3. First sentence of the plan
-  If none found, write `stated_goal: <could not extract — flag during
+  If none found, write `stated_goal: <could not extract, flag during
   grounding>` and proceed.
 
-- **`stated_steps`** — the action list. Look (in order):
+- **`stated_steps`**: the action list. Look (in order):
   1. Content under `## Steps`, `## Implementation`, `## Plan`,
      `## Changes`, `## Concrete changes` sections
   2. Top-level numbered lists (`1.`, `2.`, `3.`) anywhere in the body
   3. `### Step <n>` / `### Phase <n>` / `### Change <n>` headers
   Number each extracted step as `S1`, `S2`, ... for Phase 2 reference.
 
-- **`stated_files`** — files the plan mentions creating / modifying /
+- **`stated_files`**: files the plan mentions creating / modifying /
   deleting. Look for:
   1. Fenced code blocks containing paths (`apps/backend/...`,
      `packages/ui/...`, `src/...`)
@@ -89,7 +89,7 @@ Extract these four fields and stash them as main-context variables:
   Deduplicate; preserve insertion order. For each file, tag as
   `create` / `modify` / `delete` based on surrounding prose.
 
-- **`stated_out_of_scope`** — explicit exclusions. Look for:
+- **`stated_out_of_scope`**: explicit exclusions. Look for:
   1. `## Out of scope`, `## Not doing`, `## Scope notes` sections
   2. The phrase "out of scope" inline
   3. "Deferred to follow-up" / "v1 only" / "v2" disclaimers
@@ -114,7 +114,7 @@ On abort:
 ### Compute repo map (for grounding)
 
 Load `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` and run
-its **Local mode** block — the one copy of this shell, shared with
+its **Local mode** block, the one copy of this shell, shared with
 `/review-pr` and `/fix-pr-review`. It carries the `bash -c` wrapping
 the globs need to survive zsh, and caps each half at 500 lines with
 the truncation marked. Load it when `packages/` or `apps/` exists;
@@ -124,10 +124,10 @@ applies.
 Stash the two outputs as `repo_map_files` and `repo_map_exports`.
 
 **Non-monorepo fallback**: if neither `packages/` nor `apps/` exists, set
-both maps to `N/A (not a monorepo)` and flag `IS_MONOREPO=false` —
+both maps to `N/A (not a monorepo)` and flag `IS_MONOREPO=false`.
 Subagent A will reroute searches to `src/` and the repo root. If the map
 still comes back empty (not a monorepo AND no `src/`), warn and proceed
-with plan-text-only grounding — Subagent A's `grounding` field will cite
+with plan-text-only grounding. Subagent A's `grounding` field will cite
 plan text exclusively.
 
 ### Planning-specific inventories (run in parallel with repo map above)
@@ -156,7 +156,7 @@ find apps packages 2>/dev/null -type f <MATCH> \
 Load `${CLAUDE_SKILL_DIR}/references/subagent-prompts.md`. It holds both
 templates and the Phase 1 placeholders each takes. Fill the placeholders
 and dispatch both `general-purpose` agents in **one message with two
-Agent tool calls** — A for category analysis, B for sibling-pattern
+Agent tool calls**, A for category analysis, B for sibling-pattern
 inventory.
 
 ### Degraded-mode rule
@@ -181,7 +181,7 @@ highest severity and the most specific `grounding`. Union the
 ### 2. Verify plan-step references
 
 For each finding's `plan_step_ref`, check that it matches a real `Sn`
-from `stated_steps`. Drop any finding whose `Sn` doesn't exist — that's
+from `stated_steps`. Drop any finding whose `Sn` doesn't exist. That's
 a hallucination. Log the drop in `Filtered out: hallucinated step ref
 <ref>`.
 
@@ -248,7 +248,7 @@ Round-trip, then Control-flow, then the rest).
 ### 7. Gap check
 
 For each category that returned `status: no_concerns`, check if the
-plan plainly touches that category — if so, that's a contradiction:
+plan plainly touches that category. If so, that's a contradiction:
 
 - **P5 Security gap**: `stated_steps` contains "upsert", "create",
   "update", "delete", or `stated_files` contains `*.controller.ts` /
@@ -286,20 +286,20 @@ Stash `findings_queue` (sorted).
 If `findings_queue` is empty, skip to Phase 5.
 
 Findings remain. Load `${CLAUDE_SKILL_DIR}/references/grill-loop.md` and run its
-loop over `findings_queue` in severity order — one AskUserQuestion per
-finding — until **every** finding is resolved, dismissed, skipped, or
+loop over `findings_queue` in severity order, one AskUserQuestion per
+finding, until **every** finding is resolved, dismissed, skipped, or
 self-heal-dropped.
 
 **ALWAYS use the AskUserQuestion tool** for every finding presented to
-the user, **one question at a time** — never batch findings, never stack
+the user, **one question at a time**. Never batch findings, never stack
 two questions in one message. Each finding opens with an AskUserQuestion
 carrying these options:
-- "Accept recommendation (y)" — description includes the recommended_answer text
-- "Dismiss (n)" — description: "Provide a specific reason why this doesn't apply (≥10 chars required)"
-- "Custom answer (other)" — description: "Provide your own resolution instead of the recommendation"
-- "Skip" — description: "Leave unresolved for now, revisit later"
+- "Accept recommendation (y)", description includes the recommended_answer text
+- "Dismiss (n)", description: "Provide a specific reason why this doesn't apply (≥10 chars required)"
+- "Custom answer (other)", description: "Provide your own resolution instead of the recommendation"
+- "Skip", description: "Leave unresolved for now, revisit later"
 
-AskUserQuestion returns only the selected option's label — no free text.
+AskUserQuestion returns only the selected option's label, no free text.
 So **Dismiss routes to a follow-up AskUserQuestion that collects the
 dismissal reason**, asked after the user picks Dismiss, never alongside
 the first question. `references/grill-loop.md` holds the ≥10-character
@@ -358,7 +358,7 @@ of the AskUserQuestion's `question` field, not standalone text output.
 
 ### 2. Write-back option
 
-If `PLAN_SOURCE=file`, load `${CLAUDE_SKILL_DIR}/references/write-back.md` — it
+If `PLAN_SOURCE=file`, load `${CLAUDE_SKILL_DIR}/references/write-back.md`. It
 holds the external-modification check, the three write-back options, and
 the insertion format. For `inline` / `conversation`, print the accepted
 additions as a copy-paste block and stop.
@@ -367,15 +367,15 @@ additions as a copy-paste block and stop.
 
 Print a final recommendation based on `skipped[]` content:
 
-- **`ready-to-code`** — zero skipped OR only Minor skipped:
+- **`ready-to-code`**: zero skipped OR only Minor skipped:
   > Plan is hardened. You can start coding.
 
-- **`partial`** — some Moderate skipped but no Critical/Serious:
+- **`partial`**: some Moderate skipped but no Critical/Serious:
   > Plan is mostly hardened but has <N> open Moderate findings
   > (skipped). Safe to proceed but consider addressing during
   > implementation.
 
-- **`needs-work`** — any Critical or Serious in `skipped[]`:
+- **`needs-work`**: any Critical or Serious in `skipped[]`:
   > Plan has <N> open Critical/Serious findings. Recommend you iterate
   > on the plan and re-run `/harden-plan` before coding.
 

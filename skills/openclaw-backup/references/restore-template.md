@@ -1,7 +1,7 @@
 # RESTORE.md template
 
 Render this into `$BACKUP_DIR/RESTORE.md` at Step 7. Replace every placeholder with the
-value discovered in Step 0 — a template that still says `<STATE_DIR>` is useless to whoever
+value discovered in Step 0. A template that still says `<STATE_DIR>` is useless to whoever
 opens it during an incident.
 
 | Placeholder | Source |
@@ -23,7 +23,7 @@ in step 4 and corrupting a database they just restored.
 
 ## Template body
 
-# OpenClaw restore point — `<DATE>`
+# OpenClaw restore point: `<DATE>`
 
 Taken with the gateway `<running | stopped>`. Restores the install to its state as of
 `<DATE>`.
@@ -99,7 +99,7 @@ For a systemd **user** unit the `--user` flag is required on every command. With
 systemd reports "unit not found" and you will believe the service is stopped while it is
 still running and writing.
 
-### 2. Move the current state aside — do not delete it
+### 2. Move the current state aside: do not delete it
 
 ```
 mv <STATE_DIR> "$BROKEN_STATE_DIR"
@@ -137,7 +137,7 @@ cp -a <BACKUP_DIR>/meta/systemd/. <unit directory>/
 <SERVICE_CTL> daemon-reload
 ```
 
-Copy the drop-in directory too, not just the unit file — overrides live there.
+Copy the drop-in directory too, not just the unit file. Overrides live there.
 
 ### 6. Start and verify
 
@@ -188,7 +188,7 @@ Verify it first with `openclaw backup verify <archive>`; its payload sits under
 
 ## Caveats
 
-- **These archives are credential material** — API tokens, OAuth refresh tokens, and
+- **These archives are credential material**: API tokens, OAuth refresh tokens, and
   channel pairing data. Keep them mode `0700` on the machine that made them, plus one
   encrypted off-box copy; treat any other location as a disclosure.
 - **`node_modules` was excluded.** Reinstall through the normal path if needed.

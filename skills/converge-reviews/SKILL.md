@@ -60,10 +60,10 @@ Count one round only after the planned roster returned or was explicitly recorde
 
 ## 4. Return one result
 
-- `continue` — fewer than three rounds are complete and the exact next fix or affected-coverage review is named.
-- `converged` — no Critical or Serious finding is open, no worthwhile Moderate or Minor follow-up remains, and all required coverage is current.
-- `blocked-at-cap` — round three is complete and at least one Critical or Serious finding remains open. Stop review churn and name the exact blocker fix. After that fix, allow one targeted closure check over those blocker IDs and changed sites; it updates coverage and dispositions but performs no new-finding sweep and does not count as round four. If the check fails, remain blocked pending an explicit new plan or scope decision.
-- `follow-up-proposed` — no Critical or Serious finding is open, and worthwhile Moderate or Minor findings are listed as proposed follow-up work. Keep the proposal local until the user approves external issue creation; then invoke `preflight-mutations` before creating issues.
+- `continue`: fewer than three rounds are complete and the exact next fix or affected-coverage review is named.
+- `converged`: no Critical or Serious finding is open, no worthwhile Moderate or Minor follow-up remains, and all required coverage is current.
+- `blocked-at-cap`: round three is complete and at least one Critical or Serious finding remains open. Stop review churn and name the exact blocker fix. After that fix, allow one targeted closure check over those blocker IDs and changed sites; it updates coverage and dispositions but performs no new-finding sweep and does not count as round four. If the check fails, remain blocked pending an explicit new plan or scope decision.
+- `follow-up-proposed`: no Critical or Serious finding is open, and worthwhile Moderate or Minor findings are listed as proposed follow-up work. Keep the proposal local until the user approves external issue creation; then invoke `preflight-mutations` before creating issues.
 
 Round three is a hard cap for the stable scope. Reworded findings, another reviewer over unchanged coverage, or a cosmetic diff do not create round four. The one targeted blocker closure check exists only to verify named fixes; it cannot widen coverage or emit fresh findings.
 

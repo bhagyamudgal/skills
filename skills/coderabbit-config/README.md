@@ -4,8 +4,8 @@
 
 ## Files
 
-- **`coderabbit.yaml.template`** — drop into a repo as `.coderabbit.yaml`. Encodes path-based instructions for TypeScript, React, tests, performance, migrations, SQL.
-- **`coderabbit-learnings.md`** — copy-paste-ready learning blocks for the CodeRabbit dashboard or PR comments. Persists org-wide.
+- **`coderabbit.yaml.template`**: drop into a repo as `.coderabbit.yaml`. Encodes path-based instructions for TypeScript, React, tests, performance, migrations, SQL.
+- **`coderabbit-learnings.md`**: copy-paste-ready learning blocks for the CodeRabbit dashboard or PR comments. Persists org-wide.
 
 The seam between them: rules that attach to a file glob live in the yaml; rules that cannot live in the learnings.
 
@@ -23,20 +23,20 @@ git push
 
 CodeRabbit picks up the file on the next PR.
 
-The template's first line is a `yaml-language-server` schema pragma — a malformed config shows up as an editor squiggle before you commit it.
+The template's first line is a `yaml-language-server` schema pragma. A malformed config shows up as an editor squiggle before you commit it.
 
 ## Add learnings (one-time, org-wide)
 
-Pick ONE of these — both end up in the same place (CodeRabbit's cloud):
+Pick ONE of these. Both end up in the same place (CodeRabbit's cloud):
 
-### Option A — web UI (fastest for bulk paste)
+### Option A: web UI (fastest for bulk paste)
 
 1. Visit https://app.coderabbit.ai/learnings.
 2. Click **Add learning**.
-3. Paste each block from `coderabbit-learnings.md` separately (one learning per block — the `## Heading` blocks are a guide for organization, paste only the body text).
+3. Paste each block from `coderabbit-learnings.md` separately (one learning per block. The `## Heading` blocks are a guide for organization, paste only the body text).
 4. Set **Scope** to `Global` so all repos in your org benefit.
 
-### Option B — PR comments (dripped over time)
+### Option B: PR comments (dripped over time)
 
 In any PR, comment:
 

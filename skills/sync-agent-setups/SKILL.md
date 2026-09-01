@@ -57,10 +57,10 @@ Render a manifest before any write:
 
 For an exact copy, record both the proposed link target and resolved physical source. Assign one pre-confirmation status to every item:
 
-- `ready` — the exact link target is resolved, or the adaptation's final bytes are staged and checksummed;
-- `blocked` — a collision, incomplete classification, or unstaged adaptation prevents a safe write;
-- `preserved-unsupported` — the target cannot reproduce required behavior; or
-- `preserved-orphaned` — downstream-only user content remains untouched.
+- `ready`: the exact link target is resolved, or the adaptation's final bytes are staged and checksummed;
+- `blocked`: a collision, incomplete classification, or unstaged adaptation prevents a safe write;
+- `preserved-unsupported`: the target cannot reproduce required behavior; or
+- `preserved-orphaned`: downstream-only user content remains untouched.
 
 Summarize per target: item counts by classification, paths to change, unsupported behavior, orphaned drift, collisions, and acceptance surfaces. State that an exact-copy symlink shares physical content: editing through the downstream path also changes Claude's source, so authority is procedural rather than filesystem-isolated.
 
