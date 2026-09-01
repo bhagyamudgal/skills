@@ -162,7 +162,7 @@ hardening and logic-change is `logic-change`.
 
 ### test_scenario format
 
-- For `hardening`: write exactly `smoke test — happy path unchanged`.
+- For `hardening`: write exactly `smoke test, happy path unchanged`.
   (No repro steps; the intent is "confirm nothing regressed".)
 - For `logic-change`: write a 1-sentence concrete repro that can be
   executed in the UI, API, or DB. Must include:
@@ -178,12 +178,12 @@ exercise the logic-change bucket.
 
 ## Anti-slop reply format
 
-- FIX (placeholder only): "Fixed — <what will be changed, specific>"
+- FIX (placeholder only): "Fixed: <what will be changed, specific>"
 - DISMISS R4: "Already fixed in <short_sha>: <what that commit did>"
 - DISMISS R5: "Contradicts CLAUDE.md rule: '<verbatim quote>'. Keeping project convention."
-- DISMISS R1/R2/R3: "Not changing — <specific 1-sentence rationale with concrete evidence>"
+- DISMISS R1/R2/R3: "Not changing: <specific 1-sentence rationale with concrete evidence>"
 - DEFER: "Valid but out of scope for this PR (<PR focus>); <optional tracking ref>"
-- DISAGREE: "Disagree — <concrete counter-argument naming the trade-off>. Keeping current approach."
+- DISAGREE: "Disagree: <concrete counter-argument naming the trade-off>. Keeping current approach."
 - Open every reply on its evidence, never on an acknowledgement. Phase 7's
   validator mechanically rejects any reply starting with one of these, so a
   reply that opens on one is discarded work:
@@ -196,6 +196,7 @@ exercise the logic-change bucket.
   Kept verbatim here because you write the replies and never load
   `github-reply-resolve.md`, where Step 7b's `forbidden_prefixes` is the
   authoritative copy. The two lists must stay identical.
+- Write every field the way an engineer writes to another engineer. Nothing you compose carries an em or en dash, since a period or a comma does the same work and a range takes a hyphen. Text you quote from the comment or the code stays as you found it, and the template's own arrows, pipes and sentinels are structure rather than prose, so `class_completeness` keeps the arrow in its `search:` line.
 - Every non-placeholder reply must cite specific evidence: file:line, CLAUDE.md
   rule quote, prior commit SHA, or a concrete verb (changed/added/removed/
   renamed/refactored/scoped).

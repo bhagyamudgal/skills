@@ -9,6 +9,8 @@ as every other finding.
 
 Emit the fields verbatim, one per line, in the order below.
 
+Every finding is posted to GitHub verbatim, so write it as an engineer writes to another engineer. Nothing you compose carries an em or en dash: a period or a comma does the same work, and a range takes a hyphen. Text you quote from the diff or the issue stays exactly as you found it, and the arrows and pipes in the field templates below are structure rather than prose. No bold label that restates the line it opens.
+
 ## Line number convention
 
 `File: <path:line>` must use the **post-image line number**, the line as it appears in
@@ -25,15 +27,15 @@ File:        <path:line> (or <path> alone for module-scope)
 Category:    Intent | Unnecessary | DRY | Performance | Security |
              Reusability | Silent-failure | Breaking-change |
              Architecture | Prior-finding-correction
-Rule-class:  <2-3 word slug — e.g., silent-failure, n+1-query, error-code-wrong-branch>
+Rule-class:  <2-3 word slug: e.g. silent-failure, n+1-query, error-code-wrong-branch>
 Enclosing-symbol: <function/class/component containing the cited line, or "<module>">
 Issue:       <one sentence>
 Why it matters: <one sentence>
 Suggested fix:  <one sentence, actionable>
 Inverse risk:   <the failure mode this fix trades INTO if implemented literally,
-                 or "none — pure addition">
-Class-sites:    <A>/<N> — affected sites over sites searched, from the
-                class_completeness audit below
+                 or "none, pure addition">
+Class-sites:    <A>/<N> (affected sites over sites searched, from the
+                class_completeness audit below)
 ```
 
 `Inverse risk` and `Class-sites` are REQUIRED on every finding that proposes a code
@@ -59,7 +61,7 @@ class_completeness:
     signature: <the literal/pattern actually searched>
     search: <tool>("<query>", "<path>") → <N> sites
     sites:
-      - <file:line or symbol>: affected | not-affected — <one clause why>
+      - <file:line or symbol>: affected | not-affected, <one clause why>
     verdict: COMPLETE (all N sites reported) | INCOMPLETE (<M> unreported sites)
 ```
 
@@ -84,7 +86,7 @@ with:
 ```
 Senior engineer approval: Yes | No
 Approval reason: <one sentence>
-Summary: <3 sentences — what the PR does, biggest concern, overall verdict>
+Summary: <3 sentences. What the PR does, the biggest concern, the overall verdict.>
 Verdict: approve | request-changes
 ```
 

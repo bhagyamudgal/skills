@@ -92,7 +92,7 @@ Every reviewer's comments go through the same triage: CodeRabbit, humans, and ot
 
 ```bash
 command -v gh >/dev/null 2>&1 || { echo "Install gh CLI: https://cli.github.com"; exit 1; }
-git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "Not inside a git repo — cd into your clone first."; exit 1; }
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "Not inside a git repo. cd into your clone first."; exit 1; }
 gh auth status 2>&1 | grep -q "Logged in" || { echo "Run 'gh auth login' first"; exit 1; }
 ```
 
@@ -124,7 +124,7 @@ Set `EXECUTION_AUTHORIZED=true` when the original request explicitly invokes `/f
          - label: "Checkout PR branch"
            description: "Run 'gh pr checkout <num>' to switch to the PR's head branch"
          - label: "Abort"
-           description: "Stop here — I'll sort out my branch state manually"
+           description: "Stop here. I'll sort out my branch state manually"
 
      On "Checkout PR branch": run `gh pr checkout <num>`. On failure (conflicts, missing refs), surface the error and abort. On "Abort": exit.
 
@@ -137,7 +137,7 @@ Set `EXECUTION_AUTHORIZED=true` when the original request explicitly invokes `/f
          - label: "Switch branch"
            description: "Run 'gh pr checkout <num>' to move to the PR branch"
          - label: "Abort"
-           description: "Stop — I'll checkout the right branch manually"
+           description: "Stop. I'll checkout the right branch manually"
 
      On "Switch branch": run `gh pr checkout <num>`. On gh failure (conflicts, missing refs), surface the error and abort. On "Abort": exit.
 
@@ -156,9 +156,9 @@ If non-empty, use AskUserQuestion:
      text: "Uncommitted changes detected. Auto-stash before applying fixes? Contents will be restored via 'git stash pop' at the end."
      options:
        - label: "Auto-stash"
-         description: "Stash changes now — they'll be restored when the run completes"
+         description: "Stash changes now. They'll be restored when the run completes"
        - label: "Abort"
-         description: "Stop — I'll commit or stash my work manually first"
+         description: "Stop. I'll commit or stash my work manually first"
 
 On "Auto-stash": run `git stash push -u -m "fix-pr-review auto-stash $(date +%s)"` and set `STASH_PUSHED=true`. If the run aborts, the user can find their work in `git stash list` as `fix-pr-review auto-stash <timestamp>`.
 On "Abort": print "Commit or stash your uncommitted work first." and exit.
@@ -203,7 +203,7 @@ Manually exported or legacy `/review-pr` findings files use the existing local-f
 
 Phase 1 detected exactly one of these three input types. Load `${CLAUDE_SKILL_DIR}/references/fetch-review-data.md` now and run only that type's section. It holds the paginated GraphQL `reviewThreads` query and its `isResolved` filter, the `/pulls/<num>/reviews/<review_id>` and `/pulls/comments/<comment_id>` REST endpoints, the CodeRabbit review-body anatomy, and the parse for the `🤖 Prompt for all review comments with AI agents` block, the only place nitpicks appear, since they never get inline threads.
 
-A fetch that errors — GraphQL rate limit, 404, private repo, or a per-page failure inside the pagination loop — surfaces the error and exits, so triage never runs on a partial comment set. For 404, print `Couldn't access PR — check repo access and run 'gh auth refresh -s repo'.`
+A fetch that errors — GraphQL rate limit, 404, private repo, or a per-page failure inside the pagination loop — surfaces the error and exits, so triage never runs on a partial comment set. For 404, print `Couldn't access PR. Check repo access and run 'gh auth refresh -s repo'.`
 
 ### For local files (`./review.md`, `/tmp/review-pr-*-findings.md`, etc.)
 
@@ -219,7 +219,7 @@ Every input path ends here. The `Comment` schema, the exact field names Phases 3
 
 ### Short-circuit cases
 
-- **Empty list** (all threads resolved, local file has no findings): print `Nothing to triage — no unresolved comments found.` → restore stash → exit 0.
+- **Empty list** (all threads resolved, local file has no findings): print `Nothing to triage. No unresolved comments found.` → restore stash → exit 0.
 - **Only nitpicks remain AND `--all-nitpicks` not set**: print `Only nitpicks found (N). Pass --all-nitpicks to triage them, or ignore.` → restore stash → exit 0.
 
 ---
@@ -259,8 +259,8 @@ Before anything is shown to the user, mechanically validate the classifier's out
 - Every DISAGREE MUST have non-empty `disagree_rationale` (and it MUST NOT be a pure style preference; check for keywords like "prefer", "cleaner", "nicer" without a concrete counter-argument).
 - Every FIX MUST have `fix_plan` length >= 30 characters.
 - Every FIX MUST have `change_class` set to exactly `hardening` or `logic-change` (the calibration the classifier applied is in `references/triage-rubric.md`; this check is purely the literal value).
-- Every FIX MUST have non-empty `test_scenario`. For `change_class: hardening`, the value MUST be exactly `smoke test — happy path unchanged`. For `change_class: logic-change`, the value MUST be a 1-sentence concrete repro (not just "verify it works").
-- Every FIX MUST have non-empty `inverse_risk` that either names a specific failure mode or is exactly `none — pure addition`. Hedges fail validation: an empty value, or anything of the shape "could have issues" / "minor risk" / "some risk" / "possible regression" / "none" on its own. A named failure mode says what breaks, where. Phase 5.5 consumes this field; an unnamed risk is unverifiable there.
+- Every FIX MUST have non-empty `test_scenario`. For `change_class: hardening`, the value MUST be exactly `smoke test, happy path unchanged`. For `change_class: logic-change`, the value MUST be a 1-sentence concrete repro (not just "verify it works").
+- Every FIX MUST have non-empty `inverse_risk` that either names a specific failure mode or is exactly `none, pure addition`. Hedges fail validation: an empty value, or anything of the shape "could have issues" / "minor risk" / "some risk" / "possible regression" / "none" on its own. A named failure mode says what breaks, where. Phase 5.5 consumes this field; an unnamed risk is unverifiable there.
 - Every FIX MUST have a `class_completeness` block with a non-empty `verdict` starting with either `COMPLETE` or `INCOMPLETE`. `INCOMPLETE` MUST name the excluded sites and give a reason for each. An `INCOMPLETE` verdict with no per-site reason fails validation.
 - Every item MUST have non-empty `grounding_a` and `grounding_b`.
 - Every item — FIX, DISMISS, DEFER and DISAGREE alike — MUST carry a `reusability_context` field, even when it is just `{ flagged: false }`. Phase 7's reply validator branches on it, so a missing field silently disables the reusability gate on that reply.
@@ -272,7 +272,7 @@ On validation failure: re-dispatch the classifier with the specific missing fiel
 Print the plan with a header:
 
 ```
-# Fix Plan — PR #<num>: <title>
+# Fix Plan, PR #<num>: <title>
 # <N> findings triaged: <F> fix, <D> dismiss, <E> defer, <G> disagree, <I> needs-input, <n> nitpicks
 ```
 
@@ -281,7 +281,7 @@ Print the plan with a header:
 If any DISMISS has `rubric: R5`, print a **separate highlighted section BEFORE** the main plan:
 
 ```
-## ⚠ Dismissed because they contradict CLAUDE.md — review and override if any are exceptions
+## ⚠ Dismissed because they contradict CLAUDE.md: review and override if any are exceptions
 
 [D<n>] <file:line>: <comment ask>
        CLAUDE.md rule: "<verbatim quote>"
@@ -298,8 +298,8 @@ Skip this step if there are zero contested items. Otherwise, use AskUserQuestion
 
    Question:
      header: "Triage"
-     text: "<C> item(s) will get a reply + thread resolution with no code change. Select any to RECLASSIFY — unselected items proceed as planned."
-     options: [one option per DISMISS/DEFER/DISAGREE item: "[<id>] <file:line> — <classification> (<rubric>): <reason, first ~60 chars>"]
+     text: "<C> item(s) will get a reply + thread resolution with no code change. Select any to RECLASSIFY. Unselected items proceed as planned."
+     options: [one option per DISMISS/DEFER/DISAGREE item: "[<id>] <file:line>: <classification> (<rubric>), <reason, first ~60 chars>"]
      multiSelect: true
 
 If contested items exceed the option limit, split into multiple multiSelect questions. DISMISS first (the most costly to get wrong).
@@ -308,14 +308,14 @@ For each selected item, use a follow-up AskUserQuestion:
 
    Question:
      header: "Item <id>"
-     text: "<file:line> — currently <classification>: <reason>. Reclassify as?"
+     text: "<file:line>, currently <classification>: <reason>. Reclassify as?"
      options:
        - label: "FIX (Recommended)"
-         description: "Treat as a real issue — add to the FIX list with a fix plan"
+         description: "Treat as a real issue and add it to the FIX list with a fix plan"
        - label: "NEEDS-INPUT"
-         description: "Park it — no reply, no resolution; surfaces in the final report"
+         description: "Park it and post nothing; it surfaces in the final report"
        - label: "Keep as-is"
-         description: "Selected by mistake — keep the original classification"
+         description: "Keep the original classification, since this was selected by mistake"
 
 On "FIX": re-dispatch the classifier scoped to just this item to produce the full FIX field set — `fix_plan`, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (class sweep included; a reclassified item has never been swept), and `reusability_context` (carry the contested item's own value through unless the sweep changed it) — then re-run plan validation on the changed item. Producing a partial field set here fails validation and burns the single retry. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
 
@@ -323,7 +323,7 @@ Nothing is posted or resolved during this step. Phase 7 remains the only place G
 
 ### Execution
 
-If `--dry-run`: print the plan, print `dry run — not executing`, restore stash, exit 0.
+If `--dry-run`: print the plan, print `dry run, not executing`, restore stash, exit 0.
 
 If `EXECUTION_AUTHORIZED=true`, proceed directly to Phase 5. The invocation already authorizes execution of every validated FIX item. If `--interactive` was set, ask for per-item confirmation in Phase 5; it does not add a plan-level confirmation.
 
@@ -377,16 +377,16 @@ For each FIX item in topological order:
 
    Question:
      header: "Fix <idx>"
-     text: "[<idx>/<total>] <file:line> — <fix_plan summary, first 80 chars>"
+     text: "[<idx>/<total>] <file:line>: <fix_plan summary, first 80 chars>"
      options:
        - label: "Apply fix"
          description: "Execute this fix and continue to the next"
        - label: "Skip"
-         description: "Skip this fix — mark as NEEDS-INPUT in the final report"
+         description: "Skip this fix and mark it NEEDS-INPUT in the final report"
        - label: "Skip remaining"
-         description: "Stop here — skip all remaining fixes"
+         description: "Stop here and skip all remaining fixes"
 
-   On "Apply fix": continue with steps 2-7. In ordinary Phase 5, "Skip" marks `fix_status[idx] = skipped` and advances to the next fix; "Skip remaining" marks every remaining fix `skipped` and jumps to Phase 6. In Phase 8 context, "Skip" restores every declared path from `active_snapshot` through the state-preserving restore rule with fallback `skipped`, sets `needs_input_status[idx]=skipped` and `convergence[idx]=not-run — user skipped before edit`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — user skipped before edit` otherwise. Phase 8 "Skip remaining" performs that same restore and settlement for the current item; it marks each not-yet-run fix skipped unless its current status is `inverse_risk_applied`, which remains unchanged with its publication blocker. Earlier landed fixes remain untouched. Both choices clear `phase8_triage_context`, terminate the nested Phase 5 path immediately, bypass Phases 5.5–6, and rejoin Phase 8 at the next independent item. On "Other": treat as freeform instruction (e.g., "modify the fix plan for this item").
+   On "Apply fix": continue with steps 2-7. In ordinary Phase 5, "Skip" marks `fix_status[idx] = skipped` and advances to the next fix; "Skip remaining" marks every remaining fix `skipped` and jumps to Phase 6. In Phase 8 context, "Skip" restores every declared path from `active_snapshot` through the state-preserving restore rule with fallback `skipped`, sets `needs_input_status[idx]=skipped` and `convergence[idx]=not-run, user skipped before edit`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, user skipped before edit` otherwise. Phase 8 "Skip remaining" performs that same restore and settlement for the current item; it marks each not-yet-run fix skipped unless its current status is `inverse_risk_applied`, which remains unchanged with its publication blocker. Earlier landed fixes remain untouched. Both choices clear `phase8_triage_context`, terminate the nested Phase 5 path immediately, bypass Phases 5.5–6, and rejoin Phase 8 at the next independent item. On "Other": treat as freeform instruction (e.g., "modify the fix plan for this item").
 
 2. In ordinary context, first add any never-edited declared path to `preedit_snapshot`, then capture every declared path in `perfix_snapshot[idx]` and bind it as `active_snapshot` before editing. In Phase 8 context, require every declared path in `active_snapshot`; a missing entry violates the declared-path gate, so stop the item and use Phase 8's expansion rule to append that new path and baseline before editing while existing entries remain immutable.
 3. Apply the change(s) via `Edit` tool.
@@ -416,8 +416,8 @@ For each FIX item in topological order:
          description: "Ordinary: revert all run-level edits and exit | Phase 8: restore only this item"
 
    On "Retry fix": restore the fix's declared paths from `active_snapshot`, re-dispatch the fix plan to a fresh `general-purpose` subagent with the new-errors context, loop (max 2 retries; on 3rd failure, auto-treat as "Skip this fix").
-   In ordinary context, "Skip this fix" restores the current `perfix_snapshot[idx]`, marks `fix_status[idx]=skipped` and `[<idx>] NEEDS-INPUT`, skips its Phase 7 reply/resolve, and continues with the remaining fixes. In Phase 8 context, it restores every `phase8_item_files[idx]` path through the state-preserving restore rule with fallback `skipped`, sets `needs_input_status[idx]=skipped` and `convergence[idx]=not-run — user skipped after type-check failure`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — user skipped after type-check failure` otherwise. Clear `phase8_triage_context`, terminate before Phases 5.5–6, and rejoin Phase 8 at the next independent item.
-   Present "Abort all" only in ordinary context and "Abort item" only in Phase 8 context. On "Abort all", restore every run-level path, restore the stash, and exit non-zero. On "Abort item", restore only `phase8_item_files[idx]` through the state-preserving restore rule with fallback `aborted`, set `needs_input_status[idx]=failed` and `convergence[idx]=not-run — user aborted after type-check failure`, then set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — user aborted after type-check failure` otherwise. Clear `phase8_triage_context`, terminate before Phases 5.5–6, and rejoin Phase 8 at the next independent item without touching the stash or earlier fixes.
+   In ordinary context, "Skip this fix" restores the current `perfix_snapshot[idx]`, marks `fix_status[idx]=skipped` and `[<idx>] NEEDS-INPUT`, skips its Phase 7 reply/resolve, and continues with the remaining fixes. In Phase 8 context, it restores every `phase8_item_files[idx]` path through the state-preserving restore rule with fallback `skipped`, sets `needs_input_status[idx]=skipped` and `convergence[idx]=not-run, user skipped after type-check failure`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, user skipped after type-check failure` otherwise. Clear `phase8_triage_context`, terminate before Phases 5.5–6, and rejoin Phase 8 at the next independent item.
+   Present "Abort all" only in ordinary context and "Abort item" only in Phase 8 context. On "Abort all", restore every run-level path, restore the stash, and exit non-zero. On "Abort item", restore only `phase8_item_files[idx]` through the state-preserving restore rule with fallback `aborted`, set `needs_input_status[idx]=failed` and `convergence[idx]=not-run, user aborted after type-check failure`, then set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, user aborted after type-check failure` otherwise. Clear `phase8_triage_context`, terminate before Phases 5.5–6, and rejoin Phase 8 at the next independent item without touching the stash or earlier fixes.
 
 ### Fix execution tracking
 
@@ -445,24 +445,24 @@ It fetches whatever else it needs. Keep it in a subagent: it re-reads files and 
 the repo, and main only needs verdicts.
 
 ```
-For each fix below, verify against the working tree — not against the fix plan's claims.
+For each fix below, verify against the working tree, not against the fix plan's claims.
 
-1. CLASS COMPLETENESS — every site the class sweep marked `affected` in
+1. CLASS COMPLETENESS: every site the class sweep marked `affected` in
    `class_completeness.sites` must actually be changed. A fix that landed on 3 of 4
    sites is INCOMPLETE, not done.
    (Sites the plan's `verdict` deliberately excluded are not counted as unfixed.)
-2. INVERSE RISK — the named failure mode must NOT be present in the applied code.
-3. NEW SIBLINGS — did the fix itself introduce a new instance of the pattern it fixes,
+2. INVERSE RISK: the named failure mode must NOT be present in the applied code.
+3. NEW SIBLINGS: did the fix itself introduce a new instance of the pattern it fixes,
    or a new branch (error state, empty state, early return) that its siblings have but
    this one lacks?
 
 Report per fix, nothing else:
   fix: <idx>
-  class_complete: yes | no — <unfixed site if no>
-  inverse_risk_present: no | yes — <file:line + one sentence>
+  class_complete: yes | no, <unfixed site if no>
+  inverse_risk_present: no | yes, <file:line + one sentence>
   new_siblings: none | <file:line + one sentence>
 
-Evidence rules differ per check — "I lack evidence" is not an answer for check 1:
+Evidence rules differ per check. "I lack evidence" is not an answer for check 1:
   - Check 1 is decided MECHANICALLY by `git diff HEAD`. Each affected site either
     appears in the diff or it does not; there is no undecidable state. Report `no`
     with the unfixed site whenever a site is absent from the diff.
@@ -501,7 +501,7 @@ Handling:
   `perfix_snapshot[idx]` only when no other later fix or convergence edit touched any declared
   path and every current declared path equals the final owned component's postimage. Otherwise
   leave the fix applied, set `fix_status[idx] = inverse_risk_applied`, record
-  `revert: not attempted — exclusive ownership unproven`, route it to NEEDS-INPUT, and state in
+  `revert: not attempted, exclusive ownership unproven`, route it to NEEDS-INPUT, and state in
   Phase 8 that the risky fix remains applied.
   On an ordinary inverse/snapshot revert, mark `fix_status[idx] = reverted_inverse_risk` and
   route to NEEDS-INPUT. A Phase 8 active-snapshot restore uses its state-preserving restore rule
@@ -592,20 +592,20 @@ Keep the run-level stash untouched throughout this step. Build `needs_input_item
        - label: "Triage now"
          description: "Walk through each NEEDS-INPUT item and decide: fix, defer, or dismiss"
        - label: "Skip for now"
-         description: "Leave them unresolved — handle manually later"
+         description: "Leave them unresolved and handle them manually later"
 
 On "Triage now": for each `needs_input_items` entry, use AskUserQuestion:
 
    Question:
      header: "Item N<idx>"
-     text: "<file:line> — <why_unclear>"
+     text: "<file:line>: <why_unclear>"
      options:
        - label: "Fix it"
          description: "Provide guidance and have the agent apply a fix"
        - label: "Defer"
          description: "Mark as out-of-scope, post a DEFER reply on GitHub"
        - label: "Dismiss"
-         description: "Not a real issue — post a DISMISS reply on GitHub"
+         description: "Not a real issue. Post a DISMISS reply on GitHub"
 
 For every automatic `Other` freeform path in the batch prompt or an item prompt, honor an instruction that unambiguously maps named items to `Fix it`, `Defer`, `Dismiss`, or `Skip for now`. Preserve the exact freeform text with the item. If the mapping is ambiguous, set each affected item's `needs_input_status=skipped` and carry the text into its manual-handling reason. Do not leave it pending.
 
@@ -622,15 +622,15 @@ On "Fix it": use a follow-up AskUserQuestion to collect guidance:
 
    On "Use reviewer's suggestion": use the original comment's recommendation as the fix plan. On "I'll describe" or "Other", treat unambiguous fix guidance as the fix plan; honor an unambiguous defer, dismiss, or skip instruction through that action's branch. Preserve ambiguous text, set `needs_input_status=skipped`, and continue.
 
-   Validate the complete FIX record through Phase 4 before editing. Record immutable `phase8_snapshot_fix_state[idx]` as the entry `fix_status` when it is `inverse_risk_applied` or `reverted_inverse_risk`; otherwise record `clear`. When the snapshot state is `inverse_risk_applied`, require the validated plan to record `phase8_remediation_kind[idx]=removal|replacement` and map every entry in the prior `perfix_owned_components[idx]` ledger exactly once to removal or replacement evidence. Reject an incomplete or duplicated map. Derive `phase8_item_files[idx]` from the union of every mapped owned-component path and every additional file declared by the validated plan, then capture each file's current content or authoritative absence in a dedicated `phase8_item_snapshot[idx]`. This snapshot includes all earlier landed fixes. Every later restore of this snapshot is state-preserving: restore the exact bytes, then restore `fix_status[idx]` from `phase8_snapshot_fix_state` when it is not `clear`, or use the branch's named fallback status when it is `clear`. Never change `phase8_snapshot_fix_state` without replacing the snapshot itself. Immediately after the snapshot and before any edit, run the affected Phase 5 narrow type-check against that state and parse `phase8_item_baseline_errors[idx]` with the Phase 1 diagnostic-identity multiset parser; when the applicable tooling is unavailable, record the baseline as unavailable and preserve the existing skipped-check behavior. Both item stores are append-only and separate from the run-level `preedit_snapshot` and `baseline_errors`: nested Phases 5–6 neither read nor overwrite the run-level stores. Set `phase8_triage_context=true` only after the snapshot, snapshot state, applicable remediation map, and item baseline are complete.
+   Validate the complete FIX record through Phase 4 before editing. Record immutable `phase8_snapshot_fix_state[idx]` as the entry `fix_status` when it is `inverse_risk_applied` or `reverted_inverse_risk`; otherwise record `clear`. When the snapshot state is `inverse_risk_applied`, require the validated plan to record `phase8_remediation_kind[idx]=removal|replacement` and map every entry in the prior `perfix_owned_components[idx]` ledger exactly once to removal or replacement evidence. Reject an incomplete or duplicated map. Derive `phase8_item_files[idx]` from the union of every mapped owned-component path and every additional file declared by the validated plan, then capture each file's current content or authoritative absence in a dedicated `phase8_item_snapshot[idx]`. This snapshot includes all earlier landed fixes. Every later restore of this snapshot is state-preserving: restore the exact bytes, then restore `fix_status[idx]` from `phase8_snapshot_fix_state` when it is not `clear`, or use the branch's named fallback status when it is `clear`. Never change `phase8_snapshot_fix_state` without replacing the snapshot itself. Immediately after the snapshot and before any edit, run the affected Phase 5 narrow type-check against that state and parse `phase8_item_baseline_errors[idx]` with the Phase 1 diagnostic-identity multiset parser; when the applicable tooling is unavailable, record the baseline as unavailable and preserve the existing skipped-check behavior. Both item stores are append-only and separate from the run-level `preedit_snapshot` and `baseline_errors`: nested Phases 5-6 neither read nor overwrite the run-level stores. Set `phase8_triage_context=true` only after the snapshot, snapshot state, applicable remediation map, and item baseline are complete.
 
-   In Phase 8 context, Phase 5 edits and retry agents may touch only `phase8_item_files[idx]`. When the plan expands, revalidate it and derive only the newly declared paths absent from `phase8_item_snapshot[idx]`; preserve every existing snapshot and baseline entry byte-for-byte. Before any new path is edited, append that path's current content or authoritative absence and its isolated per-path baseline, parsed with the Phase 1 diagnostic-identity multiset parser, to the item stores. Never recapture an existing path or rerun its baseline after an edit. If earlier item edits make a trustworthy per-path baseline for a new path impossible, fail closed: restore every path already present in the append-only item snapshot through the state-preserving restore rule with fallback `restored_failed`, leave the new path unedited, set `needs_input_status[idx]=failed` and `convergence[idx]=not-run — unsafe expansion baseline for <new-path>; snapshotted paths restored and new path left unedited`, then set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — unsafe expansion baseline` otherwise. Clear `phase8_triage_context` and continue with the next independent item. Phase 5.5 may verify all sites but may apply a corrective edit only within declared, snapshotted files.
+   In Phase 8 context, Phase 5 edits and retry agents may touch only `phase8_item_files[idx]`. When the plan expands, revalidate it and derive only the newly declared paths absent from `phase8_item_snapshot[idx]`; preserve every existing snapshot and baseline entry byte-for-byte. Before any new path is edited, append that path's current content or authoritative absence and its isolated per-path baseline, parsed with the Phase 1 diagnostic-identity multiset parser, to the item stores. Never recapture an existing path or rerun its baseline after an edit. If earlier item edits make a trustworthy per-path baseline for a new path impossible, fail closed: restore every path already present in the append-only item snapshot through the state-preserving restore rule with fallback `restored_failed`, leave the new path unedited, set `needs_input_status[idx]=failed` and `convergence[idx]=not-run, unsafe expansion baseline for <new-path>; snapshotted paths restored and new path left unedited`, then set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, unsafe expansion baseline` otherwise. Clear `phase8_triage_context` and continue with the next independent item. Phase 5.5 may verify all sites but may apply a corrective edit only within declared, snapshotted files.
 
-   Apply the Phase 5 per-fix loop. When it returns a settled `skipped` or `aborted` item, preserve its `fix_status`, `needs_input_status`, `convergence`, and `gh_status`, then rejoin Phase 8 immediately; Phase 5.5 and Phase 6 are barred from running or reapplying it. Otherwise run Phase 5.5 for that fix. After a successful active-snapshot restore yields `reverted_inverse_risk`, preserve that status without another restore, set `needs_input_status[idx]=failed`, set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — inverse-risk fix reverted` otherwise, clear `phase8_triage_context`, and rejoin Phase 8. For any other status outside `landed_fix_statuses`, record it as `pre_restore_fix_status[idx]`, restore every declared path from `phase8_item_snapshot[idx]` through the state-preserving restore rule with fallback `restored_failed`, set `needs_input_status[idx]=failed`, and preserve the original convergence evidence with an appended `restored item snapshot after <pre_restore_fix_status>` disposition. Set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — convergence rejected and item restored` otherwise. Clear `phase8_triage_context` and rejoin Phase 8 at the next independent item. Only a status in `landed_fix_statuses` proceeds to the affected Phase 6 type-check, review, and simplify assessments in verification-only mode; do not apply type-fix, self-heal, or simplify edits.
+   Apply the Phase 5 per-fix loop. When it returns a settled `skipped` or `aborted` item, preserve its `fix_status`, `needs_input_status`, `convergence`, and `gh_status`, then rejoin Phase 8 immediately; Phase 5.5 and Phase 6 are barred from running or reapplying it. Otherwise run Phase 5.5 for that fix. After a successful active-snapshot restore yields `reverted_inverse_risk`, preserve that status without another restore, set `needs_input_status[idx]=failed`, set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, inverse-risk fix reverted` otherwise, clear `phase8_triage_context`, and rejoin Phase 8. For any other status outside `landed_fix_statuses`, record it as `pre_restore_fix_status[idx]`, restore every declared path from `phase8_item_snapshot[idx]` through the state-preserving restore rule with fallback `restored_failed`, set `needs_input_status[idx]=failed`, and preserve the original convergence evidence with an appended `restored item snapshot after <pre_restore_fix_status>` disposition. Set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, convergence rejected and item restored` otherwise. Clear `phase8_triage_context` and rejoin Phase 8 at the next independent item. Only a status in `landed_fix_statuses` proceeds to the affected Phase 6 type-check, review, and simplify assessments in verification-only mode; do not apply type-fix, self-heal, or simplify edits.
 
-   A Critical or Serious blocker, validation abort, edit failure, exhausted retry, or Phase 6 failure aborts only this item. Before restoring, record the exact triggering error or blocker as `phase8_failure_reason[idx]`. Restore every declared path from `phase8_item_snapshot[idx]`, including removing a path whose snapshot recorded authoritative absence, through the state-preserving restore rule with fallback `restored_failed`; set `needs_input_status[idx]=failed`. Preserve existing convergence evidence and append `restored item snapshot after <phase8_failure_reason>`; when convergence never ran, set `convergence[idx]=not-run — <phase8_failure_reason>; item snapshot restored`. Set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix — <phase8_failure_reason>; item restored` otherwise. Clear the context and continue with the next independent item without restoring the run-level stash, exiting the skill, or bypassing the renderer. Ordinary Phase 5 and Phase 6 behavior remains unchanged when `phase8_triage_context` is false.
+   A Critical or Serious blocker, validation abort, edit failure, exhausted retry, or Phase 6 failure aborts only this item. Before restoring, record the exact triggering error or blocker as `phase8_failure_reason[idx]`. Restore every declared path from `phase8_item_snapshot[idx]`, including removing a path whose snapshot recorded authoritative absence, through the state-preserving restore rule with fallback `restored_failed`; set `needs_input_status[idx]=failed`. Preserve existing convergence evidence and append `restored item snapshot after <phase8_failure_reason>`; when convergence never ran, set `convergence[idx]=not-run, <phase8_failure_reason>; item snapshot restored`. Set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, <phase8_failure_reason>; item restored` otherwise. Clear the context and continue with the next independent item without restoring the run-level stash, exiting the skill, or bypassing the renderer. Ordinary Phase 5 and Phase 6 behavior remains unchanged when `phase8_triage_context` is false.
 
-   When the fix and verification land cleanly, record current content risk as clear without changing the immutable snapshot state, then update `done_verified_snapshot` from the prior snapshot plus this item's verified declared-path bytes. If `phase8_snapshot_fix_state[idx]=inverse_risk_applied` and `phase8_remediation_kind[idx]=removal`, set `fix_status[idx]=reverted_inverse_risk`, set `needs_input_status[idx]=failed`, set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `original finding not accepted — risky fix removed` otherwise, clear `phase8_triage_context`, and rejoin Phase 8 without GitHub reply or resolution. A verified replacement retains its applicable landed status and may proceed to the Phase 7 reply/resolve mechanics. Set `needs_input_status=fixed` only when `fix_status ∈ landed_fix_statuses` and both GitHub operations are successful or not applicable; set it to `reconcile-required` if either operation has that state, otherwise set it to `failed`. Preserve the final classification, `fix_status`, convergence, current-content risk, and `gh_status` before continuing.
+   When the fix and verification land cleanly, record current content risk as clear without changing the immutable snapshot state, then update `done_verified_snapshot` from the prior snapshot plus this item's verified declared-path bytes. If `phase8_snapshot_fix_state[idx]=inverse_risk_applied` and `phase8_remediation_kind[idx]=removal`, set `fix_status[idx]=reverted_inverse_risk`, set `needs_input_status[idx]=failed`, set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `original finding not accepted, risky fix removed` otherwise, clear `phase8_triage_context`, and rejoin Phase 8 without GitHub reply or resolution. A verified replacement retains its applicable landed status and may proceed to the Phase 7 reply/resolve mechanics. Set `needs_input_status=fixed` only when `fix_status ∈ landed_fix_statuses` and both GitHub operations are successful or not applicable; set it to `reconcile-required` if either operation has that state, otherwise set it to `failed`. Preserve the final classification, `fix_status`, convergence, current-content risk, and `gh_status` before continuing.
 
 Immediately before any chosen Fix, Defer, or Dismiss reply mutates GitHub, invoke `preflight-mutations` for that item's reply/resolve batch with the exact PR and current head SHA, target thread ID, final reply text, classification, and the per-item choice above. Apply its result contract before continuing. Record a blocked or confirmed failure as `needs_input_status=failed`, an indeterminate operation as `reconcile-required`, and the exact Phase 7 `gh_status`; then continue to the next independent item. Every branch rejoins report rendering.
 
@@ -670,9 +670,9 @@ Use AskUserQuestion:
 
 For each selected item, append to `.claude/review-suppressions.yml`:
 ```yaml
-  - pattern: "<normalized pattern from finding — key phrase, not full text>"
+  - pattern: "<normalized pattern from finding: key phrase, not full text>"
     category: "<finding category if available>"
-    file: "<finding's file path — include only if the rationale is specific to one file, omit for generic patterns>"
+    file: "<finding's file path. Include only if the rationale is specific to one file, omit for generic patterns>"
     reason: "<dismiss/disagree rationale from triage>"
     added: <today's date YYYY-MM-DD>
 ```
@@ -705,7 +705,7 @@ After printing the final report and completing the suppression step when applica
        - label: "Re-run on remaining"
          description: "Run /fix-pr-review again for skipped/needs-input items"
        - label: "Done"
-         description: "Exit — I'll handle the rest manually"
+         description: "Exit. I'll handle the rest manually"
 
 On "Commit changes" or "Push to remote", require `inverse_risk_blockers` to be empty, `stash_restored != conflict`, and a valid `done_verified_snapshot`. Recompute the blocker set instead of trusting the rendered report; a non-empty set stops the action. Invoke `git-commit` in Verified content snapshot sealed-index mode with that snapshot; never stage or restage the live worktree. Require the created commit tree to equal the snapshot tree. Ordinary restored WIP remains in the worktree and outside the candidate commit.
 

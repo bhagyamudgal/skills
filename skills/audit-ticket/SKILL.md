@@ -79,12 +79,12 @@ Dispatch **ONE `general-purpose` subagent PER requirement**, in parallel batches
 
 ```
 You are verifying ONE requirement from a stale GitHub issue against one
-frozen code snapshot. The ticket is old — code may have shipped, changed,
+frozen code snapshot. The ticket is old. Code may have shipped, changed,
 or made the requirement meaningless since it was written. Your job is a
 verdict grounded in file:line evidence, not a guess.
 
 ## Ticket context
-Issue: #<n> — <title> (opened <createdAt>)
+Issue: #<n>, <title> (opened <createdAt>)
 Goal (1 sentence): <from body>
 HEAD: <full Phase 1 SHA>
 Content snapshot: <verified_content_snapshot tree hash>
@@ -107,14 +107,14 @@ Source: <body | comment | image>
 verdict: done | partially-done | not-done | obsolete
 confidence: high | medium | low
 evidence:
-  - <file:line> — <what this line shows, one clause>
+  - <file:line>: <what this line shows, one clause>
   - ...
-gaps: <REQUIRED for partially-done/not-done — what's still missing, specific>
-obsolete_reason: <REQUIRED for obsolete — what changed and where (file:line)>
+gaps: <REQUIRED for partially-done/not-done. What's still missing, specific>
+obsolete_reason: <REQUIRED for obsolete. What changed and where (file:line)>
 
 ## Rules
 - Every done/partially-done verdict MUST cite at least one file:line.
-- "obsolete" needs evidence of the superseding change — not a hunch.
+- "obsolete" needs evidence of the superseding change, not a hunch.
 - If you genuinely cannot determine it, say verdict: not-done with
   confidence: low and explain what you'd need.
 ```
@@ -131,6 +131,8 @@ Verify each returned `file:line` exists in the recorded content snapshot before 
 
 Every `Rn` from Phase 1 appears exactly once in the table; N equals d + p + nd + o + u. A requirement with no returned verdict is `unverified`, not omitted. Put only evidence IDs in table cells, then render every complete `Rn → E<n>` edge in a block-form source map; code citations remain separate verdict evidence.
 
+The audit is read by whoever inherits this ticket, and Phase 5 may post it to GitHub unchanged. Write it with no em or en dashes. `unslop` carries the rest of the rules where it is installed.
+
 Then print:
 
 ```
@@ -138,13 +140,13 @@ Then print:
 
 **State**: <open|closed> · opened <date> · last activity <date>
 **Audited against**: <full HEAD SHA> at content snapshot <tree hash> on <today>
-**Requirements**: <N> — <d> done / <p> partial / <nd> not done / <o> obsolete / <u> unverified
-**Recommendation**: <one sentence — grounded in the verdict mix>
+**Requirements**: <N> total, <d> done / <p> partial / <nd> not done / <o> obsolete / <u> unverified
+**Recommendation**: <one sentence, grounded in the verdict mix>
 
 | # | Requirement | Source evidence | Verdict | Code evidence |
 |---|-------------|-----------------|---------|---------------|
 | R1 | <short text> | R1 → E1 | ✅ done | `<file:line>` |
-| R2 | <short text> | R2 → E2, E4 | 🟡 partial | `<file:line>` — <gap, short> |
+| R2 | <short text> | R2 → E2, E4 | 🟡 partial | `<file:line>`: <gap, short> |
 | R3 | <short text> | R3 → E3 | ❌ not done | — |
 | R4 | <short text> | R4 → E5 | 🪦 obsolete | <reason, short> |
 
@@ -175,10 +177,10 @@ Recommendation logic:
 header: "Ticket fate"
 text: "Audit of #<n>: <d> done, <p> partial, <nd> not done, <o> obsolete. What should happen to it?"
 options:
-  - "Update in place (Recommended)" — Post the audit as a status comment and edit the body into an accurate current checklist
-  - "Sunset (close)" — Post the audit reasoning as a comment and close as <completed | not planned>
-  - "Split remainder" — File a follow-up issue with only the open items (assigned to you), link it, close this one
-  - "Leave unchanged" — Keep the report local; ticket untouched
+  - "Update in place (Recommended)": Post the audit as a status comment and edit the body into an accurate current checklist
+  - "Sunset (close)": Post the audit reasoning as a comment and close as <completed | not planned>
+  - "Split remainder": File a follow-up issue with only the open items (assigned to you), link it, close this one
+  - "Leave unchanged": Keep the report local; ticket untouched
 ```
 
 When every requirement is done or obsolete, reorder: "Sunset (close)" goes first and takes the "(Recommended)" marker. Updating a body that has no remaining work is churn.

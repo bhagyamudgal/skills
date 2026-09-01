@@ -28,7 +28,7 @@ Substring matches alone (e.g., `item` matching many unrelated tables) are NOT su
 **Severity**: Moderate. **Category**: Architecture.
 
 **Format**:
-> Existing table `<existing>` in `<path>` has overlapping domain — shares FKs [list]. Is `<new table>` intentionally separate?
+> Existing table `<existing>` in `<path>` has overlapping domain and shares FKs [list]. Is `<new table>` intentionally separate?
 
 ---
 
@@ -52,7 +52,7 @@ d. **Flag ONLY** if a candidate settings/config table EXISTS. Do NOT suggest "cr
 **Severity**: Moderate. **Category**: Architecture.
 
 **Format**:
-> 1:1 table `<new>` has only N data columns — could this be a column on existing `<settings table>` in `<path>`?
+> 1:1 table `<new>` has only N data columns. Could this be a column on existing `<settings table>` in `<path>`?
 
 ---
 
@@ -70,7 +70,7 @@ d. **Flag ONLY** when a related table in the SAME domain has MORE entity types. 
 **Severity**: Moderate. **Category**: Architecture.
 
 **Format**:
-> New table references [order, product] but related `<table>` in `<path>` also references [invoice, customer] — are these intentionally omitted?
+> New table references [order, product] but related `<table>` in `<path>` also references [invoice, customer]. Are these intentionally omitted?
 
 ---
 

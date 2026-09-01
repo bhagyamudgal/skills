@@ -130,7 +130,7 @@ const failures = results.filter((entry) => entry.status !== "OK");
 console.log(`\n${results.length - failures.length}/${results.length} databases snapshotted successfully`);
 
 if (results.length === 0) {
-    console.error("FAIL: no databases found — check the state directory path");
+    console.error("FAIL: no databases found. Check the state directory path");
     process.exit(1);
 }
 if (failures.length > 0) {

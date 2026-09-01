@@ -94,7 +94,7 @@ Use this **EXACT** field name `reusability_searches:` (not `reuse_searches` or a
 ```yaml
 reusability_searches:
   - <tool>("<query>", "<path>") → <N> matches
-    verified: <yes|no> — <if yes: what the existing impl does and whether it's a real match;
+    verified: <yes|no>. <if yes: what the existing impl does and whether it's a real match;
                           if no: substring collision or wrong semantic>
   - ...
 ```

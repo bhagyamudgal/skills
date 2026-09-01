@@ -76,11 +76,11 @@ findings:
     round_resolved: null
     commit_sha_resolved: null
     dismissal_reason: null
-    last_message: "Promise.allSettled errors swallowed — failed names never logged"
+    last_message: "Promise.allSettled errors swallowed, failed names never logged"
     github_thread_id: PRRT_kwDO456def
     github_comment_id: 2145678902
 
-    # --- cascade fields — required here too: this finding proposes a fix ---
+    # --- cascade fields, required here too: this finding proposes a fix ---
     inverse_risk: "logging every rejected settlement floods the batch log when a whole batch fails"
     caused_by: null
     depends_on: null
@@ -108,7 +108,7 @@ findings:
 | `findings[].round_first_seen` | int | yes | Round number when the finding was first emitted |
 | `findings[].round_resolved` | int | nullable | Round when status flipped to `resolved` |
 | `findings[].commit_sha_resolved` | string | nullable | Head commit SHA when the resolving change landed |
-| `findings[].inverse_risk` | string | conditional | Failure mode the suggested fix trades into. Round N+1 checks this first. A fix landing on its own inverse is one of the two cascade feeders. **Required whenever the finding carries a `Suggested fix:`**; `"none — pure addition"` when the fix trades nothing away; null ONLY when the finding proposes no code change |
+| `findings[].inverse_risk` | string | conditional | Failure mode the suggested fix trades into. Round N+1 checks this first. A fix landing on its own inverse is one of the two cascade feeders. **Required whenever the finding carries a `Suggested fix:`**; `"none, pure addition"` when the fix trades nothing away; null ONLY when the finding proposes no code change |
 | `findings[].caused_by` | string | nullable | ID of the finding whose *fix* created this one. This is what lets a later round see that a "new" finding is the previous round's remedy landing badly, instead of counting it as unrelated fresh work |
 | `findings[].depends_on` | string | nullable | For `dismissed`/`wontfix` only: the code condition the rationale rests on (e.g. `"the early-break at search.ts:88 keeps serial decrypt cheap"`). When a later commit voids it, the dismissal is void and the finding reopens as `active` |
 | `findings[].class_sites` | list | conditional | Every site of this `rule_class` with a `handled` flag: item schema below. Resolution is gated on ALL sites handled, not just the cited one; this is what prevents a 3-of-4-sites fix from being marked resolved. **Required whenever the finding carries a `Suggested fix:`**; null ONLY when the finding proposes no code change |
@@ -149,7 +149,7 @@ One id, not a list: the single *nearest* cause. When several closed findings cou
 │             │         │              │
 │  (fix landed,         │      (explicit external  (subagent emits SAME id
 │   confirmed in        │       disposition)       after status was resolved
-│   diff, AND every     │                          — code regressed)
+│   diff, AND every     │                          because code regressed)
 │   class_sites entry   │
 │   handled)            │
 │             ▼         ▼              ▼
@@ -163,8 +163,8 @@ One id, not a list: the single *nearest* cause. When several closed findings cou
 │                        │        back to resolved/dismissed
 │                        │
 └────────────────────────┘
-  (the depends_on condition is voided by a later commit —
-   the dismissal is void, the finding reopens as active)
+  (a later commit voids the depends_on condition, so the dismissal
+   is void and the finding reopens as active)
 ```
 
 - **`resolved`**: subagent saw the fix in the diff between `commit_sha_resolved` and the prior round's HEAD, **and** every `class_sites` entry is `handled: true`. A fix that lands on the cited site while a sibling site stays unhandled leaves the finding `active`. No automated writer sets this today. See the writer caveat at the end of "Phase 4: write back".
@@ -302,8 +302,8 @@ For each remaining finding:
 1. Compute its `id` from the subagent-emitted `(file, enclosing_symbol, rule_class)`.
 2. Look up `id` in `PRIOR_STATE.findings`.
 3. If a match exists with `status in {resolved, dismissed, wontfix}`:
-   - If `status == resolved`: verify the diff doesn't reintroduce the issue at `commit_sha_resolved..HEAD`. If reintroduced → mark as `regression`, keep the finding. Otherwise drop with reason: `prior-state suppression — resolved in round <round_resolved> (commit <commit_sha_resolved>)`.
-   - If `status in {dismissed, wontfix}`: drop with reason: `prior-state suppression — <status> in round <round_resolved>: "<dismissal_reason>"`.
+   - If `status == resolved`: verify the diff doesn't reintroduce the issue at `commit_sha_resolved..HEAD`. If reintroduced → mark as `regression`, keep the finding. Otherwise drop with reason: `prior-state suppression, resolved in round <round_resolved> (commit <commit_sha_resolved>)`.
+   - If `status in {dismissed, wontfix}`: drop with reason: `prior-state suppression, <status> in round <round_resolved>: "<dismissal_reason>"`.
 
 ### Phase 4: write back
 

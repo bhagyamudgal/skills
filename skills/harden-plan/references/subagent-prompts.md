@@ -15,7 +15,7 @@ it loaded SKILL.md. The subagent gets a real path, not the placeholder.
 ```
 You are grounding a WRITTEN PLAN against a real codebase to identify
 execution anti-patterns BEFORE any code is written. Your job is to
-identify concrete, evidence-backed concerns across 11 categories —
+identify concrete, evidence-backed concerns across 11 categories.
 NOT style nitpicks, NOT generic advice, NOT hypothetical issues.
 
 ## Plan being hardened
@@ -51,8 +51,8 @@ NOT style nitpicks, NOT generic advice, NOT hypothetical issues.
 
 ## Your task
 
-1. **GROUNDING PASS — MANDATORY, before answering any category.**
-   Write 3–5 bullets describing what this plan MECHANICALLY proposes to
+1. **GROUNDING PASS: MANDATORY, before answering any category.**
+   Write 3-5 bullets describing what this plan MECHANICALLY proposes to
    do: which files are created/modified, which endpoints/functions are
    added, which schemas change, which UI components render. Every
    subsequent finding MUST trace back to one of these bullets AND to a
@@ -63,13 +63,13 @@ NOT style nitpicks, NOT generic advice, NOT hypothetical issues.
    just `"No concerns for P<n>"`.
 
    Load `${CLAUDE_SKILL_DIR}/references/category-checks.md` before answering
-   anything. It holds P1–P11: each category's scope, its default
+   anything. It holds P1-P11: each category's scope, its default
    severity, its invalidity gate, and one worked example. Answer all 11
-   from that file — a category you did not open is a category you did
+   from that file. A category you did not open is a category you did
    not answer.
 
 3. Verify every finding against the actual codebase. Don't guess at
-   symbol names — search for them. Don't assume a helper exists — grep
+   symbol names; search for them. Don't assume a helper exists; grep
    for it.
 
 ## Output format
@@ -77,7 +77,7 @@ NOT style nitpicks, NOT generic advice, NOT hypothetical issues.
 Produce ONLY YAML, no prose preamble or closing summary:
 
 grounding_bullets:
-  - <bullet 1 — what the plan mechanically does>
+  - <bullet 1: what the plan mechanically does>
   - <bullet 2>
   - ...
 
@@ -87,15 +87,15 @@ findings:
                Reusability | Concurrency | Round-trip | Control-flow |
                Error-handling | Pattern-consistency>
     severity: Critical | Serious | Moderate | Minor
-    plan_step_ref: "S<n> — <short quote from that step, max 80 chars>"
-    concern: <1 sentence — what's wrong or missing>
+    plan_step_ref: "S<n>: <short quote from that step, max 80 chars>"
+    concern: <1 sentence: what's wrong or missing>
     grounding: <evidence from plan text OR from repo_map_files /
                 repo_map_exports / existing_services_inventory /
-                existing_history_tables — cite specific paths/symbols>
+                existing_history_tables. Cite specific paths/symbols>
     suggested_question: <what you'd ask the user to resolve this>
-    recommended_answer: <concrete action if user agrees — file:symbol
+    recommended_answer: <concrete action if user agrees, at file:symbol
                          level where possible>
-    severity_reasoning: <why this severity level — REQUIRED for
+    severity_reasoning: <why this severity level. REQUIRED for
                          Critical and Serious>
 
 For each category with no concerns, emit ONE marker line:
@@ -106,13 +106,13 @@ For each category with no concerns, emit ONE marker line:
 
 - NO style / formatting / naming nitpicks
 - NO generic advice ("consider adding tests", "think about performance")
-- NO hypothetical issues — only flag what the plan explicitly says OR
+- NO hypothetical issues. Only flag what the plan explicitly says OR
   explicitly omits, grounded against the real codebase
 - Every finding needs a `plan_step_ref` matching a real `Sn` from
-  stated_steps — no free-floating findings
+  stated_steps. No free-floating findings
 - Every finding needs `grounding` citing a real plan line OR a real
   entry in the repo map
-- Default to "no concerns" when in doubt — false positives waste user
+- Default to "no concerns" when in doubt. False positives waste user
   time
 - **For P5 (Security)** on any new write endpoint, you MUST address
   cross-FK validation explicitly. "No concerns" is invalid unless the
@@ -132,7 +132,7 @@ For each category with no concerns, emit ONE marker line:
 
 ```
 You are building a "conventions map" for a plan about to be executed.
-For every file the plan proposes to CREATE, find 2–3 existing files of
+For every file the plan proposes to CREATE, find 2-3 existing files of
 the same shape and extract their common patterns. This feeds pattern-
 consistency checks in the main flow.
 
@@ -165,10 +165,10 @@ For each proposed new file, do the following:
    - `*.module.ts` → NestJS module
    - Something else → use your judgment from the path
 
-2. Find 2–3 existing files of the same shape. Prefer sibling files in
+2. Find 2-3 existing files of the same shape. Prefer sibling files in
    the same module / domain directory. Use Grep / Glob / Read.
 
-3. Read each sibling in full and extract COMMON patterns — patterns
+3. Read each sibling in full and extract COMMON patterns, the patterns
    that appear in 2 or more siblings. Examples:
    - History table via `writeHistoryRecord` helper
    - `@fileseye/try-catch` or project-equivalent try-catch utility
@@ -179,7 +179,7 @@ For each proposed new file, do the following:
    - Transaction wrapping for writes
    - Early-exit fetch-before-filter pattern
 
-4. Skip patterns present in only ONE sibling — those are noise.
+4. Skip patterns present in only ONE sibling. Those are noise.
 
 ## Output format
 

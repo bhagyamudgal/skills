@@ -42,7 +42,7 @@ Settle this before the subagent exists. A dispatched subagent has no channel to 
 
 If {URL} is production-like or any parsed step mutates shared data, invoke `preflight-mutations` here. Pass the exact environment URL, authenticated account/workspace, action and record IDs, ownership, pre-test record snapshot, restoration/compensation steps, and user authorization. Apply its result contract in the main agent: on `confirmation-required`, present the card and get that decision from the user before dispatching; on `blocked`, report its **Next action** and dispatch nothing. Only a `ready` card is interpolated into the prompt below as `{ready card}`.
 
-Local flows that touch only disposable data do not use this gate. Pass `not-applicable — local flow, disposable data only` as `{ready card}`.
+Local flows that touch only disposable data do not use this gate. Pass `not-applicable, local flow, disposable data only` as `{ready card}`.
 
 ### Subagent Prompt Template
 
@@ -53,14 +53,14 @@ Local flows that touch only disposable data do not use this gate. Pass `not-appl
 >
 > **Mutation authorization:** {ready card}
 >
-> That card is already authorized — do not invoke `preflight-mutations` yourself; you have no way to answer what it may ask. For every shared-state interaction, re-read and compare that target's current guards immediately before the write. Continue under the card while they match. If a guard changed, stop the pending interaction and return the unexecuted remainder to the main agent for re-preflight instead of writing. After the write, run the card's authoritative read-back, advance the guards from the observed state, and record the item as `landed`, `failed`, or `reconcile-required`. An ambiguous result is `reconcile-required`: stop that item and report it for resolution from authoritative state; never retry it yourself.
+> That card is already authorized. Do not invoke `preflight-mutations` yourself; you have no way to answer what it may ask. For every shared-state interaction, re-read and compare that target's current guards immediately before the write. Continue under the card while they match. If a guard changed, stop the pending interaction and return the unexecuted remainder to the main agent for re-preflight instead of writing. After the write, run the card's authoritative read-back, advance the guards from the observed state, and record the item as `landed`, `failed`, or `reconcile-required`. An ambiguous result is `reconcile-required`: stop that item and report it for resolution from authoritative state; never retry it yourself.
 >
 > For EACH step:
-> - `browser_snapshot` first — refs go stale the instant the page changes, so re-snapshot before EVERY interaction
+> - `browser_snapshot` first. Refs go stale the instant the page changes, so re-snapshot before EVERY interaction
 > - Execute the interaction via Playwright MCP
 > - Capture evidence: screenshot to `.qa/<NN>-<step-name>.png`, `browser_network_requests` after any API-triggering action, `browser_console_messages` for new errors. A step with no evidence is a FAIL.
 >
-> Report each step in the Step 4 format below. Every numbered step must appear with PASS or FAIL — a step you could not execute is FAIL, never omitted.
+> Report each step in the Step 4 format below. Every numbered step must appear with PASS or FAIL. A step you could not execute is FAIL, never omitted.
 >
 > **Teardown:** `browser_close`.
 
@@ -70,14 +70,14 @@ Local flows that touch only disposable data do not use this gate. Pass `not-appl
 QA: <flow description>
 
 Step 1: <description>
-  PASS — <observation>
+  PASS: <observation>
 
 Step 2: <description>
-  PASS — <observation>
+  PASS: <observation>
   API: POST /api/endpoint -> 201
 
 Step 3: <description>
-  FAIL — Expected X, got Y
+  FAIL: Expected X, got Y
   Screenshot: .qa/03-step-name.png
 
 Console errors: <list or "none">

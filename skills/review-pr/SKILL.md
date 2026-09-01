@@ -66,7 +66,7 @@ Phase 1 fetches the **full diff**. Stash it in main context, needed for the erro
 
 If `changedFiles == 0` OR `additions + deletions == 0`:
 
-> **Nothing to review** — this PR contains no reviewable file changes.
+> **Nothing to review.** This PR contains no reviewable file changes.
 
 Stop immediately.
 
@@ -74,7 +74,7 @@ Stop immediately.
 
 If `gh pr view` returns a GraphQL resolution error or HTTP 404:
 
-> **Couldn't access PR** — check repo access. Try `gh auth refresh -s repo` and retry.
+> **Couldn't access PR.** Check repo access. Try `gh auth refresh -s repo` and retry.
 
 Fail fast.
 
@@ -141,7 +141,7 @@ prior_findings:
     file: <path>
     line: <post-image line at the time>
     is_resolved: <bool>
-    is_outdated: <bool — later commits invalidated the line>
+    is_outdated: <bool: later commits invalidated the line>
     body_excerpt: <first 200 chars>
     resolution_state: open | resolved | outdated | stale
 ```
@@ -192,11 +192,11 @@ On trigger, AskUserQuestion:
 
 ```
 header: "Intent"
-text: "Intent is unclear — no linked issue and the description lacks grounding signals. How should I proceed?"
+text: "Intent is unclear. No linked issue and the description lacks grounding signals. How should I proceed?"
 options:
-  - "Proceed anyway" — Review with just the diff; findings will be generic without grounding
-  - "Skip this PR" — Abort the review
-  - "I'll provide intent" — Wait for user to type intent text
+  - "Proceed anyway": Review with just the diff; findings will be generic without grounding
+  - "Skip this PR": Abort the review
+  - "I'll provide intent": Wait for user to type intent text
 ```
 
 On "I'll provide intent": wait for follow-up text, then build the intent model from it.
@@ -237,7 +237,7 @@ gh api "repos/<owner>/<repo>/contents/.coderabbit.yaml" >/dev/null 2>&1 \
 
 If `CR_CONFIG_PRESENT=false` AND this is the first run of `/review-pr` against this repo in the current session, hint once after Phase 4 output:
 
-> No `.coderabbit.yaml` in `<owner>/<repo>` — adding one pushes style + convention checks into CodeRabbit. The `coderabbit-config` skill carries a template (`npx skills add bhagyamudgal/skills@coderabbit-config`). Future `/review-pr` runs in this repo will be tighter.
+> No `.coderabbit.yaml` in `<owner>/<repo>`. Adding one pushes style + convention checks into CodeRabbit. The `coderabbit-config` skill carries a template (`npx skills add bhagyamudgal/skills@coderabbit-config`). Future `/review-pr` runs in this repo will be tighter.
 
 The hint is informational. It never gates posting.
 
@@ -355,8 +355,8 @@ Launch in a **single message with multiple Agent tool calls** based on `SIZE_MOD
 header: "Large PR"
 text: "This PR is <N> lines. Chunked review will dispatch <M> reviewer subagents (one per ~500-line chunk) plus silent-failure hunter. Expected wall: 2-4 minutes."
 options:
-  - "Continue" — Proceed with chunked parallel review
-  - "Cancel" — Abort; consider breaking into smaller PRs
+  - "Continue": Proceed with chunked parallel review
+  - "Cancel": Abort; consider breaking into smaller PRs
 ```
 
 ### Degraded-mode rule
@@ -400,11 +400,11 @@ Your working directory is the user's repo, not the skill directory, so every
 `<SKILL_DIR>/references/...` path in this prompt is absolute and must be used as written.
 A bare `references/...` resolves against the repo and silently finds nothing.
 
-## Output format — load this FIRST
+## Output format, load this FIRST
 Load `<SKILL_DIR>/references/finding-output-format.md` before you write anything. It holds
-the per-finding field block — `Rule-class`, `Enclosing-symbol`, `Class-sites`, `Inverse
-risk` and the `class_completeness:` audit — the post-image line-number convention, and the
-run-level closing block. Emit every finding in exactly that shape; a finding in any other
+the per-finding field block, meaning `Rule-class`, `Enclosing-symbol`, `Class-sites`,
+`Inverse risk` and the `class_completeness:` audit, plus the post-image line-number
+convention and the run-level closing block. Emit every finding in exactly that shape; a finding in any other
 shape is unparseable to the Phase 3 critic and is dropped.
 ```
 
@@ -443,7 +443,7 @@ PR at <url>. Fetch the diff yourself via `gh pr diff <url>`.
 
 <GROUND_TRUTH>
 
-## Already closed in earlier rounds — do not re-raise
+## Already closed in earlier rounds, do not re-raise
 <rule_class list from PRIOR_STATE.findings where status in {resolved, dismissed, wontfix}>
 Re-raise one only when the diff shows the resolving code was reverted.
 ```
@@ -702,9 +702,9 @@ For each remaining finding:
 
    - **`status == resolved`**: verify the diff between `commit_sha_resolved..HEAD` doesn't reintroduce the issue.
      - Re-introduced (resolving change reverted) → set this finding's status to `regression`, keep it (will be flagged as a fresh active finding with regression history in Phase 4).
-     - Not re-introduced → DROP, log `prior-state suppression — resolved in round <round_resolved> by commit <commit_sha_resolved>`.
+     - Not re-introduced → DROP, log `prior-state suppression, resolved in round <round_resolved> by commit <commit_sha_resolved>`.
 
-   - **`status in {dismissed, wontfix}`** → DROP, log `prior-state suppression — <status> in round <round_resolved>: "<dismissal_reason>"`.
+   - **`status in {dismissed, wontfix}`** → DROP, log `prior-state suppression, <status> in round <round_resolved>: "<dismissal_reason>"`.
 
 3. Report every finding's state as exactly one of: `active`, `resolved` (with commit), `dismissed` (with reason), `wontfix` (with reason), `regression`. The enum is closed, and it is the only status vocabulary that appears in output, logs, or comments.
 
@@ -817,7 +817,7 @@ At any round, if `cascade_share > 0.5` — the single value computed at step 7.5
 never recomputed here — prepend to the verdict reason:
 
 > Over half of this round's findings were introduced by the previous round's fixes.
-> Patching site-by-site is not converging — this module needs a design pass.
+> Patching site-by-site is not converging. This module needs a design pass.
 
 ### 9. Decide Senior-engineer approval
 
@@ -826,7 +826,7 @@ A binary assessment:
 - **No**: one or more findings survived the critic pass, OR Q1 identified an intent gap
 - **Yes**: otherwise
 
-Write a one-sentence approval reason grounded in the most important finding or the absence of findings.
+Write a one-sentence approval reason grounded in the most important finding or the absence of findings. Nothing you compose for this review carries an em or en dash, this reason and the `Goal`, Summary and one-line issue cells alike. Text quoted from the issue or the diff stays as you found it.
 
 ---
 
@@ -839,7 +839,7 @@ Every Phase 4 path reaches **Convergence handoff** after the GitHub review is au
 ```
 # PR Review: <title> (#<number>)
 
-**Senior engineer approval**: <emoji> <Yes | No> — <one-sentence reason>
+**Senior engineer approval**: <emoji> <Yes | No>, <one-sentence reason>
 **Verdict**: <emoji> <approve | request-changes>
 **GitHub event**: <APPROVE | REQUEST_CHANGES | COMMENT; use COMMENT when IS_SELF_REVIEW=true>
 **Goal**: <intent goal>
@@ -847,7 +847,7 @@ Every Phase 4 path reaches **Convergence handoff** after the GitHub review is au
 **Reviewers**: <list, with "(unavailable)" marker for any failed subagent>
 **Round**: <CURRENT_ROUND> (<active>/<resolved>/<dismissed> findings carried across rounds)
 **Convergence**: <N> new · <C> caused by earlier fixes · <R> regressions reopened · <F> carried
-<trend line — omit at round 1>
+<trend line, omit at round 1>
 
 ## Summary
 <2-3 sentence summary>
@@ -867,7 +867,7 @@ Every Phase 4 path reaches **Convergence handoff** after the GitHub review is au
 <entries>
 
 ## Filtered out (<count>)
-<dropped findings with reasons — for auditability>
+<dropped findings with reasons, for auditability>
 
 ## Multi-round status
 <for each finding in PRIOR_STATE: id, file, status, round_resolved/dismissed, dismissal_reason. Useful for "did I really ship M3 in round 5?" scanning.>
@@ -890,13 +890,13 @@ computation on a different finding set is how the two disagree.
 `cascade_share` = (active findings with `caused_by` set) / (total active findings)
 
 Emit exactly one trend sentence, picked from what the numbers say:
-- `cascade_share > 0.5` → `Not converging — the fixes are generating the findings.`
-- New findings falling round over round and `cascade_share == 0` → `Converging — tail is shrinking.`
-- New count flat across 3+ rounds → `Stalled — same volume each round; scope may be growing.`
+- `cascade_share > 0.5` → `Not converging, because the fixes are generating the findings.`
+- New findings falling round over round and `cascade_share == 0` → `Converging, with the tail shrinking.`
+- New count flat across 3+ rounds → `Stalled at the same volume each round; scope may be growing.`
 
 ```
 Convergence: 4 new · 3 caused by earlier fixes · 1 regression reopened · 2 carried
-Trend: cascade_share 0.75 — Not converging — the fixes are generating the findings.
+Trend: cascade_share 0.75. Not converging, because the fixes are generating the findings.
 ```
 
 If a verdict reverses an earlier `approve` assessment, say so explicitly in the Summary

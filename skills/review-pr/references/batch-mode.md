@@ -23,10 +23,10 @@ SKILL_DIR: <SKILL_DIR>
 
 You are running the full /review-pr single-PR flow (Phases 1-3) against <pr-url>.
 Your working directory is the user's repo, not the skill directory. Load every
-reference file by its absolute `<SKILL_DIR>/references/...` path — a bare relative
+reference file by its absolute `<SKILL_DIR>/references/...` path. A bare relative
 path resolves against the repo and silently finds nothing.
 
-Substitute this same SKILL_DIR value into every prompt YOU dispatch — Subagent 1,
+Substitute this same SKILL_DIR value into every prompt YOU dispatch: Subagent 1,
 Subagent 3, and the Phase 3 verifiers all carry `<SKILL_DIR>` placeholders, and you
 are the only source of the value they have.
 
@@ -59,7 +59,7 @@ A posting failure never asks immediately. Record the exact partial GitHub state 
 After automatic posting has attempted every completed review and recorded each current state, write ONE report document to `/tmp/review-pr-batch-<timestamp>.md` (and print it). Derive every posting-status entry from the reconciled result:
 
 ```
-# Batch PR Review — <N> PRs (<date>)
+# Batch PR Review: <N> PRs (<date>)
 
 | PR | Title | Approval | Verdict | C | S | M | m |
 |----|-------|----------|---------|---|---|---|---|
@@ -70,7 +70,7 @@ After automatic posting has attempted every completed review and recorded each c
 
 ## Pending review context (<count>)
 <one entry per review-only checkpoint that could not be resolved, such as:
-  PENDING — #<num>: intent was not grounded — re-run with intent text?>
+  PENDING #<num>: intent was not grounded, re-run with intent text?>
 
 ## Per-PR reviews
 <each PR's full Phase 4 terminal block, in list order>

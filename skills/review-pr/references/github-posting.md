@@ -163,13 +163,15 @@ If this is a re-review AND `posted_comments` cache exists:
 
 ## Step 1: Compose the summary body
 
+Every field you compose for this body posts verbatim, so none of them carries an em or en dash: the `Goal`, the approval reason, the Summary, each one-line issue cell and the resolved-findings line below. Text quoted from the issue or the diff stays as you found it, and the `·` separators are structure rather than prose.
+
 Build a lean summary body (NO "Filtered out" section, internal only). **Always** include the marker comment so future runs can detect this review:
 
 ```markdown
 <!-- review-pr:run sha=<head_sha> round=<round_number> -->
 ## PR Review: #<number>
 <verdict-emoji> <verdict> | <severity-count-badges>
-**Senior engineer approval**: <emoji> <Yes | No> — <one-sentence reason>
+**Senior engineer approval**: <emoji> <Yes | No>, <one-sentence reason>
 
 **Goal**: <intent goal>
 **Summary**: <2-3 sentences>
@@ -223,9 +225,9 @@ Each finding with a valid file reference becomes a review comment. Format as sel
 
 **Suggested fix**: <one sentence, actionable>
 
-**Inverse risk**: <the failure mode this fix trades INTO if implemented literally, or "none — pure addition">
+**Inverse risk**: <the failure mode this fix trades INTO if implemented literally, or "none, pure addition">
 
-**Class-sites**: <A>/<N> — affected sites over sites searched
+**Class-sites**: <A>/<N> (affected sites over sites searched)
 ```
 
 Severity emojis: 🔴 Critical, 🟠 Serious, 🟡 Moderate, 🔵 Minor.
@@ -233,7 +235,7 @@ Severity emojis: 🔴 Critical, 🟠 Serious, 🟡 Moderate, 🔵 Minor.
 **Inverse risk and Class-sites are not decoration.** They are the two cascade fields Phase 3
 steps 4.56 and 4.55 derived, and `/fix-pr-review` seeds its own inverse-risk check and class
 sweep straight off these two lines instead of re-deriving them. Emit both on every finding
-that proposes a code change. `none — pure addition` is a valid `Inverse risk`, an omitted
+that proposes a code change. `none, pure addition` is a valid `Inverse risk`, an omitted
 line is not.
 
 **Comment payload shape**:
@@ -354,7 +356,7 @@ THREAD_RESP=$(gh api graphql -f query='
 THREAD_NODE_ID=$(echo "$THREAD_RESP" | jq -r '.data.addPullRequestReviewThread.thread.id // empty')
 THREAD_COMMENT_ID=$(echo "$THREAD_RESP" | jq -r '.data.addPullRequestReviewThread.thread.comments.nodes[0].databaseId // empty')
 
-# gh api graphql exits 0 even when GraphQL returns errors — check both .errors AND thread.id
+# gh api graphql exits 0 even when GraphQL returns errors. Check both .errors AND thread.id
 if echo "$THREAD_RESP" | jq -e '.errors' >/dev/null \
    || [ -z "$THREAD_NODE_ID" ] || [ -z "$THREAD_COMMENT_ID" ]; then
   echo "Phase B failed on thread $((ATTACHED_THREADS + 1)). Response: $THREAD_RESP" >&2
@@ -429,7 +431,7 @@ When one or more entries are `confirmed-absent`, offer only `Create supplemental
 
 ### No pending review
 
-When Phase A reconciliation set `NO_PENDING_REVIEW=true`, use a distinct recovery prompt: `Post frozen monolithic review` or `Abort — keep local`. Before a post, refresh the PR guards and invoke `preflight-mutations` with the complete zero-match reconciliation evidence plus the exact frozen monolithic body and digest; then post with `gh pr review <url> "$REVIEW_FLAG" --body-file /tmp/review-pr-<num>-monolithic.md` without calling `cleanup_pending_review`. Reconcile every result by exact author, head, required GitHub state, semantic verdict in the body, and complete body before any retry. Abort performs no mutation. After one exact match, run the monolithic publication write-back below before convergence; this branch ends only after that write-back succeeds or its failure is reported.
+When Phase A reconciliation set `NO_PENDING_REVIEW=true`, use a distinct recovery prompt: `Post frozen monolithic review` or `Abort, keep local`. Before a post, refresh the PR guards and invoke `preflight-mutations` with the complete zero-match reconciliation evidence plus the exact frozen monolithic body and digest; then post with `gh pr review <url> "$REVIEW_FLAG" --body-file /tmp/review-pr-<num>-monolithic.md` without calling `cleanup_pending_review`. Reconcile every result by exact author, head, required GitHub state, semantic verdict in the body, and complete body before any retry. Abort performs no mutation. After one exact match, run the monolithic publication write-back below before convergence; this branch ends only after that write-back succeeds or its failure is reported.
 
 ### Pending review exists
 
@@ -445,8 +447,8 @@ Question:
   text: "<phase>. Pending review has <K> thread(s) attached. Error: <error>. How should I proceed?"
   options:
     - label: "Post as monolithic body"
-      description: "Delete the pending review, then post via gh pr review --body-file with all findings inline — loses resolvable threads but the review still appears on GitHub"
-    - label: "Abort — keep local"
+      description: "Delete the pending review, then post via gh pr review --body-file with all findings inline, which loses resolvable threads but the review still appears on GitHub"
+    - label: "Abort, keep local"
       description: "Delete the pending review; nothing is posted. Review stays in your terminal only"
     - label: "Show payload & keep draft"
       description: "Print the failing request body/mutation and leave the pending review as a draft on GitHub for manual submit"

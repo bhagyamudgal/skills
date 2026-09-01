@@ -11,10 +11,10 @@ response before moving to the next.
 [<id> · <severity> · <category>]  (<n> of <total>)
 
 Finding:     <concern in 1-2 sentences>
-Risk:        <why it matters — 1-2 sentences; for Critical/Serious,
+Risk:        <why it matters. 1-2 sentences; for Critical/Serious,
               include a concrete failure scenario>
-Plan step:   <plan_step_ref> — "<1-line quote from the plan>"
-Grounding:   <1 sentence of concrete evidence — file:line or plan text>
+Plan step:   <plan_step_ref>: "<1-line quote from the plan>"
+Grounding:   <1 sentence of concrete evidence: file:line or plan text>
 
 Question:    <suggested_question>
 Recommended: <recommended_answer>
@@ -41,7 +41,7 @@ validator): `ok`, `fine`, `no`, `nah`, `skip`, `later`, `wont`, `won't`,
 `nope`, `ignore`, `thanks`, `noted`, `good point`, `fair`, `will do`,
 `addressed`, `done`, `sure`, `got it`. If the reason matches one of
 these (case-insensitive, after trimming), reject with:
-> That's not a real reason. Be specific about WHY this doesn't apply —
+> That's not a real reason. Be specific about WHY this doesn't apply:
 > cite the step it's covered by, the CLAUDE.md rule it contradicts, or
 > the concrete constraint that makes it inapplicable.
 
@@ -74,7 +74,7 @@ X" or "exists in Y" (keywords: `already`, `covered in`, `exists in`,
 2. `Grep` the reference in cwd (if it's a symbol) or `Read` the file
    (if it's a path)
 3. If found AND matches the user's claim → silently DROP the finding
-   (don't count as dismissed), log `Self-heal drop: <id> — <user
+   (don't count as dismissed), log `Self-heal drop: <id>, <user
    claim> verified`, move to next
 4. If not found → push back:
    > Couldn't find `<X>` in the codebase. Can you point me at the exact
@@ -86,7 +86,7 @@ X" or "exists in Y" (keywords: `already`, `covered in`, `exists in`,
   remaining findings as `skipped`
 - User provides 3 consecutive `skip`s → present via AskUserQuestion:
   "You've skipped 3 in a row. Want to bail out and get a summary?"
-  Options: "Bail out — show summary" and "Keep going"
+  Options: "Bail out and show a summary" and "Keep going"
 
 ### One question at a time: STRICT
 

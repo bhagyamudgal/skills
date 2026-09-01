@@ -33,7 +33,7 @@ Use the already-rendered `Investigation and successors` section and evidence map
 
 ## Leave unchanged
 
-Print `Report kept local — #<n> untouched.` and exit.
+Print `Report kept local. Issue #<n> remains untouched.` and exit.
 
 ---
 

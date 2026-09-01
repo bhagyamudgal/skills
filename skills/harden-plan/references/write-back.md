@@ -12,9 +12,9 @@ diff instead, and say why.
 Present via AskUserQuestion: "Apply accepted plan additions back to `<PLAN_FILE>`?"
 
 Options:
-- "Write — insert additions in place": inserts additions as sub-steps directly into the plan file
-- "Diff — print only": shows a unified diff; you apply manually
-- "Exit — leave untouched": keeps the plan file as-is
+- "Write: insert additions in place": inserts additions as sub-steps directly into the plan file
+- "Diff: print only": shows a unified diff; you apply manually
+- "Exit: leave untouched": keeps the plan file as-is
 
 On **Write**:
   - For each `accepted_additions[]` entry, locate its `plan_step_ref`

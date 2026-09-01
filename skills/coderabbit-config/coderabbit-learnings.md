@@ -12,7 +12,7 @@ Recommended scope: **global**. These are personal conventions that should apply 
 
 ## Surgical changes
 
-> Only touch what the task requires. Don't "improve" adjacent code, comments, or formatting. Don't refactor things that aren't broken. Match existing style, even if you'd do it differently. When you notice unrelated dead code or issues, mention them in the review summary — don't fix them silently in the same PR.
+> Only touch what the task requires. Don't "improve" adjacent code, comments, or formatting. Don't refactor things that aren't broken. Match existing style, even if you'd do it differently. When you notice unrelated dead code or issues, mention them in the review summary; don't fix them silently in the same PR.
 
 ## Conventional commits
 
@@ -28,4 +28,4 @@ Recommended scope: **global**. These are personal conventions that should apply 
 
 ## Don't suggest
 
-> Do NOT suggest "consider adding tests" as a generic finding — only when tests were expected and omitted. Do NOT suggest extracting code to a shared package unless the code is fully generic (no domain types in signature OR body) AND a suitable shared package already exists. Do NOT flag `.toFixed()` / `.toString()` as type-coercion bugs when the call is wrapped in `Number(...)` / `parseFloat(...)` / `parseInt(...)` on the same line.
+> Do NOT suggest "consider adding tests" as a generic finding; suggest it only when tests were expected and omitted. Do NOT suggest extracting code to a shared package unless the code is fully generic (no domain types in signature OR body) AND a suitable shared package already exists. Do NOT flag `.toFixed()` / `.toString()` as type-coercion bugs when the call is wrapped in `Number(...)` / `parseFloat(...)` / `parseInt(...)` on the same line.

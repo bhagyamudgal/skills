@@ -39,13 +39,15 @@ From the diff, determine the **type**, the **scope** (the area or module affecte
 
 Subject: imperative, under 72 chars, explaining WHY rather than WHAT. The diff already shows what. Body uses `-` bullets for key changes, 3-5 max.
 
+The message is read by whoever runs `git log` a year from now. Write it with no em or en dashes. `unslop` carries the rest of the rules where it is installed.
+
 ### 4. Commit
 
 ```bash
 # Single line
 git commit -m "<type>[scope]: <description>"
 
-# Multi-line — one quoted -m string, newlines inside the quotes
+# Multi-line: one quoted -m string, newlines inside the quotes
 git commit -m "<type>[scope]: <description>
 
 <optional body>

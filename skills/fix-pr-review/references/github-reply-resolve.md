@@ -15,11 +15,13 @@ For each FIX item with `fix_status ∈ {ok, retried_ok, inconclusive, type_check
 3. Synthesize `reply_final[idx]` from the actual diff, in the form:
 
    ```
-   Fixed — <1-sentence description of what the diff actually changed, 
+   Fixed: <1-sentence description of what the diff actually changed, 
    citing the new post-image line number and a concrete verb>
    ```
 
 4. Store as `reply_final[idx]`.
+
+This reply is yours, not the classifier's: SKILL.md Phase 3 states that main never reads `triage-rubric.md`, so its reply rules cannot reach you here. Write it with no em or en dashes.
 
 `type_check_skipped` is a landed fix, not a failure. It means the repo has no TS tooling for the narrow check to run (Phase 5 step 4), and `/done` in Phase 6 still covered it. Excluding it would leave every fix in a non-TypeScript repo without a reply, so it replies like any other landed fix.
 
@@ -38,7 +40,7 @@ min_length = 40 characters
 must_contain_any_of = [
     a file path  (e.g., /\w+\.\w{1,4}/)
     a line reference (e.g., /:\d+/ or /\bline \d+/)
-    a quoted string (e.g., /"[^"]+"/ or /'[^']+'/ — for CLAUDE.md quotes)
+    a quoted string (e.g., /"[^"]+"/ or /'[^']+'/, for CLAUDE.md quotes)
     a short commit SHA (/\b[a-f0-9]{7,}\b/)
     a concrete verb ("changed", "added", "removed", "renamed", "refactored",
                      "fixed", "scoped", "extracted", "inlined")
@@ -55,7 +57,7 @@ The validator reads the `reusability_context:` field stored on each comment duri
 if comment.reusability_context?.flagged:
     reusability_rule_passes =
         (classification == "FIX" AND reply contains a destination file path
-            that points at an existing module — one of:
+            that points at an existing module, one of:
               - a `@<scope>/...` package reference
               - a `packages/.../<file>.ts` path
               - an `apps/.../<file>.ts` path
@@ -73,13 +75,13 @@ if comment.reusability_context?.flagged:
 ```
 
 Concretely this catches:
-- `"Fixed — now importing from @<scope>/utils/format.ts:45 instead of reimplementing"` → PASSES (FIX with destination)
-- `"Fixed — refactored to a helper"` → FAILS (no destination)
+- `"Fixed: now importing from @<scope>/utils/format.ts:45 instead of reimplementing"` → PASSES (FIX with destination)
+- `"Fixed: refactored to a helper"` → FAILS (no destination)
 - `"Moved to helpers"` → FAILS (no concrete target)
 - `"Valid but requires packages/shared refactor; tracking in #4321"` → PASSES (DEFER with scope reason)
 - `"Will do later"` → FAILS (no reason, no target)
 
-**Missing `reusability_context` field**: if the classifier omitted the field entirely (Phase 3 non-compliance), default to `reusability_context = { flagged: false }` and fall through to the generic validator. But log a `reusability_context missing — Phase 3 schema gap` warning in the final report so the user knows the reusability check didn't gate this reply.
+**Missing `reusability_context` field**: if the classifier omitted the field entirely (Phase 3 non-compliance), default to `reusability_context = { flagged: false }` and fall through to the generic validator. But log a `reusability_context missing, Phase 3 schema gap` warning in the final report so the user knows the reusability check didn't gate this reply.
 
 On failure: dispatch a 1-off `general-purpose` subagent with the original comment + failing reply + which rule failed, ask for a compliant rewrite. Max 1 rewrite. If the rewrite still fails, log as `reply_invalid` and SKIP posting for this item (thread stays unresolved; surfaced in the top of the final report).
 
@@ -95,7 +97,7 @@ For each item with a non-null `thread_id` (actionables only, NOT nitpicks, NOT N
 4. Run the resolve mutation below, then query the exact thread by `thread_id`. Record `resolved` only when the authoritative result has `isResolved: true`; record an authoritative `false` as `confirmed-open`, and a failed or inconclusive query as `reconcile-required`. On either non-resolved result, retire the current card and preflight the remaining items without this unresolved thread before the next write. Never infer resolution from the mutation response or retry an indeterminate result.
 
 ```bash
-# 1. Post reply — pass every ID with -f (raw string); -F applies JSON type
+# 1. Post reply. Pass every ID with -f (raw string); -F applies JSON type
 #    coercion and mangles all-numeric IDs into numbers
 gh api graphql \
   -f threadId="<thread_id>" \
@@ -123,4 +125,4 @@ After an expected `landed` reply and authoritative `resolved` result, advance th
 
 ## Step 7d: Promoted nitpicks handling
 
-Promoted nitpicks (sanity-flagged in Phase 3, STEP 3(e)) have `thread_id = null` because they live only in the review body. Phase 5 applies the fix for them; Phase 7 has **nothing to post**. They are tracked separately for the final report so the user sees: "fix applied, no thread to resolve — mention in commit message; CodeRabbit's next review will regenerate the body and the old nitpick disappears."
+Promoted nitpicks (sanity-flagged in Phase 3, STEP 3(e)) have `thread_id = null` because they live only in the review body. Phase 5 applies the fix for them; Phase 7 has **nothing to post**. They are tracked separately for the final report so the user sees: "Fix applied. No inline thread to resolve. Mention in commit message; CodeRabbit's next review will regenerate the body and the old nitpick disappears."
