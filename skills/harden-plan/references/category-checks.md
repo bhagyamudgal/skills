@@ -38,7 +38,7 @@ Collapses scope-creep + overengineering into one bucket (same as
 
 ### P3. DRY (within-plan)
 
-Duplicated logic across the plan's own steps. Not codebase-wide; P6
+Duplicated logic across the plan's own steps. Not codebase-wide. P6
 handles that.
 
 **Default severity**: Moderate.
@@ -81,7 +81,7 @@ request body are validated against the owned tenant root.
 - Plan's auth step only validates `menuPlanId → accountId`
 - Finding: "Upsert endpoint at S2 accepts 4 foreign keys but only
   validates ownership on `menuPlanId`. An authenticated attacker
-  sends their own menuPlanId + a victim's sheetId/mealId, the row
+  sends their own menuPlanId + a victim's sheetId/mealId: the row
   lands because FKs accept it, and the partial unique index prevents
   the victim's next legitimate save."
 - Severity: Critical
@@ -189,7 +189,7 @@ y: null, z: {} }`). Check `stated_files` imports vs the function's
 injected services: if an early return hardcodes empty state for a
 field that another branch populates via an injected helper, flag.
 
-**This is the Q6-known-limitation gap** from `/review-pr`, P9
+**This is the Q6-known-limitation gap** from `/review-pr`: P9
 specifically catches what P6 misses.
 
 **Worked example (PR #4587 F4)**:
