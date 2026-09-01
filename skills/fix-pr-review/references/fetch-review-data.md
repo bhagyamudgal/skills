@@ -1,6 +1,6 @@
 # Fetching and normalising review data (Phase 2)
 
-Loaded by main in Phase 2. Run only the section for the input type Phase 1 detected, then normalise everything into the `Comment` schema at the bottom — those field names are what Phases 3-8 read.
+Loaded by main in Phase 2. Run only the section for the input type Phase 1 detected, then normalise everything into the `Comment` schema at the bottom. Those field names are what Phases 3-8 read.
 
 ---
 
@@ -10,8 +10,8 @@ A CodeRabbit PR review is a single `PullRequestReview` submission containing:
 
 1. **Review `body`** (markdown) with collapsed sections:
    - `Actionable comments posted: N` header
-   - `🧹 Nitpick comments (M)` — nitpicks live here as **text only**, NOT as inline comments. No thread to resolve.
-   - **`🤖 Prompt for all review comments with AI agents`** — a pre-formatted plain-text block listing ALL findings in AI-consumable form. **This is the primary parsing target.**
+   - `🧹 Nitpick comments (M)`: nitpicks live here as **text only**, NOT as inline comments. No thread to resolve.
+   - **`🤖 Prompt for all review comments with AI agents`**: a pre-formatted plain-text block listing ALL findings in AI-consumable form. **This is the primary parsing target.**
    - `🪄 Autofix (Beta)` with task-list checkboxes
    - `ℹ️ Review info`
 
@@ -79,13 +79,13 @@ Then run the paginated GraphQL `reviewThreads` query (same as above) and match i
 gh api "repos/<owner>/<repo>/pulls/comments/<comment_id>"
 ```
 
-(Note: endpoint has NO pull-number — it's `/pulls/comments/<id>`, not `/pulls/<num>/comments/<id>`.)
+(Note: endpoint has NO pull-number; it's `/pulls/comments/<id>`, not `/pulls/<num>/comments/<id>`.)
 
 Then run the paginated GraphQL `reviewThreads` query and match the comment's `databaseId` inside `reviewThreads.nodes[].comments.nodes[].databaseId`. Scope the rest of the flow to just that one thread.
 
 ## Parse CodeRabbit body's AI prompt block when present
 
-If any fetched review's body contains `🤖 Prompt for all review comments with AI agents`, extract that section. It's a pre-formatted plain-text block with ALL findings in AI-consumable form — more reliable than HTML-unwrapping collapsibles. The block contains:
+If any fetched review's body contains `🤖 Prompt for all review comments with AI agents`, extract that section. It's a pre-formatted plain-text block with ALL findings in AI-consumable form, more reliable than HTML-unwrapping collapsibles. The block contains:
 
 - `Inline comments:` section → maps to actionable items (match to inline comments by file:line)
 - `Nitpick comments:` section → body-only nitpicks with file + line

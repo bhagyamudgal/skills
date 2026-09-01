@@ -4,7 +4,7 @@ Loaded by main in Phase 7, once the local-file skip check has passed. SKILL.md k
 
 ---
 
-## Step 7a — Regenerate FIX replies from actual diff
+## Step 7a: Regenerate FIX replies from actual diff
 
 The classifier wrote `reply_placeholder` during Phase 3 BEFORE fixes existed. Between Phase 3 and now, fixes were applied (Phase 5) and possibly modified by self-heal (Phase 6). The placeholder may no longer match reality.
 
@@ -21,11 +21,11 @@ For each FIX item with `fix_status ∈ {ok, retried_ok, inconclusive, type_check
 
 4. Store as `reply_final[idx]`.
 
-`type_check_skipped` is a landed fix, not a failure — it means the repo has no TS tooling for the narrow check to run (Phase 5 step 4), and `/done` in Phase 6 still covered it. Excluding it would leave every fix in a non-TypeScript repo without a reply, so it replies like any other landed fix.
+`type_check_skipped` is a landed fix, not a failure. It means the repo has no TS tooling for the narrow check to run (Phase 5 step 4), and `/done` in Phase 6 still covered it. Excluding it would leave every fix in a non-TypeScript repo without a reply, so it replies like any other landed fix.
 
-Skipped/aborted FIX items get no reply (they land in NEEDS-INPUT for the final report instead). The same applies to Phase 5.5's outcomes: `fix_status ∈ {partial, reverted_inverse_risk, inverse_risk_applied}` gets no reply and no thread resolution — a partial, reverted, or known-risk fix must not close the reviewer's conversation. All three surface in the Phase 8 report. So the no-reply set is exactly `fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk, inverse_risk_applied}`; Step 7c excludes it.
+Skipped/aborted FIX items get no reply (they land in NEEDS-INPUT for the final report instead). The same applies to Phase 5.5's outcomes: `fix_status ∈ {partial, reverted_inverse_risk, inverse_risk_applied}` gets no reply and no thread resolution. A partial, reverted, or known-risk fix must not close the reviewer's conversation. All three surface in the Phase 8 report. So the no-reply set is exactly `fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk, inverse_risk_applied}`; Step 7c excludes it.
 
-## Step 7b — Reply validator (pre-post mechanical check)
+## Step 7b: Reply validator (pre-post mechanical check)
 
 Before posting any reply, validate it against forbidden-phrase / must-contain rules:
 
@@ -83,11 +83,11 @@ Concretely this catches:
 
 On failure: dispatch a 1-off `general-purpose` subagent with the original comment + failing reply + which rule failed, ask for a compliant rewrite. Max 1 rewrite. If the rewrite still fails, log as `reply_invalid` and SKIP posting for this item (thread stays unresolved; surfaced in the top of the final report).
 
-## Step 7c — Post loop
+## Step 7c: Post loop
 
 Immediately before the first reply in this authorized batch, invoke `preflight-mutations`. Pass the exact PR URL, base and current head SHA, every target thread ID, ordered reply/resolve actions, final validated reply text and classification per item, and the authorization evidence that covers each item. FIX items use `execution_authorization_evidence`, plus their per-fix confirmation when `--interactive` was set. DISMISS, DEFER, and DISAGREE items use their contested-item confirmation. Apply the result contract before continuing.
 
-For each item with a non-null `thread_id` (actionables only — NOT nitpicks, NOT NEEDS-INPUT, NOT `reply_invalid`, and NOT any FIX item Step 7a left without a `reply_final`, i.e. `fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk, inverse_risk_applied}`):
+For each item with a non-null `thread_id` (actionables only, NOT nitpicks, NOT NEEDS-INPUT, NOT `reply_invalid`, and NOT any FIX item Step 7a left without a `reply_final`, i.e. `fix_status ∈ {skipped, aborted, partial, reverted_inverse_risk, inverse_risk_applied}`):
 
 1. Re-fetch the PR head and exact thread. Freeze the validated reply body and identify the authenticated user. If `isResolved: true`, paginate the complete current comment set and search for that author and the exact frozen body. Record exactly one match as `reply_state=verified-existing`; record zero as `confirmed-absent`, and multiple matches or an inconclusive query as `reconcile-required`. Record `resolve_state=already-resolved` independently, perform no mutation unless the user separately authorizes replying to that resolved thread, retire the current card, and preflight the remaining items without this thread before the next write. If the thread is open, compare the current head and complete comment-ID set with the ready card. A mismatch stops the pending item and returns the unexecuted remainder to `preflight-mutations`; a match freezes the before-write comment IDs.
 2. Post the reply below. Then query the exact thread by `thread_id` and require one new comment, absent from the before-write ID set, whose ID matches the mutation response when present and whose author and complete body match the current user and frozen reply. Record one exact match as `landed`; zero matches as `confirmed-absent`; multiple matches or an inconclusive query as `reconcile-required`. On either non-landed result, skip this item's dependent resolve, retire the current card, and preflight the remaining items without this unresolved thread before the next write. Do not retry a `reconcile-required` reply.
@@ -121,6 +121,6 @@ gh api graphql \
 
 After an expected `landed` reply and authoritative `resolved` result, advance the card's ledger and guards and reuse that same `ready` card for the next pending item while its invalidators still match. Use a replacement card only on a branch that explicitly retired the current one above. Carry every `confirmed-absent`, `confirmed-open`, and `reconcile-required` item in the batch ledger and Phase 8 failure report; include the exact settling query for `reconcile-required`. Never execute dependent or later writes under a retired card.
 
-## Step 7d — Promoted nitpicks handling
+## Step 7d: Promoted nitpicks handling
 
 Promoted nitpicks (sanity-flagged in Phase 3, STEP 3(e)) have `thread_id = null` because they live only in the review body. Phase 5 applies the fix for them; Phase 7 has **nothing to post**. They are tracked separately for the final report so the user sees: "fix applied, no thread to resolve — mention in commit message; CodeRabbit's next review will regenerate the body and the old nitpick disappears."

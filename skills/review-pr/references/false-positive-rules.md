@@ -1,6 +1,6 @@
 # False-positive rules table (Phase 3 step 4.6)
 
-Loaded by main at Phase 3 step 4.6, whenever at least one finding survives step 4.5. SKILL.md keeps the iterator contract — `id` / `trigger` / `evidence_check` / `action`, applied in order, every fire logged to Filtered Out with the rule `id`. This file holds the rules that iterator runs, and is the single source of truth for false-positive filtering: adding a new false-positive class is a one-row edit here.
+Loaded by main at Phase 3 step 4.6, whenever at least one finding survives step 4.5. SKILL.md keeps the iterator contract, `id` / `trigger` / `evidence_check` / `action`, applied in order, every fire logged to Filtered Out with the rule `id`. This file holds the rules that iterator runs, and is the single source of truth for false-positive filtering: adding a new false-positive class is a one-row edit here.
 
 The table is consulted per finding, not read linearly. Match a finding's `Issue` / `Why` text against each `trigger` in order; run the `evidence_check` only when the trigger hits.
 

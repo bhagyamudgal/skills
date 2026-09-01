@@ -20,7 +20,7 @@ PR goal (from description + linked issue if available): <one sentence>
 ### Exported symbols
 <repo_map_exports from Phase 1, or "N/A">
 
-This map is truncated at 500 lines per section — grep packages/ directly
+This map is truncated at 500 lines per section. Grep packages/ directly
 for anything not listed here.
 
 ## Review suppressions (from .claude/review-suppressions.yml)
@@ -31,7 +31,7 @@ If no suppressions file exists, include: "None">
 <JSON array of Comment objects from Phase 2>
 
 ## Your tools
-- Read (any file in the repo — you are on the PR branch)
+- Read (any file in the repo; you are on the PR branch)
 - Grep (verify claims, find duplicates, locate missing patterns)
 - Bash: INSTRUCTED (not enforced) to only run `git log`, `git diff`, `git blame`,
   `git show`, `git merge-base`, `git rev-parse`, `grep`, `rg`.
@@ -40,11 +40,11 @@ If no suppressions file exists, include: "None">
 
 STEP 0 (MANDATORY, do once): Read the project's CLAUDE.md file(s) from the repo
 root and any nested CLAUDE.md in the affected subdirectories. Identify rules
-that could override CodeRabbit findings — e.g., "use type not interface",
+that could override CodeRabbit findings, e.g., "use type not interface",
 "use function keyword not arrow", forbidden patterns, testing rules, style
 conventions. These override CodeRabbit preferences.
 
-STEP 0.5 — APPLY REVIEW SUPPRESSIONS (do once, after STEP 0):
+STEP 0.5. APPLY REVIEW SUPPRESSIONS (do once, after STEP 0):
 Review suppressions are loaded by the MAIN AGENT before subagent dispatch
 (see below) and passed into this prompt as context. If suppressions were
 provided, they appear in the "## Review suppressions" section above.
@@ -67,57 +67,57 @@ suppressions. For each suppression entry:
   3. If `file` is set, also match against the finding's file path
 If ALL specified conditions match: auto-classify as DISMISS with reason
   "suppressed by .claude/review-suppressions.yml: <reason>"
-Skip the R1-R9 rubric for suppressed findings — they go straight to
+Skip the R1-R9 rubric for suppressed findings. They go straight to
 DISMISS in the triage plan.
 
-STEP 1 — DEDUPE PASS: Group comments that describe the same pattern at
+STEP 1. DEDUPE PASS: Group comments that describe the same pattern at
 different callsites (same rule + same symbol, OR same rule + same file).
 Treat each group as a single meta-finding with a shared fix plan and a
 shared reply template. Apply the fix once per callsite but mark every
 member thread for resolution in Phase 7.
 
-STEP 1.5 — CLASS SWEEP (MANDATORY, for each comment or meta-finding
+STEP 1.5. CLASS SWEEP (MANDATORY, for each comment or meta-finding
 classified FIX):
 
 STEP 1 groups callsites the REVIEWER reported. It cannot group what nobody
 reported. This step finds those.
 
-For each finding, derive a searchable signature from the defect itself — the
-literal or structural pattern, not the prose — and search outward: the cited
+For each finding, derive a searchable signature from the defect itself, the
+literal or structural pattern, not the prose, and search outward: the cited
 file, then its directory, then the package. If the finding cites an exported
 or shared symbol, you MUST also search its CALLERS and list each caller as a
-site with its behavioral delta — an exported-symbol fix is not swept until
+site with its behavioral delta. An exported-symbol fix is not swept until
 every caller has been classified affected / not-affected.
 
   class_completeness:
     signature: <what you actually searched>
     search: <tool>("<query>", "<path>") → <N> sites
     sites:
-      - <file:line>: affected | not-affected — <one clause why>
+      - <file:line>: affected | not-affected, <one clause why>
     verdict: COMPLETE (all N sites folded into the fix plan)
-             | INCOMPLETE (<M> sites deliberately excluded — reason each)
+             | INCOMPLETE (<M> sites deliberately excluded, reason each)
 
 Fold every affected site into the SAME fix plan. One finding, N sites.
 
 Fixing only the cited site is the single largest cause of a follow-up review
 round: the reviewer re-reads the file, finds the sibling you left, and files
-it as a new finding. Real cases — a fix added error branches to three sibling
+it as a new finding. Real cases: a fix added error branches to three sibling
 hooks and missed the fourth in the same file; another added `role="alert"` to
 two components and missed the third.
 
 If a sweep turns up sites you decide NOT to fix, say so explicitly in the
 reply with the reason. Silence reads as "missed it" and earns another round.
 
-STEP 2 — MECHANICAL GROUNDING (MANDATORY, for each comment or meta-finding
+STEP 2. MECHANICAL GROUNDING (MANDATORY, for each comment or meta-finding
 BEFORE classifying): In one line each, state:
   (a) What code does this comment point at? (file path, symbol, line range,
       restated in your own words after reading the file)
   (b) What change is the comment actually asking for? (restated in your own
       words, one sentence)
 Every subsequent finding MUST trace back to this grounding. If you can't
-answer (a) or (b) confidently, route to NEEDS-INPUT — do not guess.
+answer (a) or (b) confidently, route to NEEDS-INPUT. Do not guess.
 
-STEP 2.5 — REUSABILITY KEYWORD SCAN (for each comment):
+STEP 2.5. REUSABILITY KEYWORD SCAN (for each comment):
 
 Check whether the comment contains any of these reusability keywords /
 phrases (case-insensitive substring match):
@@ -137,27 +137,27 @@ definition" is BROAD and INCLUDES:
   - top-level function / class / type / exported const / React component / hook
   - **class methods** (NestJS-style `private formatX(...)`, `async findOne(...)`,
     `public validate(...)` inside a class body). Class methods are the
-    most common real-world case — do NOT restrict to top-level exports.
+    most common real-world case. Do NOT restrict to top-level exports.
   - default-exported functions or classes (`export default function`,
     `export default class`)
 
 If reusability-flagged, run these searches using the repo map + your tools
-**aggressively** (run ALL of them — we pay for thoroughness with tokens):
+**aggressively** (run ALL of them; we pay for thoroughness with tokens):
 
   Monorepo mode (`packages/` and/or `apps/` exists):
-    - Grep("<new-symbol-name>", "packages/") — exact name match
-    - Grep("<new-symbol-name>", "apps/") — cross-app duplication check
-    - Grep("<semantic-root>", "packages/") — drop domain prefixes
+    - Grep("<new-symbol-name>", "packages/"): exact name match
+    - Grep("<new-symbol-name>", "apps/"): cross-app duplication check
+    - Grep("<semantic-root>", "packages/"): drop domain prefixes
       (User/Order/Meal/Portion/etc.), keep verb/noun
     - Grep + Glob "packages/ui/src/components/" for new UI components
       (use kebab-case filename pattern: `<kebab-name>*.tsx`)
     - Read any candidate match to CONFIRM it's a real semantic match
-      (not just a substring collision — a hit on `formatter.ts` when
+      (not just a substring collision: a hit on `formatter.ts` when
       searching for `format` does not automatically mean duplication)
 
   Non-monorepo mode (`repo_map_files == "N/A (not a monorepo)"`):
-    - Grep("<new-symbol-name>", "src/") — primary source root
-    - Grep("<new-symbol-name>", ".") — repo root fallback
+    - Grep("<new-symbol-name>", "src/"): primary source root
+    - Grep("<new-symbol-name>", "."): repo root fallback
     - Read candidate matches to confirm
 
 Store the findings as `reusability_context:` on the comment. Use
@@ -198,26 +198,26 @@ STEP 3 (for each comment or meta-finding):
      If ANY one is Yes → PROMOTE to full triage (continue with Step 4) and
      mark `promoted_from_nitpick: true`.
 
-STEP 4 — CLASSIFY using the R1-R9 rubric. Load
+STEP 4. CLASSIFY using the R1-R9 rubric. Load
 `<SKILL_DIR>/references/triage-rubric.md` NOW and apply its rubric in order, first
-match wins. Do not classify from rule names you already know — R3, R6 and R7 each
+match wins. Do not classify from rule names you already know. R3, R6 and R7 each
 carry carve-outs that decide every reuse-related finding. That file also holds the
 NEEDS-INPUT calibration R9 needs, the `change_class` worked examples STEP 5 needs,
 and the anti-slop reply formats STEP 6 needs.
 
-STEP 5 — For each FIX, write a concrete fix plan:
-  - Which file(s) to edit — ALL sites from the STEP 1.5 class sweep, not just
+STEP 5. For each FIX, write a concrete fix plan:
+  - Which file(s) to edit: ALL sites from the STEP 1.5 class sweep, not just
     the cited one
   - What change to make (1–3 sentences, >= 30 chars)
   - Any dependencies on other fixes ("depends on F1" if F1 renames a symbol
     this fix calls)
-  - `inverse_risk:` — what this fix trades INTO if applied literally, or
+  - `inverse_risk:` what this fix trades INTO if applied literally, or
     `none — pure addition`
-  - `class_completeness:` — carry through the STEP 1.5 block verbatim
+  - `class_completeness:` carry through the STEP 1.5 block verbatim
     (`signature` / `search` / `sites` / `verdict`). Phase 4 validates the
     `verdict`; Phase 5.5 verifies the `sites` list against the working tree
 
-STEP 5.5 — INVERSE-RISK CHECK (MANDATORY, before the plan is presented):
+STEP 5.5. INVERSE-RISK CHECK (MANDATORY, before the plan is presented):
 
 A reviewer's suggestion is a hypothesis, not a specification. Implementing it
 verbatim is how the next round's findings get written. How much work this step
@@ -227,7 +227,7 @@ owes depends on where the finding came from:
     with no inverse-risk pass behind it. Derive `inverse_risk` yourself.
   - **`/review-pr`**: the finding arrives with `Inverse risk:` already derived
     (its step 4.56 vets suggestions before they are emitted). VERIFY that named
-    failure mode against the code you are about to change — do not re-derive it
+    failure mode against the code you are about to change. Do not re-derive it
     from scratch, and do not assume it is correct either. If the code says
     otherwise, overwrite the seeded value and say what changed.
 
@@ -246,17 +246,17 @@ NEEDS-INPUT with both options laid out. A fix you believe is a net negative is
 not a fix.
 
 If the fix touches a shared symbol with more than 3 callers, route to
-NEEDS-INPUT rather than deciding unilaterally — a shared-component change is
+NEEDS-INPUT rather than deciding unilaterally. A shared-component change is
 the user's call. One real case changed behavior at 7 pre-existing callers.
 
-STEP 6 — Write replies:
+STEP 6. Write replies:
   - For DISMISS / DEFER / DISAGREE: write SPECIFIC reply text following the
     anti-slop reply formats in `triage-rubric.md`, loaded at STEP 4.
-  - For FIX: write `reply_placeholder` — this is a placeholder only and will
+  - For FIX: write `reply_placeholder`. This is a placeholder only and will
     be REGENERATED in Phase 7 from the actual post-fix diff. Do not rely on
     it being the final reply.
 
-## Output format (required — Phase 4 validates)
+## Output format (required; Phase 4 validates)
 
 Return the plan in this EXACT format. Missing required fields cause rejection.
 
