@@ -146,11 +146,22 @@ Copy the drop-in directory too, not just the unit file. Overrides live there.
 
 If this backup has no workspace archive, delete this step when rendering: the workspace sat inside the state dir and step 3 already restored it.
 
+Move the current workspace aside first, mirroring step 2. Extracting over live files leaves mixed-era state with no rollback source on failure:
+
+```
+WORKSPACE_ASIDE="$RESTORE_RESERVATION_DIR/original-workspace"
+if [ -e <WORKSPACE_DIR> ]; then mv <WORKSPACE_DIR> "$WORKSPACE_ASIDE"; fi
+```
+
 ```
 tar --use-compress-program="zstd -d" -xf <BACKUP_DIR>/workspace/<WORKSPACE_ARCHIVE> -C $(dirname <WORKSPACE_DIR>)
 ```
 
-Confirm `<WORKSPACE_DIR>` exists and is non-empty, and compare the extracted file count against the archive listing count. A large gap means the wrong target path: stop and re-check `<WORKSPACE_DIR>` before starting the service.
+Confirm `<WORKSPACE_DIR>` exists and is non-empty, and compare the extracted file count against the archive listing count. A large gap means the wrong target path. On any failure here, move the aside copy back before stopping:
+
+```
+[ -e "$WORKSPACE_ASIDE" ] && mv "$WORKSPACE_ASIDE" <WORKSPACE_DIR>
+```
 
 ### 7. Start and verify
 
@@ -166,15 +177,14 @@ process that is up is not the same as a gateway that works.
 ### 8. Only once verified
 
 Obtain the final deletion card's explicit confirmation. Re-read the persisted reservation root
-and move-aside child, prove the root is mode `0700` and contains exactly that child with no other
-entries, and continue only on a current `ready` verdict.
+and move-aside children, prove the root is mode `0700`, the state aside child is present,
+and every entry is a known aside path, and continue only on a current `ready` verdict.
 
 ```
 test "$BROKEN_STATE_DIR" = "$RESTORE_RESERVATION_DIR/original-state"
 test -d "$BROKEN_STATE_DIR"
 test "$(find "$RESTORE_RESERVATION_DIR" -prune -type d -perm 0700 -print)" = "$RESTORE_RESERVATION_DIR"
-test "$(find "$RESTORE_RESERVATION_DIR" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" = "1"
-test "$(find "$RESTORE_RESERVATION_DIR" -mindepth 1 -maxdepth 1 -print)" = "$BROKEN_STATE_DIR"
+test -z "$(find "$RESTORE_RESERVATION_DIR" -mindepth 1 -maxdepth 1 ! -name 'original-*' -print)"
 rm -rf -- "$RESTORE_RESERVATION_DIR"
 ```
 
@@ -189,6 +199,7 @@ and use the persisted reservation root and child values.
 ```
 rm -rf <STATE_DIR>
 mv "$BROKEN_STATE_DIR" <STATE_DIR>
+[ -e "$WORKSPACE_ASIDE" ] && mv "$WORKSPACE_ASIDE" <WORKSPACE_DIR>
 rmdir "$RESTORE_RESERVATION_DIR"
 <SERVICE_CTL> start <SERVICE_NAME>
 ```

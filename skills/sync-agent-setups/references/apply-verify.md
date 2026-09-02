@@ -5,7 +5,7 @@ Protect each target's check/write/read-back interval with the platform's native 
 Under that protection, reread and compare the target's file kind, symlink text and resolved path, checksum, and every applicable platform revision against the confirmed manifest. For an exact copy, also resolve and rehash the confirmed Claude source. For an adaptation, rehash the staged artifact. A mismatch preserves the target, marks the item `blocked`, and releases the lock without a write.
 
 - `exact-copy`: replace only the confirmed target path with the recorded symlink to the just-revalidated Claude source.
-- `adaptation`: write the confirmed staged bytes without regeneration, using a same-directory temporary file plus atomic replacement when the target surface supports it. Capture the confirmed target's permission bits first and apply them to the temporary file before the rename, so the installed file keeps its mode. Retain its source/target provenance in the manifest.
+- `adaptation`: write the confirmed staged bytes without regeneration, using a same-directory temporary file plus atomic replacement when the target surface supports it. Capture the confirmed target's permission bits first and apply them to the temporary file before the rename, so the installed file keeps its mode. When the confirmed target is authoritatively absent there are no bits to capture: record the intended mode in the manifest instead, `0600` by default or `0700` when the consumer must execute the target, and apply that. Retain its source/target provenance in the manifest.
 - `unsupported` and `orphaned-downstream-drift`: preserve current target state.
 - `blocked`: preserve current target state and continue independent `pending` items.
 
