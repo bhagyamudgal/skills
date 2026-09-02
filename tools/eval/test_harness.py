@@ -9,11 +9,13 @@ API, so a failure is always a real defect and never a flake.
     python3 tools/eval/test_harness.py
 """
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
@@ -230,6 +232,10 @@ class MakeSandbox(unittest.TestCase):
         repo = self._make(skills=[self.skill])
         self.assertTrue((repo / ".claude" / "skills" / "demo" / "SKILL.md").is_file())
 
+    def test_skill_injection_into_codex_directory(self):
+        repo = self._make(skills=[self.skill], skill_directory=".agents/skills")
+        self.assertTrue((repo / ".agents" / "skills" / "demo" / "SKILL.md").is_file())
+
     def test_post_commit_edit_leaves_a_dirty_tree(self):
         def edit(repo):
             path = repo / "src" / "user.ts"
@@ -245,6 +251,15 @@ class MakeSandbox(unittest.TestCase):
         status = subprocess.run(["git", "status", "--short"],
                                 cwd=repo, capture_output=True, text=True)
         self.assertEqual(status.stdout.strip(), "")
+
+    def test_setup_failure_removes_the_allocated_root(self):
+        allocated = pathlib.Path(tempfile.mkdtemp(prefix="harness-test-parent-")) / "root"
+        self.addCleanup(lambda: allocated.parent.rmdir() if allocated.parent.exists() else None)
+        missing = self.source / "missing"
+        with mock.patch.object(harness.tempfile, "mkdtemp", return_value=str(allocated)):
+            with self.assertRaises(OSError):
+                harness.make_sandbox("ignored-", missing)
+        self.assertFalse(allocated.exists())
 
 
 class MigratedCallers(unittest.TestCase):
@@ -340,6 +355,13 @@ class RegisterStaging(unittest.TestCase):
             self.source, "file-pr-under-test", self.into)
         self.assertIn("# File PR\n\nBody.\n", (staged / "SKILL.md").read_text())
 
+    def test_codex_canary_is_staged_without_changing_the_source(self):
+        marker = "<!-- register-skill-loaded:file-pr-under-test -->"
+        staged = self.register.stage_under_unique_name(
+            self.source, "file-pr-under-test", self.into, canary=marker)
+        self.assertIn(marker, (staged / "SKILL.md").read_text())
+        self.assertNotIn(marker, (self.source / "SKILL.md").read_text())
+
     def test_a_skill_with_no_name_line_fails_loudly(self):
         (self.source / "SKILL.md").write_text("---\ndescription: no name here\n---\nBody\n")
         with self.assertRaises(ValueError):
@@ -355,8 +377,209 @@ class RegisterStaging(unittest.TestCase):
             self.assertTrue((self.register.SKILLS / case["skill"] / "SKILL.md").is_file(),
                             case["skill"])
 
+    def test_bounded_prompt_leaves_scoring_margin(self):
+        import json as json_module
+        spec = json_module.loads(self.register.CASES.read_text())
+        bounded = [case for case in spec["cases"] if "max_words" in case]
+        self.assertTrue(bounded)
+        for case in bounded:
+            match = self.register.re.search(
+                r"in (\d+) to (\d+) prose words total", case["prompt"])
+            self.assertIsNotNone(match, case["id"])
+            target_minimum, target_maximum = map(int, match.groups())
+            self.assertLess(target_minimum, target_maximum, case["id"])
+            self.assertGreaterEqual(
+                target_minimum - case["min_words"], 20, case["id"])
+            self.assertGreaterEqual(
+                case["max_words"] - target_maximum, 20, case["id"])
+
     def test_no_case_grants_bash(self):
         self.assertNotIn("Bash", self.register.CASE_TOOLS)
+
+
+class CodexRegisterTranscript(unittest.TestCase):
+    def setUp(self):
+        import run_register
+        self.register = run_register
+        self.marker = "<!-- register-skill-loaded:file-pr-under-test -->"
+
+    def test_complete_turn_returns_the_final_agent_message(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"item.completed","item":{"id":"item-1","type":"agent_message",'
+            '"text":"Draft"}}',
+            '{"type":"item.completed","item":{"id":"item-2","type":"agent_message",'
+            '"text":"Final\\n<!-- register-skill-loaded:file-pr-under-test -->"}}',
+            '{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}',
+        ])
+        text, error = self.register.parse_codex_transcript(transcript)
+        self.assertEqual(text, f"Final\n{self.marker}")
+        self.assertIsNone(error)
+
+    def test_missing_turn_completion_is_an_error(self):
+        text, error = self.register.parse_codex_transcript("\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Draft"}}',
+        ]))
+        self.assertEqual(text, "Draft")
+        self.assertIn("truncated", error)
+
+    def test_turn_failure_is_an_error(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"turn.failed","error":{"message":"rate limited"}}',
+        ])
+        _, error = self.register.parse_codex_transcript(transcript)
+        self.assertIn("rate limited", error)
+
+    def test_complete_turn_without_an_agent_message_is_an_error(self):
+        _, error = self.register.parse_codex_transcript("\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"turn.completed"}',
+        ]))
+        self.assertIn("agent message", error)
+
+    def test_malformed_json_line_rejects_an_otherwise_complete_turn(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"error","message":"broken"',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Final"}}',
+            '{"type":"turn.completed"}',
+        ])
+        _, error = self.register.parse_codex_transcript(transcript)
+        self.assertIn("malformed JSONL", error)
+
+    def test_agent_message_after_completion_is_rejected(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"turn.completed"}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Late"}}',
+        ])
+        _, error = self.register.parse_codex_transcript(transcript)
+        self.assertIn("after terminal", error)
+
+    def test_recovered_error_can_finish_cleanly(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"error","message":"Reconnecting... 2/5"}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Final"}}',
+            '{"type":"turn.completed"}',
+        ])
+        text, error = self.register.parse_codex_transcript(transcript)
+        self.assertEqual(text, "Final")
+        self.assertIsNone(error)
+
+    def test_model_reroute_rejects_an_otherwise_complete_turn(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"item.completed","item":{"type":"error",'
+            '"message":"model rerouted: gpt-a -> gpt-b (capacity)"}}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Final"}}',
+            '{"type":"turn.completed"}',
+        ])
+        _, error = self.register.parse_codex_transcript(transcript)
+        self.assertIn("model rerouted", error)
+
+    def test_codex_command_pins_model_and_disables_installed_skill(self):
+        command = self.register.build_codex_command(
+            "prompt", "file-pr", "gpt-5.6-sol")
+        self.assertEqual(command[command.index("--model") + 1], "gpt-5.6-sol")
+        override = command[command.index("--config") + 1]
+        installed = pathlib.Path.home() / ".agents" / "skills" / "file-pr" / "SKILL.md"
+        self.assertIn(str(installed), override)
+        self.assertIn("enabled=false", override)
+        self.assertIn("--ignore-user-config", command)
+
+    def test_canary_is_required_and_removed_before_scoring(self):
+        cleaned, error = self.register.validate_codex_canary(
+            f"PR body\n\n{self.marker}\n", self.marker)
+        self.assertEqual(cleaned, "PR body")
+        self.assertIsNone(error)
+
+    def test_missing_canary_rejects_the_run(self):
+        text, error = self.register.validate_codex_canary("PR body", self.marker)
+        self.assertEqual(text, "PR body")
+        self.assertIn("canary", error)
+
+
+class RegisterProtocol(unittest.TestCase):
+    def setUp(self):
+        import run_register
+        self.register = run_register
+
+    def test_seeded_schedule_balances_each_pair(self):
+        arms = [("baseline", pathlib.Path("old")), ("variant", pathlib.Path("new"))]
+        schedule = self.register.build_arm_schedule(arms, repeat=5, seed=37)
+        self.assertEqual(len(schedule), 10)
+        for pair_index in range(5):
+            pair = schedule[pair_index * 2:(pair_index + 1) * 2]
+            self.assertEqual({entry[0] for entry in pair}, {"baseline", "variant"})
+            self.assertEqual({entry[2] for entry in pair}, {pair_index})
+
+    def test_seeded_schedule_is_reproducible(self):
+        arms = [("baseline", pathlib.Path("old")), ("variant", pathlib.Path("new"))]
+        first = self.register.build_arm_schedule(arms, repeat=8, seed=91)
+        second = self.register.build_arm_schedule(arms, repeat=8, seed=91)
+        self.assertEqual(first, second)
+
+    def test_skill_digest_is_independent_of_file_creation_order(self):
+        first = pathlib.Path(tempfile.mkdtemp(prefix="digest-first-"))
+        second = pathlib.Path(tempfile.mkdtemp(prefix="digest-second-"))
+        self.addCleanup(shutil.rmtree, first, True)
+        self.addCleanup(shutil.rmtree, second, True)
+        (first / "b.md").write_text("two")
+        (first / "a.md").write_text("one")
+        (second / "a.md").write_text("one")
+        (second / "b.md").write_text("two")
+        self.assertEqual(
+            self.register.skill_directory_digest(first),
+            self.register.skill_directory_digest(second),
+        )
+
+    def test_skill_digest_changes_with_content(self):
+        skill = pathlib.Path(tempfile.mkdtemp(prefix="digest-change-"))
+        self.addCleanup(shutil.rmtree, skill, True)
+        path = skill / "SKILL.md"
+        path.write_text("before")
+        before = self.register.skill_directory_digest(skill)
+        path.write_text("after")
+        self.assertNotEqual(before, self.register.skill_directory_digest(skill))
+
+    def test_arm_snapshot_is_immutable_after_the_source_changes(self):
+        source_root = pathlib.Path(tempfile.mkdtemp(prefix="arm-source-"))
+        self.addCleanup(shutil.rmtree, source_root, True)
+        skill = source_root / "file-pr"
+        skill.mkdir()
+        source_file = skill / "SKILL.md"
+        source_file.write_text("before")
+        snapshot, arms, digests = self.register.snapshot_arm_roots(
+            [("baseline", source_root)], "file-pr")
+        self.addCleanup(snapshot.cleanup)
+        source_file.write_text("after")
+        snapshot_file = arms[0][1] / "file-pr" / "SKILL.md"
+        self.assertEqual(snapshot_file.read_text(), "before")
+        self.assertEqual(
+            digests["baseline"],
+            self.register.skill_directory_digest(arms[0][1] / "file-pr"),
+        )
+
+    def test_claude_rejects_a_model_flag_it_cannot_apply(self):
+        done = subprocess.run([
+            sys.executable,
+            str(pathlib.Path(self.register.__file__)),
+            "--runner", "claude",
+            "--model", "ignored-model",
+        ], capture_output=True, text=True)
+        self.assertEqual(done.returncode, 2)
+        self.assertIn("only valid with --runner codex", done.stderr)
 
 
 class RegisterStatistics(unittest.TestCase):

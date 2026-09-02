@@ -8,27 +8,28 @@ an assertion.
 Each case asks a skill for a text artifact a human reads, then scores it with
 slop_score.py. Run it without --variant to establish how much the score moves between
 identical runs; that spread is the noise floor, and a rewrite has to beat it to mean
-anything. Run it with --variant pointing at a modified skills tree to get the delta.
+anything. Run it with --variant pointing at a modified skills tree to get the delta. The
+runner can be Claude or Codex, but results from different runners are separate experiments.
 
-One confound this cannot remove, and it is wider than it looks. The user's global CLAUDE.md
-is in context for every run in both arms. It fires the `unslop` skill, and it separately
-bans `delve`, `seamless`, `Certainly!`, stacked hedges and emoji by name, and prescribes
-"prose for reasoning, bullets for lists". That is five of the rules scored here, enforced
-before any skill is consulted. So `unslop fired in 0/5 runs` does not mean the confound was
-absent; the text rule is unconditional. Read the baseline as a floor the global config
-already imposes, not as what the skill's prose produces on its own. If the delta is flat,
-the honest reading is that the global rule already does this job.
+One confound this cannot remove is the runner's ambient instructions. Claude receives the
+user's global CLAUDE.md; Codex receives its ambient AGENTS.md and installed skill catalog.
+Those rules already constrain prose before the staged skill is consulted. Read the baseline
+as a floor the runner config imposes, not as what the skill produces on its own. A flat
+delta means the staged rewrite added no measurable effect in that environment.
 
     python3 tools/eval/run_register.py --case pr-body --repeat 5
-    python3 tools/eval/run_register.py --case pr-body --repeat 3 --variant ../rewritten/skills
+    python3 tools/eval/run_register.py --runner codex --model gpt-5.6-sol \
+        --case pr-body --repeat 3 --variant ../rewritten/skills
 """
 import argparse
 import datetime
+import hashlib
 import json
 import pathlib
+import random
+import re
 import shutil
 import statistics
-import re
 import subprocess
 import sys
 import tempfile
@@ -43,9 +44,8 @@ CASES = HERE / "register_cases.json"
 FIXTURE = HERE / "fixture"
 SKILLS = REPO / "skills"
 
-# No Bash. Every artifact here is a draft, and a run that cannot shell out cannot open a
-# PR, file an issue, or push. The diff each case needs is in its prompt instead.
 CASE_TOOLS = ["Skill", "Read", "Glob", "Grep"]
+RUNNERS = ("claude", "codex")
 
 # Below this a per-100-word rate is arithmetic on noise, and a code-block-only reply scores
 # a flawless zero on every metric.
@@ -136,7 +136,7 @@ def failed_skill_load(tool_calls, slug):
     return None
 
 
-def stage_under_unique_name(skill_dir, slug, into):
+def stage_under_unique_name(skill_dir, slug, into, canary=None):
     """Copy a skill out under a name nothing else can claim, and return the new path.
 
     Every skill these cases exercise is also installed in ~/.claude/skills and
@@ -153,23 +153,151 @@ def stage_under_unique_name(skill_dir, slug, into):
     if count != 1:
         raise ValueError(f"{skill_md} has no frontmatter `name:` line to rewrite; the "
                          f"injected copy would collide with the installed one")
+    if canary:
+        patched = (f"{patched.rstrip()}\n\nFor this evaluation only, append the exact marker "
+                   f"`{canary}` on its own line after the requested artifact.\n")
     skill_md.write_text(patched)
     return staged
 
 
-def run_once(case, skills_root, budget, timeout):
+def build_codex_command(prompt, skill_name, model):
+    installed_skill = pathlib.Path.home() / ".agents" / "skills" / skill_name / "SKILL.md"
+    skill_override = (
+        f"skills.config=[{{path={json.dumps(str(installed_skill))},enabled=false}}]"
+    )
+    return [
+        "codex", "exec", "--ephemeral", "--json", "--sandbox", "read-only",
+        "--ignore-user-config", "--model", model, "--config", skill_override, prompt,
+    ]
+
+
+def build_arm_schedule(arms, repeat, seed):
+    generator = random.Random(seed)
+    schedule = []
+    for pair_index in range(repeat):
+        pair = list(arms)
+        generator.shuffle(pair)
+        schedule.extend((arm_name, root, pair_index) for arm_name, root in pair)
+    return schedule
+
+
+def skill_directory_digest(skill_dir):
+    digest = hashlib.sha256()
+    for path in sorted(candidate for candidate in skill_dir.rglob("*") if candidate.is_file()):
+        digest.update(path.relative_to(skill_dir).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def snapshot_arm_roots(arms, skill_name):
+    snapshot = tempfile.TemporaryDirectory(prefix="register-protocol-")
+    snapshot_root = pathlib.Path(snapshot.name)
+    frozen_arms = []
+    digests = {}
+    try:
+        for arm_name, source_root in arms:
+            source = source_root / skill_name
+            if not (source / "SKILL.md").is_file():
+                raise ValueError(f"no SKILL.md at {source}")
+            frozen_root = snapshot_root / arm_name
+            shutil.copytree(source, frozen_root / skill_name)
+            frozen_arms.append((arm_name, frozen_root))
+            digests[arm_name] = skill_directory_digest(frozen_root / skill_name)
+    except Exception:
+        snapshot.cleanup()
+        raise
+    return snapshot, frozen_arms, digests
+
+
+def parse_codex_transcript(output):
+    final_text = ""
+    result_error = None
+    warnings = []
+    saw_thread = False
+    saw_turn = False
+    terminal_event = None
+    for line_number, line in enumerate(output.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            return final_text, f"malformed JSONL at line {line_number}"
+        if not isinstance(event, dict):
+            return final_text, f"non-object JSONL event at line {line_number}"
+        event_type = event.get("type")
+        if terminal_event is not None:
+            return final_text, f"{event_type or 'unknown event'} appeared after terminal event"
+        item = event.get("item") or {}
+        if event_type == "thread.started":
+            if saw_thread or saw_turn:
+                return final_text, "duplicate or late thread.started event"
+            saw_thread = True
+        elif event_type == "turn.started":
+            if not saw_thread or saw_turn:
+                return final_text, "turn.started appeared without one preceding thread.started"
+            saw_turn = True
+        elif event_type == "item.completed" and item.get("type") == "agent_message":
+            if not saw_turn:
+                return final_text, "agent message appeared before turn.started"
+            final_text = item.get("text", "")
+        elif event_type == "item.completed" and item.get("type") == "error":
+            detail = str(item.get("message", "")).strip().replace("\n", " ")[:160]
+            if detail.lower().startswith("model rerouted:"):
+                result_error = detail
+        elif event_type == "turn.completed":
+            terminal_event = event_type
+            if not saw_turn:
+                result_error = "turn.completed appeared before turn.started"
+            elif not final_text.strip():
+                result_error = "completed turn has no final agent message"
+        elif event_type == "turn.failed":
+            terminal_event = event_type
+            detail = event.get("error") or event.get("message") or event
+            if isinstance(detail, dict):
+                detail = detail.get("message") or json.dumps(detail)
+            result_error = str(detail).strip().replace("\n", " ")[:160]
+        elif event_type == "error":
+            detail = event.get("message") or event.get("error") or event
+            if isinstance(detail, dict):
+                detail = detail.get("message") or json.dumps(detail)
+            warnings.append(str(detail).strip().replace("\n", " ")[:160])
+    if not saw_thread:
+        return final_text, "missing thread.started event, transcript truncated"
+    if not saw_turn:
+        return final_text, "missing turn.started event, transcript truncated"
+    if terminal_event is None:
+        detail = f": {warnings[-1]}" if warnings else ""
+        return final_text, f"missing terminal event, transcript truncated{detail}"
+    return final_text, result_error
+
+
+def validate_codex_canary(text, marker):
+    count = text.count(marker)
+    if count != 1:
+        return text, f"Codex skill canary appeared {count} times instead of once"
+    return text.replace(marker, "").strip(), None
+
+
+def run_once(case, skills_root, budget, timeout, runner="claude", model=None):
     """Return (scored_or_None, final_text, ambient_skills, error)."""
     skill_dir = skills_root / case["skill"]
     if not (skill_dir / "SKILL.md").is_file():
         return None, "", [], f"no SKILL.md at {skill_dir}"
+    if runner == "codex" and not model:
+        return None, "", [], "Codex runs require an explicit model"
 
     slug = f"{case['skill']}-under-test"
+    canary = f"<!-- register-skill-loaded:{slug} -->" if runner == "codex" else None
     staging = pathlib.Path(tempfile.mkdtemp(prefix="register-stage-"))
     temp_root = None
     try:
-        staged_skill = stage_under_unique_name(skill_dir, slug, staging)
+        staged_skill = stage_under_unique_name(skill_dir, slug, staging, canary=canary)
         temp_root, repo = harness.make_sandbox(
-            "register-eval-", FIXTURE, skills=[staged_skill])
+            "register-eval-", FIXTURE, skills=[staged_skill],
+            skill_directory=".agents/skills" if runner == "codex" else ".claude/skills")
     except (ValueError, OSError, RuntimeError) as error:
         # Escaping here kills every remaining case and loses the arm, since the summary is
         # only written at case end.
@@ -180,14 +308,17 @@ def run_once(case, skills_root, budget, timeout):
         shutil.rmtree(staging, ignore_errors=True)
 
     prompt = case["prompt"].replace("$SKILL_UNDER_TEST", f"${slug}")
-    command = [
-        "claude", "-p", prompt,
-        "--output-format", "stream-json", "--verbose",
-        "--permission-mode", "dontAsk",
-        "--tools", ",".join(CASE_TOOLS),
-        "--allowedTools", ",".join(CASE_TOOLS),
-        "--max-budget-usd", str(budget),
-    ]
+    if runner == "codex":
+        command = build_codex_command(prompt, case["skill"], model)
+    else:
+        command = [
+            "claude", "-p", prompt,
+            "--output-format", "stream-json", "--verbose",
+            "--permission-mode", "dontAsk",
+            "--tools", ",".join(CASE_TOOLS),
+            "--allowedTools", ",".join(CASE_TOOLS),
+            "--max-budget-usd", str(budget),
+        ]
     process = None
     try:
         process = subprocess.Popen(
@@ -203,24 +334,31 @@ def run_once(case, skills_root, budget, timeout):
                 partial = partial.decode(errors="replace")
             stdout, stderr = harness.kill_process_group(process, partial or "")
 
-        final_text, tool_calls, result_error = harness.parse_transcript(stdout)
-        ambient = [name
-                   for event in harness.iter_events(stdout)
-                   for name in harness.parse_skill_names(event)]
+        if runner == "codex":
+            final_text, result_error = parse_codex_transcript(stdout)
+            tool_calls = []
+            ambient = []
+        else:
+            final_text, tool_calls, result_error = harness.parse_transcript(stdout)
+            ambient = [name
+                       for event in harness.iter_events(stdout)
+                       for name in harness.parse_skill_names(event)]
         if timed_out:
             return None, final_text, ambient, f"timeout after {timeout}s"
+        if process.returncode != 0 and not stdout.strip():
+            detail = (stderr or "").strip().replace("\n", " ")[:160]
+            return None, final_text, ambient, f"{runner} exited {process.returncode}: {detail}"
         if result_error:
             return None, final_text, ambient, result_error
         if process.returncode != 0:
             detail = (stderr or "").strip().replace("\n", " ")[:160]
-            return None, final_text, ambient, f"claude exited {process.returncode}: {detail}"
+            return None, final_text, ambient, f"{runner} exited {process.returncode}: {detail}"
         if not final_text.strip():
             return None, "", ambient, "empty transcript"
-        # A run where the skill never loaded scores the base model, not the skill. Counting
-        # it would put the thing being measured into the noise and quietly flatten every
-        # delta toward zero, which is the one failure this eval must not have. The tool_use
-        # block only proves the call was made, so the result it returned decides.
-        skill_error = failed_skill_load(tool_calls, slug)
+        if runner == "codex":
+            final_text, skill_error = validate_codex_canary(final_text, canary)
+        else:
+            skill_error = failed_skill_load(tool_calls, slug)
         if skill_error:
             return None, final_text, ambient, skill_error
         scored = slop_score.score(final_text)
@@ -229,6 +367,11 @@ def run_once(case, skills_root, budget, timeout):
             return None, final_text, ambient, (
                 f"only {scored['words']} prose words after stripping code, "
                 f"under this case's floor of {floor} for a per-100-word rate")
+        ceiling = case.get("max_words")
+        if ceiling is not None and scored["words"] > ceiling:
+            return None, final_text, ambient, (
+                f"{scored['words']} prose words after stripping code, over this case's "
+                f"ceiling of {ceiling}")
         return scored, final_text, ambient, None
     finally:
         if process is not None:
@@ -300,6 +443,7 @@ def print_delta(baseline_stats, variant_stats, n_baseline, n_variant):
           f"error, judged\nagainst a per-metric Welch threshold. Only {PRIMARY_METRIC} "
           f"decides; the rest describe.")
     print(f"  {'metric':<26} {'delta':>8} {'sigma':>8} {'df':>6} {'t95':>6}   reading")
+    decision = None
     for metric in TRACKED_MEASURES:
         change, sigma, degrees, why = difference_sigma(
             baseline_stats[metric], variant_stats[metric], n_baseline, n_variant)
@@ -307,21 +451,44 @@ def print_delta(baseline_stats, variant_stats, n_baseline, n_variant):
         if sigma is None:
             print(f"  {metric:<26} {change:>+8.2f} {'n/a':>8} {'':>6} {'':>6}   "
                   f"{why} [{role}]")
+            if metric == PRIMARY_METRIC:
+                decision = {
+                    "metric": metric,
+                    "delta": change,
+                    "sigma": None,
+                    "degrees_of_freedom": None,
+                    "threshold_95": None,
+                    "reading": why,
+                }
             continue
         threshold = t_critical(degrees) if degrees else None
         if threshold is None:
             reading = "cannot set a threshold"
         elif abs(sigma) >= threshold:
-            reading = "significant at 95%"
+            if metric == PRIMARY_METRIC:
+                direction = "improvement" if change < 0 else "regression"
+                reading = f"significant {direction} at 95%"
+            else:
+                reading = "significant at 95%"
         elif abs(sigma) >= 1:
             reading = "suggestive, underpowered"
         else:
             reading = "indistinguishable from noise"
         print(f"  {metric:<26} {change:>+8.2f} {sigma:>+8.2f} {degrees:>6.1f} "
               f"{threshold if threshold else 0:>6.3f}   {reading} [{role}]")
+        if metric == PRIMARY_METRIC:
+            decision = {
+                "metric": metric,
+                "delta": change,
+                "sigma": sigma,
+                "degrees_of_freedom": degrees,
+                "threshold_95": threshold,
+                "reading": reading,
+            }
     print(f"\n  Read the [decides] row alone as the result. The [describes] rows are "
           f"context;\n  treating any of them as a finding is how six tests become one "
           f"false positive.")
+    return decision
 
 
 def print_sensitivity(stats, n):
@@ -352,21 +519,37 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--case", help="run one case by id (default: all)")
+    parser.add_argument("--runner", choices=RUNNERS, default="claude",
+                        help="CLI used for every arm; never combine scores across runners")
+    parser.add_argument("--model",
+                        help="explicit Codex model; required with --runner codex")
+    parser.add_argument("--seed", type=int, default=37,
+                        help="seed for pair-balanced arm order (default: 37)")
+    parser.add_argument("--baseline", type=pathlib.Path,
+                        help="baseline skills/ tree (default: this repository's skills/)")
     parser.add_argument("--repeat", type=int, default=3,
                         help="runs per arm. Output is non-deterministic, so a single run "
                              "reports a coin flip as a fact. 5+ before acting on a delta.")
     parser.add_argument("--variant", type=pathlib.Path,
                         help="a second skills/ tree to compare against the committed one")
     parser.add_argument("--budget", type=float, default=2.50,
-                        help="per-run USD cap. These skills are large and load references, "
+                        help="Claude per-run USD cap. These skills are large and load references, "
                              "so a run capped at 1.00 dies at the result event with the "
-                             "artifact already written, which reads as an error.")
+                             "artifact already written, which reads as an error. Ignored "
+                             "by Codex.")
     parser.add_argument("--timeout", type=int, default=300, help="per-run seconds")
     parser.add_argument("--output-dir", type=pathlib.Path)
     args = parser.parse_args()
 
     if args.repeat < 1:
         parser.error("--repeat must be at least 1")
+    if args.runner == "codex" and not args.model:
+        parser.error("--model is required with --runner codex")
+    if args.runner == "claude" and args.model:
+        parser.error("--model is only valid with --runner codex")
+    baseline_root = args.baseline.resolve() if args.baseline else SKILLS
+    if not baseline_root.is_dir():
+        parser.error(f"baseline tree is not a directory: {baseline_root}")
     variant_root = args.variant.resolve() if args.variant else None
     if variant_root and not variant_root.is_dir():
         parser.error(f"variant tree is not a directory: {variant_root}")
@@ -382,63 +565,123 @@ def main():
     output_dir = args.output_dir or REPO / ".eval-results" / "register" / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    arms = [("baseline", SKILLS)]
+    version = subprocess.run(
+        [args.runner, "--version"], capture_output=True, text=True)
+    if version.returncode != 0:
+        parser.error(f"could not read {args.runner} version: "
+                     f"{(version.stderr or version.stdout).strip()[:160]}")
+    runner_version = (version.stdout or version.stderr).strip()
+
+    arms = [("baseline", baseline_root)]
     if variant_root:
         arms.append(("variant", variant_root))
 
     exit_code = 0
     for case in cases:
+        try:
+            snapshot, frozen_arms, skill_digests = snapshot_arm_roots(arms, case["skill"])
+        except (OSError, ValueError) as error:
+            parser.error(f"could not snapshot experiment arms: {error}")
         print(f"\n{'=' * 72}\n{case['id']}  ({case['skill']} -> {case['artifact']})")
         print(f"{'=' * 72}")
-        stats_by_arm, runs_by_arm, audit_by_arm = {}, {}, {}
-        for arm_name, root in arms:
-            runs, ambient_hits, failures = [], 0, []
-            for index in range(args.repeat):
-                print(f"  {arm_name} {index + 1}/{args.repeat} ... ", end="", flush=True)
-                scored, text, ambient, error = run_once(
-                    case, root, args.budget, args.timeout)
-                stem = f"{case['id']}.{arm_name}.{index + 1}"
-                if text:
-                    (output_dir / f"{stem}.md").write_text(text)
-                if error:
-                    failures.append(error)
-                    print(f"ERROR {error[:60]}")
-                    continue
-                (output_dir / f"{stem}.score.json").write_text(
-                    json.dumps(scored, indent=2) + "\n")
-                runs.append(scored)
-                if "unslop" in ambient:
-                    ambient_hits += 1
-                print(f"{scored['words']:>4}w  "
-                      f"{scored['tells_per_100w']:>5} tells/100w")
-            if failures:
+        stats_by_arm = {}
+        runs_by_arm = {arm_name: [] for arm_name, _ in frozen_arms}
+        ambient_hits_by_arm = {arm_name: 0 for arm_name, _ in frozen_arms}
+        failures_by_arm = {arm_name: [] for arm_name, _ in frozen_arms}
+        execution_sequence = []
+        schedule = build_arm_schedule(frozen_arms, args.repeat, args.seed)
+        for position, (arm_name, root, index) in enumerate(schedule, start=1):
+            print(f"  {arm_name} {index + 1}/{args.repeat} ... ", end="", flush=True)
+            scored, text, ambient, error = run_once(
+                case, root, args.budget, args.timeout, runner=args.runner,
+                model=args.model)
+            stem = f"{case['id']}.{arm_name}.{index + 1}"
+            if text:
+                (output_dir / f"{stem}.md").write_text(text)
+            execution_sequence.append({
+                "position": position,
+                "pair": index + 1,
+                "arm": arm_name,
+                "status": "failed" if error else "scored",
+            })
+            if error:
+                failures_by_arm[arm_name].append(error)
                 exit_code = 1
+                print(f"ERROR {error[:60]}")
+                continue
+            (output_dir / f"{stem}.score.json").write_text(
+                json.dumps(scored, indent=2) + "\n")
+            runs_by_arm[arm_name].append(scored)
+            if "unslop" in ambient:
+                ambient_hits_by_arm[arm_name] += 1
+            print(f"{scored['words']:>4}w  "
+                  f"{scored['tells_per_100w']:>5} tells/100w")
+
+        prompt = case["prompt"].replace(
+            "$SKILL_UNDER_TEST", f"${case['skill']}-under-test")
+        audit_by_arm = {
+            "experiment": {
+                "runner": args.runner,
+                "runner_version": runner_version,
+                "model": args.model or "runner default",
+                "seed": args.seed,
+                "case": case["id"],
+                "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+                "disabled_installed_skill": str(
+                    pathlib.Path.home() / ".agents" / "skills" / case["skill"] / "SKILL.md"
+                ) if args.runner == "codex" else None,
+                "arm_sequence": execution_sequence,
+            }
+        }
+        for arm_name, _ in frozen_arms:
+            runs = runs_by_arm[arm_name]
+            failures = failures_by_arm[arm_name]
+            ambient_hits = ambient_hits_by_arm[arm_name]
             stats_by_arm[arm_name] = summarise(runs)
-            runs_by_arm[arm_name] = runs
             audit_by_arm[arm_name] = {
+                "runner": args.runner,
+                "model": args.model or "runner default",
+                "skill_sha256": skill_digests[arm_name],
                 "requested": args.repeat,
                 "scored": len(runs),
                 "failed": len(failures),
                 "failures": failures,
-                "unslop_fired": ambient_hits,
+                "unslop_fired": ambient_hits if args.runner == "claude" else None,
+                "ambient_skill_evidence": (
+                    "available" if args.runner == "claude" else "unavailable in Codex JSONL"
+                ),
                 "stats": stats_by_arm[arm_name],
             }
             print_arm(arm_name, stats_by_arm[arm_name], runs)
             print(f"  {len(runs)}/{args.repeat} runs scored"
                   + (f", {len(failures)} failed" if failures else ""))
-            if runs:
+            if runs and args.runner == "claude":
                 print(f"  unslop fired in {ambient_hits}/{len(runs)} scored runs")
+            elif runs:
+                print("  Codex JSONL does not expose ambient skill invocation events")
             for failure in failures:
                 print(f"    failed: {failure}")
             if arm_name == "baseline" and len(runs) > 1:
                 print_sensitivity(stats_by_arm[arm_name], len(runs))
 
-        if variant_root and runs_by_arm["baseline"] and runs_by_arm["variant"]:
-            print_delta(stats_by_arm["baseline"], stats_by_arm["variant"],
-                        len(runs_by_arm["baseline"]), len(runs_by_arm["variant"]))
+        if variant_root:
+            is_complete = all(
+                len(runs_by_arm[name]) == args.repeat for name, _ in frozen_arms)
+            if is_complete:
+                audit_by_arm["decision"] = print_delta(
+                    stats_by_arm["baseline"], stats_by_arm["variant"],
+                    len(runs_by_arm["baseline"]), len(runs_by_arm["variant"]))
+            else:
+                print("\nNo delta: at least one arm is incomplete. Rerun the full fixed sample.")
+                audit_by_arm["decision"] = {
+                    "reading": "incomplete sample; no verdict",
+                    "baseline_scored": len(runs_by_arm["baseline"]),
+                    "variant_scored": len(runs_by_arm["variant"]),
+                }
 
         (output_dir / f"{case['id']}.summary.json").write_text(
             json.dumps(audit_by_arm, indent=2) + "\n")
+        snapshot.cleanup()
 
     print(f"\nRaw results: {output_dir}")
     return exit_code

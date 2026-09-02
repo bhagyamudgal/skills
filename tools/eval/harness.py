@@ -17,7 +17,8 @@ import subprocess
 import tempfile
 
 
-def make_sandbox(prefix, fixture_src, fixture_dest=".", skills=(), post_commit_edit=None):
+def make_sandbox(prefix, fixture_src, fixture_dest=".", skills=(), post_commit_edit=None,
+                 skill_directory=".claude/skills"):
     """Copy a fixture into a throwaway git repo. Returns (temp_root, repo_path).
 
     The committed fixtures live inside this repo, so an agent with write access and a
@@ -27,30 +28,34 @@ def make_sandbox(prefix, fixture_src, fixture_dest=".", skills=(), post_commit_e
     Callers are responsible for shutil.rmtree(temp_root).
     """
     temp_root = pathlib.Path(tempfile.mkdtemp(prefix=prefix))
-    repo = temp_root / "repo"
-    destination = repo / fixture_dest
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(fixture_src, destination, dirs_exist_ok=True)
+    try:
+        repo = temp_root / "repo"
+        destination = repo / fixture_dest
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(fixture_src, destination, dirs_exist_ok=True)
 
-    for skill in skills:
-        target = repo / ".claude" / "skills" / pathlib.Path(skill).name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(skill, target, dirs_exist_ok=True)
+        for skill in skills:
+            target = repo / skill_directory / pathlib.Path(skill).name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(skill, target, dirs_exist_ok=True)
 
-    # A global commit.gpgsign with no key, or a core.hooksPath pointing at a failing hook,
-    # fails here. Discarding git's stderr leaves only "returned non-zero exit status 128".
-    for argv in (["git", "init", "-q"],
-                 ["git", "add", "-A"],
-                 ["git", "-c", "user.email=eval@local", "-c", "user.name=eval",
-                  "commit", "-qm", "fixture"]):
-        done = subprocess.run(argv, cwd=repo, capture_output=True, text=True)
-        if done.returncode != 0:
-            raise RuntimeError(
-                f"sandbox setup failed: {' '.join(argv)} exited {done.returncode}: "
-                f"{(done.stderr or done.stdout).strip()[:300]}")
-    if post_commit_edit:
-        post_commit_edit(repo)
-    return temp_root, repo
+        # A global commit.gpgsign with no key, or a core.hooksPath pointing at a failing hook,
+        # fails here. Discarding git's stderr leaves only "returned non-zero exit status 128".
+        for argv in (["git", "init", "-q"],
+                     ["git", "add", "-A"],
+                     ["git", "-c", "user.email=eval@local", "-c", "user.name=eval",
+                      "commit", "-qm", "fixture"]):
+            done = subprocess.run(argv, cwd=repo, capture_output=True, text=True)
+            if done.returncode != 0:
+                raise RuntimeError(
+                    f"sandbox setup failed: {' '.join(argv)} exited {done.returncode}: "
+                    f"{(done.stderr or done.stdout).strip()[:300]}")
+        if post_commit_edit:
+            post_commit_edit(repo)
+        return temp_root, repo
+    except Exception:
+        shutil.rmtree(temp_root, ignore_errors=True)
+        raise
 
 
 # A result event can signal failure through `subtype` without setting `is_error`, so keying

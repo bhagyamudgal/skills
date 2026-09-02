@@ -1,13 +1,14 @@
 {
-  "note": "Each case asks a skill to produce a text artifact a human reads, then scores that text with slop_score.py. Bash is withheld from every case on purpose: the artifacts here are drafts, and a run that cannot shell out cannot open a PR, file an issue or push anything. The diff each case needs is pasted into its prompt instead. min_words is the floor below which a per-100-word rate is arithmetic on noise; it is per-case because a commit message is legitimately short and a PR body is not.",
+  "note": "Each case asks a skill to produce a text artifact a human reads, then scores that text with slop_score.py. Bash is withheld from Claude cases on purpose; Codex cases run read-only and explicitly forbid commands. The artifacts are drafts, and the diff each case needs is pasted into its prompt. min_words and max_words bound the exact prose slop_score counts; they are per-case because a commit message is legitimately short and a PR body is not.",
   "cases": [
     {
       "id": "pr-body",
       "skill": "file-pr",
       "artifact": "pull request body",
       "why": "The longest prose artifact any of these skills emits, so its per-100-word rates are the least noisy.",
-      "prompt": "Use $SKILL_UNDER_TEST. Do NOT open the pull request and do not run any commands; I only want the text. Here is the complete diff on branch bhagya/fix-lock-contention against main:\n\n```diff\n--- a/src/scheduler.ts\n+++ b/src/scheduler.ts\n@@ -12,9 +12,14 @@ export class Scheduler {\n   enqueue(job: Job): void {\n     this.lock.acquire();\n-    this.queue.push(job);\n-    this.persist();\n+    this.queue.push(job);\n     this.lock.release();\n+    this.persist();\n   }\n \n+  private nextSequence(): number {\n+    return ++this.sequence;\n+  }\n+\n   private persist(): void {\n-    writeFileSync(this.path, JSON.stringify(this.queue));\n+    const record = { seq: this.nextSequence(), queue: this.queue };\n+    appendFileSync(this.path, JSON.stringify(record) + \"\\n\");\n   }\n }\n```\n\nThe lock used to be held across the fsync, which serialized every writer behind one slow disk write. p99 went from 340ms to 12ms on the staging load test. Because two writers can now interleave, each record carries a sequence number so the file stays reconstructable. Write the PR title and body.",
-      "min_words": 80
+      "prompt": "Use $SKILL_UNDER_TEST. Do NOT open the pull request and do not run any commands; I only want the text. Here is the complete diff on branch bhagya/fix-lock-contention against main:\n\n```diff\n--- a/src/scheduler.ts\n+++ b/src/scheduler.ts\n@@ -12,9 +12,14 @@ export class Scheduler {\n   enqueue(job: Job): void {\n     this.lock.acquire();\n-    this.queue.push(job);\n-    this.persist();\n+    this.queue.push(job);\n     this.lock.release();\n+    this.persist();\n   }\n \n+  private nextSequence(): number {\n+    return ++this.sequence;\n+  }\n+\n   private persist(): void {\n-    writeFileSync(this.path, JSON.stringify(this.queue));\n+    const record = { seq: this.nextSequence(), queue: this.queue };\n+    appendFileSync(this.path, JSON.stringify(record) + \"\\n\");\n   }\n }\n```\n\nThe lock used to be held across the fsync, which serialized every writer behind one slow disk write. p99 went from 340ms to 12ms on the staging load test. Because two writers can now interleave, each record carries a sequence number so the file stays reconstructable. Write the PR title and body in 120 to 140 prose words total.",
+      "min_words": 100,
+      "max_words": 160
     },
     {
       "id": "issue-body",
