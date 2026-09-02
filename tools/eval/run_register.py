@@ -12,9 +12,10 @@ anything. Run it with --variant pointing at a modified skills tree to get the de
 runner can be Claude or Codex, but results from different runners are separate experiments.
 
 One confound this cannot remove is the runner's ambient instructions. Claude receives the
-user's global CLAUDE.md; Codex receives its ambient AGENTS.md and installed skill catalog.
-Those rules already constrain prose before the staged skill is consulted. Read the baseline
-as a floor the runner config imposes, not as what the skill produces on its own. A flat
+user's global CLAUDE.md. Codex runs without mutable user config or the user's global
+AGENTS.md, but still receives version-bundled instructions and the installed skill catalog.
+Those rules constrain prose before the staged skill is consulted. Read the baseline as a
+floor the runner environment imposes, not as what the skill produces on its own. A flat
 delta means the staged rewrite added no measurable effect in that environment.
 
     python3 tools/eval/run_register.py --case pr-body --repeat 5
@@ -25,6 +26,7 @@ import argparse
 import datetime
 import hashlib
 import json
+import os
 import pathlib
 import random
 import re
@@ -46,6 +48,15 @@ SKILLS = REPO / "skills"
 
 CASE_TOOLS = ["Skill", "Read", "Glob", "Grep"]
 RUNNERS = ("claude", "codex")
+SUPPORTED_CODEX_VERSION = "codex-cli 0.152.1"
+CODEX_REASONING_EFFORT = "high"
+CODEX_SANDBOX_MODE = "read-only"
+PROTOCOL_FILES = (
+    ("tools/eval/run_register.py", pathlib.Path(__file__).resolve()),
+    ("tools/eval/harness.py", HERE / "harness.py"),
+    ("tools/eval/slop_score.py", HERE / "slop_score.py"),
+    ("tools/eval/slop_rules.json", HERE / "slop_rules.json"),
+)
 
 # Below this a per-100-word rate is arithmetic on noise, and a code-block-only reply scores
 # a flawless zero on every metric.
@@ -165,10 +176,92 @@ def build_codex_command(prompt, skill_name, model):
     skill_override = (
         f"skills.config=[{{path={json.dumps(str(installed_skill))},enabled=false}}]"
     )
+    reasoning_override = f"model_reasoning_effort={json.dumps(CODEX_REASONING_EFFORT)}"
     return [
-        "codex", "exec", "--ephemeral", "--json", "--sandbox", "read-only",
-        "--ignore-user-config", "--model", model, "--config", skill_override, prompt,
+        "codex", "exec", "--ephemeral", "--json", "--sandbox", CODEX_SANDBOX_MODE,
+        "--ignore-user-config", "--model", model, "--config", reasoning_override,
+        "--config", skill_override, prompt,
     ]
+
+
+def create_codex_environment(temp_root):
+    source_home = pathlib.Path(
+        os.environ.get("CODEX_HOME", pathlib.Path.home() / ".codex"))
+    source_auth = source_home / "auth.json"
+    if not source_auth.is_file():
+        raise FileNotFoundError(f"Codex auth file not found: {source_auth}")
+    isolated_home = pathlib.Path(temp_root) / ".codex-home"
+    isolated_home.mkdir()
+    (isolated_home / "auth.json").symlink_to(source_auth)
+    environment = os.environ.copy()
+    environment["CODEX_HOME"] = str(isolated_home)
+    return environment
+
+
+def validate_codex_skill_catalog(repo, original, staged, skill_override, timeout,
+                                 environment=None, model=None):
+    reasoning_override = f"model_reasoning_effort={json.dumps(CODEX_REASONING_EFFORT)}"
+    sandbox_override = f"sandbox_mode={json.dumps(CODEX_SANDBOX_MODE)}"
+    command = ["codex", "debug", "prompt-input"]
+    if model:
+        command.extend(("--config", f"model={json.dumps(model)}"))
+    command.extend(("--config", sandbox_override, "--config", reasoning_override,
+                    "--config", skill_override, "probe"))
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=repo, capture_output=True, text=True, timeout=timeout,
+            env=environment)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return None, f"could not inspect Codex skill catalog: {error}"
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip().replace("\n", " ")[:160]
+        return None, f"Codex skill catalog inspection failed: {detail}"
+    try:
+        messages = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return None, "Codex skill catalog inspection returned malformed JSON"
+    if not isinstance(messages, list):
+        return None, "Codex skill catalog inspection returned a non-list prompt"
+    catalogs = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "input_text":
+                continue
+            text = block.get("text")
+            if isinstance(text, str) and "<skills_instructions>" in text:
+                catalogs.append(text)
+    if len(catalogs) != 1:
+        return None, f"Codex prompt contained {len(catalogs)} skill catalogs instead of one"
+    original_count = len(re.findall(rf"(?m)^- {re.escape(original)}:", catalogs[0]))
+    staged_count = len(re.findall(rf"(?m)^- {re.escape(staged)}:", catalogs[0]))
+    if original_count:
+        return None, f"installed skill {original} remained visible in the Codex catalog"
+    if staged_count != 1:
+        return None, f"staged skill {staged} appeared {staged_count} times instead of once"
+    visible_messages = []
+    for message in messages:
+        role = message.get("role") if isinstance(message, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(role, str) or not isinstance(content, list):
+            return None, "Codex prompt contained a malformed model-visible message"
+        visible_messages.append({"role": role, "content": content})
+    serialized = json.dumps(visible_messages, sort_keys=True, separators=(",", ":"))
+    locations = [repo]
+    if environment and environment.get("CODEX_HOME"):
+        locations.append(pathlib.Path(environment["CODEX_HOME"]))
+    for location in locations:
+        serialized = serialized.replace(str(location), "<runtime-root>")
+        serialized = serialized.replace(str(location.resolve()), "<runtime-root>")
+    serialized = re.sub(
+        rf"- {re.escape(staged)}:.*?(?=\\n)",
+        "- <staged-skill>: <arm-skill>", serialized)
+    return hashlib.sha256(serialized.encode()).hexdigest(), None
 
 
 def build_arm_schedule(arms, repeat, seed):
@@ -187,6 +280,29 @@ def skill_directory_digest(skill_dir):
         digest.update(path.relative_to(skill_dir).as_posix().encode())
         digest.update(b"\0")
         digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def protocol_sources(fixture=None):
+    if fixture is None:
+        fixture = FIXTURE
+    sources = list(PROTOCOL_FILES)
+    sources.append(("tools/eval/register_cases.json", CASES))
+    for source in sorted(path for path in fixture.rglob("*") if path.is_file()):
+        relative = source.relative_to(fixture).as_posix()
+        sources.append((f"tools/eval/fixture/{relative}", source))
+    return tuple(sources)
+
+
+def protocol_digest(sources=None):
+    if sources is None:
+        sources = protocol_sources()
+    digest = hashlib.sha256()
+    for name, source in sorted(sources):
+        digest.update(name.encode())
+        digest.update(b"\0")
+        digest.update(source if isinstance(source, bytes) else source.read_bytes())
         digest.update(b"\0")
     return digest.hexdigest()
 
@@ -231,6 +347,8 @@ def parse_codex_transcript(output):
         if terminal_event is not None:
             return final_text, f"{event_type or 'unknown event'} appeared after terminal event"
         item = event.get("item") or {}
+        if not isinstance(item, dict):
+            return final_text, f"non-object item at line {line_number}"
         if event_type == "thread.started":
             if saw_thread or saw_turn:
                 return final_text, "duplicate or late thread.started event"
@@ -239,14 +357,19 @@ def parse_codex_transcript(output):
             if not saw_thread or saw_turn:
                 return final_text, "turn.started appeared without one preceding thread.started"
             saw_turn = True
-        elif event_type == "item.completed" and item.get("type") == "agent_message":
-            if not saw_turn:
-                return final_text, "agent message appeared before turn.started"
-            final_text = item.get("text", "")
-        elif event_type == "item.completed" and item.get("type") == "error":
-            detail = str(item.get("message", "")).strip().replace("\n", " ")[:160]
-            if detail.lower().startswith("model rerouted:"):
-                result_error = detail
+        elif event_type in ("item.started", "item.completed"):
+            item_type = item.get("type")
+            if item_type == "reasoning":
+                continue
+            if event_type == "item.completed" and item_type == "agent_message":
+                if not saw_turn:
+                    return final_text, "agent message appeared before turn.started"
+                final_text = item.get("text", "")
+            elif event_type == "item.completed" and item_type == "error":
+                detail = str(item.get("message", "")).strip().replace("\n", " ")[:160]
+                result_error = detail or "Codex emitted an error item"
+            else:
+                result_error = f"Codex emitted disallowed {item_type or 'unknown'} item"
         elif event_type == "turn.completed":
             terminal_event = event_type
             if not saw_turn:
@@ -264,6 +387,8 @@ def parse_codex_transcript(output):
             if isinstance(detail, dict):
                 detail = detail.get("message") or json.dumps(detail)
             warnings.append(str(detail).strip().replace("\n", " ")[:160])
+        else:
+            result_error = f"Codex emitted unknown {event_type or 'missing-type'} event"
     if not saw_thread:
         return final_text, "missing thread.started event, transcript truncated"
     if not saw_turn:
@@ -281,13 +406,14 @@ def validate_codex_canary(text, marker):
     return text.replace(marker, "").strip(), None
 
 
-def run_once(case, skills_root, budget, timeout, runner="claude", model=None):
-    """Return (scored_or_None, final_text, ambient_skills, error)."""
+def run_once(case, skills_root, budget, timeout, runner="claude", model=None,
+             scoring_rules=None, scoring_measures=None, fixture=FIXTURE):
+    """Return (scored_or_None, final_text, ambient_skills, context_digest, error)."""
     skill_dir = skills_root / case["skill"]
     if not (skill_dir / "SKILL.md").is_file():
-        return None, "", [], f"no SKILL.md at {skill_dir}"
+        return None, "", [], None, f"no SKILL.md at {skill_dir}"
     if runner == "codex" and not model:
-        return None, "", [], "Codex runs require an explicit model"
+        return None, "", [], None, "Codex runs require an explicit model"
 
     slug = f"{case['skill']}-under-test"
     canary = f"<!-- register-skill-loaded:{slug} -->" if runner == "codex" else None
@@ -296,34 +422,45 @@ def run_once(case, skills_root, budget, timeout, runner="claude", model=None):
     try:
         staged_skill = stage_under_unique_name(skill_dir, slug, staging, canary=canary)
         temp_root, repo = harness.make_sandbox(
-            "register-eval-", FIXTURE, skills=[staged_skill],
+            "register-eval-", fixture, skills=[staged_skill],
             skill_directory=".agents/skills" if runner == "codex" else ".claude/skills")
     except (ValueError, OSError, RuntimeError) as error:
         # Escaping here kills every remaining case and loses the arm, since the summary is
         # only written at case end.
         if temp_root:
             shutil.rmtree(temp_root, ignore_errors=True)
-        return None, "", [], f"sandbox setup failed: {error}"
+        return None, "", [], None, f"sandbox setup failed: {error}"
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
-    prompt = case["prompt"].replace("$SKILL_UNDER_TEST", f"${slug}")
-    if runner == "codex":
-        command = build_codex_command(prompt, case["skill"], model)
-    else:
-        command = [
-            "claude", "-p", prompt,
-            "--output-format", "stream-json", "--verbose",
-            "--permission-mode", "dontAsk",
-            "--tools", ",".join(CASE_TOOLS),
-            "--allowedTools", ",".join(CASE_TOOLS),
-            "--max-budget-usd", str(budget),
-        ]
     process = None
     try:
+        prompt = case["prompt"].replace("$SKILL_UNDER_TEST", f"${slug}")
+        context_digest = None
+        environment = None
+        if runner == "codex":
+            try:
+                environment = create_codex_environment(temp_root)
+            except OSError as error:
+                return None, "", [], None, f"could not isolate Codex configuration: {error}"
+            command = build_codex_command(prompt, case["skill"], model)
+            skill_override = command[-2]
+            context_digest, catalog_error = validate_codex_skill_catalog(
+                repo, case["skill"], slug, skill_override, timeout, environment, model)
+            if catalog_error:
+                return None, "", [], None, catalog_error
+        else:
+            command = [
+                "claude", "-p", prompt,
+                "--output-format", "stream-json", "--verbose",
+                "--permission-mode", "dontAsk",
+                "--tools", ",".join(CASE_TOOLS),
+                "--allowedTools", ",".join(CASE_TOOLS),
+                "--max-budget-usd", str(budget),
+            ]
         process = subprocess.Popen(
             command, cwd=repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, start_new_session=True)
+            text=True, start_new_session=True, env=environment)
         timed_out = False
         try:
             stdout, stderr = process.communicate(timeout=timeout)
@@ -344,39 +481,43 @@ def run_once(case, skills_root, budget, timeout, runner="claude", model=None):
                        for event in harness.iter_events(stdout)
                        for name in harness.parse_skill_names(event)]
         if timed_out:
-            return None, final_text, ambient, f"timeout after {timeout}s"
+            return None, final_text, ambient, context_digest, f"timeout after {timeout}s"
         if process.returncode != 0 and not stdout.strip():
             detail = (stderr or "").strip().replace("\n", " ")[:160]
-            return None, final_text, ambient, f"{runner} exited {process.returncode}: {detail}"
+            return (None, final_text, ambient, context_digest,
+                    f"{runner} exited {process.returncode}: {detail}")
         if result_error:
-            return None, final_text, ambient, result_error
+            return None, final_text, ambient, context_digest, result_error
         if process.returncode != 0:
             detail = (stderr or "").strip().replace("\n", " ")[:160]
-            return None, final_text, ambient, f"{runner} exited {process.returncode}: {detail}"
+            return (None, final_text, ambient, context_digest,
+                    f"{runner} exited {process.returncode}: {detail}")
         if not final_text.strip():
-            return None, "", ambient, "empty transcript"
+            return None, "", ambient, context_digest, "empty transcript"
         if runner == "codex":
             final_text, skill_error = validate_codex_canary(final_text, canary)
         else:
             skill_error = failed_skill_load(tool_calls, slug)
         if skill_error:
-            return None, final_text, ambient, skill_error
-        scored = slop_score.score(final_text)
+            return None, final_text, ambient, context_digest, skill_error
+        scored = slop_score.score(final_text, scoring_rules, scoring_measures)
         floor = case.get("min_words", MIN_SCORABLE_WORDS)
         if scored["words"] < floor:
-            return None, final_text, ambient, (
+            return None, final_text, ambient, context_digest, (
                 f"only {scored['words']} prose words after stripping code, "
                 f"under this case's floor of {floor} for a per-100-word rate")
         ceiling = case.get("max_words")
         if ceiling is not None and scored["words"] > ceiling:
-            return None, final_text, ambient, (
+            return None, final_text, ambient, context_digest, (
                 f"{scored['words']} prose words after stripping code, over this case's "
                 f"ceiling of {ceiling}")
-        return scored, final_text, ambient, None
+        return scored, final_text, ambient, context_digest, None
     finally:
-        if process is not None:
-            harness.kill_process_group(process)
-        shutil.rmtree(temp_root, ignore_errors=True)
+        try:
+            if process is not None:
+                harness.kill_process_group(process)
+        finally:
+            shutil.rmtree(temp_root)
 
 
 def summarise(runs):
@@ -485,9 +626,9 @@ def print_delta(baseline_stats, variant_stats, n_baseline, n_variant):
                 "threshold_95": threshold,
                 "reading": reading,
             }
-    print(f"\n  Read the [decides] row alone as the result. The [describes] rows are "
-          f"context;\n  treating any of them as a finding is how six tests become one "
-          f"false positive.")
+    print("\n  Read the [decides] row alone as the result. The [describes] rows are "
+          "context;\n  treating any of them as a finding is how six tests become one "
+          "false positive.")
     return decision
 
 
@@ -554,23 +695,52 @@ def main():
     if variant_root and not variant_root.is_dir():
         parser.error(f"variant tree is not a directory: {variant_root}")
 
-    cases = json.loads(CASES.read_text())["cases"]
-    if args.case:
-        cases = [c for c in cases if c["id"] == args.case]
-        if not cases:
-            parser.error(f"unknown case: {args.case}")
-
-    run_id = (datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-              + "-" + uuid.uuid4().hex[:8])
-    output_dir = args.output_dir or REPO / ".eval-results" / "register" / run_id
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     version = subprocess.run(
         [args.runner, "--version"], capture_output=True, text=True)
     if version.returncode != 0:
         parser.error(f"could not read {args.runner} version: "
                      f"{(version.stderr or version.stdout).strip()[:160]}")
     runner_version = (version.stdout or version.stderr).strip()
+    if args.runner == "codex" and runner_version != SUPPORTED_CODEX_VERSION:
+        parser.error(
+            f"unsupported Codex version {runner_version!r}; expected {SUPPORTED_CODEX_VERSION!r}")
+
+    try:
+        protocol_content = tuple(
+            (name, source.read_bytes()) for name, source in protocol_sources())
+        protocol_by_name = dict(protocol_content)
+        cases = json.loads(protocol_by_name["tools/eval/register_cases.json"])["cases"]
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
+        parser.error(f"could not read the evaluation protocol: {error}")
+    if args.case:
+        cases = [c for c in cases if c["id"] == args.case]
+        if not cases:
+            parser.error(f"unknown case: {args.case}")
+
+    protocol_snapshot = tempfile.TemporaryDirectory(prefix="register-inputs-")
+    try:
+        protocol_root = pathlib.Path(protocol_snapshot.name)
+        frozen_rules = protocol_root / "slop_rules.json"
+        frozen_rules.write_bytes(protocol_by_name["tools/eval/slop_rules.json"])
+        scoring_rules, scoring_measures = slop_score.load_rules(frozen_rules)
+        frozen_fixture = protocol_root / "fixture"
+        fixture_prefix = "tools/eval/fixture/"
+        for name, content in protocol_content:
+            if not name.startswith(fixture_prefix):
+                continue
+            destination = frozen_fixture / name.removeprefix(fixture_prefix)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(content)
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
+        protocol_snapshot.cleanup()
+        parser.error(f"could not freeze the evaluation protocol: {error}")
+
+    run_id = (datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+              + "-" + uuid.uuid4().hex[:8])
+    output_dir = args.output_dir or REPO / ".eval-results" / "register" / run_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    protocol_sha256 = protocol_digest(protocol_content)
 
     arms = [("baseline", baseline_root)]
     if variant_root:
@@ -578,23 +748,42 @@ def main():
 
     exit_code = 0
     for case in cases:
+        print(f"\n{'=' * 72}\n{case['id']}  ({case['skill']} -> {case['artifact']})")
+        print(f"{'=' * 72}")
+        snapshot = None
+        setup_error = None
         try:
             snapshot, frozen_arms, skill_digests = snapshot_arm_roots(arms, case["skill"])
         except (OSError, ValueError) as error:
-            parser.error(f"could not snapshot experiment arms: {error}")
-        print(f"\n{'=' * 72}\n{case['id']}  ({case['skill']} -> {case['artifact']})")
-        print(f"{'=' * 72}")
+            frozen_arms = arms
+            skill_digests = {}
+            setup_error = f"could not snapshot experiment arms: {error}"
+        if (setup_error is None and variant_root
+                and skill_digests["baseline"] == skill_digests["variant"]):
+            setup_error = "baseline and variant skill digests are identical"
+        if setup_error:
+            exit_code = 1
+            print(f"  ERROR {setup_error}")
+        codex_context_sha256 = None
         stats_by_arm = {}
         runs_by_arm = {arm_name: [] for arm_name, _ in frozen_arms}
         ambient_hits_by_arm = {arm_name: 0 for arm_name, _ in frozen_arms}
         failures_by_arm = {arm_name: [] for arm_name, _ in frozen_arms}
         execution_sequence = []
-        schedule = build_arm_schedule(frozen_arms, args.repeat, args.seed)
+        schedule = [] if setup_error else build_arm_schedule(
+            frozen_arms, args.repeat, args.seed)
         for position, (arm_name, root, index) in enumerate(schedule, start=1):
             print(f"  {arm_name} {index + 1}/{args.repeat} ... ", end="", flush=True)
-            scored, text, ambient, error = run_once(
+            scored, text, ambient, context_digest, error = run_once(
                 case, root, args.budget, args.timeout, runner=args.runner,
-                model=args.model)
+                model=args.model, scoring_rules=scoring_rules,
+                scoring_measures=scoring_measures, fixture=frozen_fixture)
+            if context_digest is not None:
+                if codex_context_sha256 is None:
+                    codex_context_sha256 = context_digest
+                elif context_digest != codex_context_sha256:
+                    context_error = "Codex effective context changed during the experiment"
+                    error = f"{error}; {context_error}" if error else context_error
             stem = f"{case['id']}.{arm_name}.{index + 1}"
             if text:
                 (output_dir / f"{stem}.md").write_text(text)
@@ -627,24 +816,35 @@ def main():
                 "seed": args.seed,
                 "case": case["id"],
                 "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
-                "disabled_installed_skill": str(
-                    pathlib.Path.home() / ".agents" / "skills" / case["skill"] / "SKILL.md"
-                ) if args.runner == "codex" else None,
+                "protocol_sha256": protocol_sha256,
+                "codex_context_sha256": codex_context_sha256,
+                "codex_reasoning_effort": (
+                    CODEX_REASONING_EFFORT if args.runner == "codex" else None),
+                "codex_user_config": (
+                    "ignored in isolated CODEX_HOME" if args.runner == "codex" else None),
+                "supported_runner_version": (
+                    SUPPORTED_CODEX_VERSION if args.runner == "codex" else None),
+                "codex_skill_catalog_contract": (
+                    "installed skill absent; staged skill present exactly once before every run"
+                    if args.runner == "codex" else None),
+                "setup_error": setup_error,
                 "arm_sequence": execution_sequence,
             }
         }
         for arm_name, _ in frozen_arms:
             runs = runs_by_arm[arm_name]
             failures = failures_by_arm[arm_name]
+            unattempted = args.repeat - len(runs) - len(failures)
             ambient_hits = ambient_hits_by_arm[arm_name]
             stats_by_arm[arm_name] = summarise(runs)
             audit_by_arm[arm_name] = {
                 "runner": args.runner,
                 "model": args.model or "runner default",
-                "skill_sha256": skill_digests[arm_name],
+                "skill_sha256": skill_digests.get(arm_name),
                 "requested": args.repeat,
                 "scored": len(runs),
                 "failed": len(failures),
+                "unattempted": unattempted,
                 "failures": failures,
                 "unslop_fired": ambient_hits if args.runner == "claude" else None,
                 "ambient_skill_evidence": (
@@ -654,7 +854,8 @@ def main():
             }
             print_arm(arm_name, stats_by_arm[arm_name], runs)
             print(f"  {len(runs)}/{args.repeat} runs scored"
-                  + (f", {len(failures)} failed" if failures else ""))
+                  + (f", {len(failures)} failed" if failures else "")
+                  + (f", {unattempted} unattempted" if unattempted else ""))
             if runs and args.runner == "claude":
                 print(f"  unslop fired in {ambient_hits}/{len(runs)} scored runs")
             elif runs:
@@ -664,7 +865,11 @@ def main():
             if arm_name == "baseline" and len(runs) > 1:
                 print_sensitivity(stats_by_arm[arm_name], len(runs))
 
-        if variant_root:
+        if setup_error:
+            audit_by_arm["decision"] = {
+                "reading": f"invalid experiment; {setup_error}",
+            }
+        elif variant_root:
             is_complete = all(
                 len(runs_by_arm[name]) == args.repeat for name, _ in frozen_arms)
             if is_complete:
@@ -681,9 +886,11 @@ def main():
 
         (output_dir / f"{case['id']}.summary.json").write_text(
             json.dumps(audit_by_arm, indent=2) + "\n")
-        snapshot.cleanup()
+        if snapshot is not None:
+            snapshot.cleanup()
 
     print(f"\nRaw results: {output_dir}")
+    protocol_snapshot.cleanup()
     return exit_code
 
 
