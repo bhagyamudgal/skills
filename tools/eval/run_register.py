@@ -51,6 +51,7 @@ RUNNERS = ("claude", "codex")
 SUPPORTED_CODEX_VERSION = "codex-cli 0.152.1"
 CODEX_REASONING_EFFORT = "high"
 CODEX_SANDBOX_MODE = "read-only"
+RUNNER_VERSION_TIMEOUT_SECONDS = 30
 PROTOCOL_FILES = (
     ("tools/eval/run_register.py", pathlib.Path(__file__).resolve()),
     ("tools/eval/harness.py", HERE / "harness.py"),
@@ -695,8 +696,12 @@ def main():
     if variant_root and not variant_root.is_dir():
         parser.error(f"variant tree is not a directory: {variant_root}")
 
-    version = subprocess.run(
-        [args.runner, "--version"], capture_output=True, text=True)
+    try:
+        version = subprocess.run(
+            [args.runner, "--version"], capture_output=True, text=True,
+            timeout=RUNNER_VERSION_TIMEOUT_SECONDS)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        parser.error(f"could not run {args.runner}: {error}")
     if version.returncode != 0:
         parser.error(f"could not read {args.runner} version: "
                      f"{(version.stderr or version.stdout).strip()[:160]}")

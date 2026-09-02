@@ -502,7 +502,8 @@ class CodexRegisterTranscript(unittest.TestCase):
         self.assertIn("generation partially failed", error)
 
     def test_tool_items_reject_an_otherwise_complete_turn(self):
-        for item_type in ("command_execution", "file_change", "mcp_tool_call", "web_search"):
+        for item_type in (
+                "command_execution", "file_change", "mcp_tool_call", "web_search", "todo_list"):
             with self.subTest(item_type=item_type):
                 transcript = "\n".join([
                     '{"type":"thread.started","thread_id":"thread-1"}',
@@ -514,6 +515,17 @@ class CodexRegisterTranscript(unittest.TestCase):
                 ])
                 _, error = self.register.parse_codex_transcript(transcript)
                 self.assertIn(item_type, error)
+
+    def test_item_updates_reject_an_otherwise_complete_turn(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"item.updated","item":{"type":"todo_list"}}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Final"}}',
+            '{"type":"turn.completed"}',
+        ])
+        _, error = self.register.parse_codex_transcript(transcript)
+        self.assertIn("item.updated", error)
 
     def test_command_start_rejects_an_otherwise_complete_turn(self):
         transcript = "\n".join([
@@ -1074,6 +1086,28 @@ class RegisterProtocol(unittest.TestCase):
                 self.assertRaises(SystemExit) as raised:
             self.register.main()
         self.assertEqual(raised.exception.code, 2)
+
+    def test_runner_startup_failures_are_usage_errors(self):
+        argv = [
+            "run_register.py", "--runner", "codex", "--model", "gpt-5.6-sol",
+            "--case", "pr-body",
+        ]
+        failures = (
+            FileNotFoundError("runner missing"),
+            subprocess.TimeoutExpired("codex --version", 30),
+        )
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__), \
+                    mock.patch.object(sys, "argv", argv), \
+                    mock.patch.object(
+                        self.register.subprocess, "run", side_effect=failure) as run, \
+                    self.assertRaises(SystemExit) as raised:
+                self.register.main()
+            self.assertEqual(raised.exception.code, 2)
+            self.assertEqual(
+                run.call_args.kwargs["timeout"],
+                self.register.RUNNER_VERSION_TIMEOUT_SECONDS,
+            )
 
     def test_claude_rejects_a_model_flag_it_cannot_apply(self):
         done = subprocess.run([
