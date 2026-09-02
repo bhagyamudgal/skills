@@ -9,7 +9,9 @@ built on it would be noise wearing a decimal point.
 """
 import json
 import pathlib
+import shutil
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -297,33 +299,44 @@ class DriftExtraction(unittest.TestCase):
     def test_returns_none_when_the_shape_moved(self):
         self.assertIsNone(slop_score.extract_live_vocabulary("no such rule here"))
 
+    def _synthetic_live(self, terms):
+        """A stand-in for the installed unslop, so the gate can be tested anywhere."""
+        path = pathlib.Path(tempfile.mkdtemp(prefix="drift-live-")) / "SKILL.md"
+        path.write_text(
+            "7. **AI vocabulary.** " + ", ".join(sorted(terms)) + ". Replace with plain words.\n")
+        self.addCleanup(shutil.rmtree, path.parent, ignore_errors=True)
+        return path
+
+    def _with_snapshot(self, terms):
+        original = slop_score.RULES_FILE.read_text()
+        spec = json.loads(original)
+        spec["live_rule_7_snapshot"]["terms"] = sorted(terms)
+        slop_score.RULES_FILE.write_text(json.dumps(spec, indent=2))
+        self.addCleanup(slop_score.RULES_FILE.write_text, original)
+
     def test_a_removed_live_term_fails_the_drift_check(self):
         """The one-way check exited 0 when the live skill dropped a term, leaving it vendored
         and still scoring text the rule no longer calls a tell."""
-        original = slop_score.RULES_FILE.read_text()
-        spec = json.loads(original)
-        spec["live_rule_7_snapshot"]["terms"].append("zzz-no-longer-live")
-        try:
-            slop_score.RULES_FILE.write_text(json.dumps(spec, indent=2))
-            self.assertEqual(slop_score.check_drift(), 1)
-        finally:
-            slop_score.RULES_FILE.write_text(original)
+        live = {"additionally", "crucial", "delve", "enduring", "enhance",
+                "garner", "interplay", "intricate", "pivotal"}
+        self._with_snapshot(live | {"zzz-no-longer-live"})
+        self.assertEqual(slop_score.check_drift(self._synthetic_live(live)), 1)
 
     def test_an_added_live_term_fails_the_drift_check(self):
-        original = slop_score.RULES_FILE.read_text()
-        spec = json.loads(original)
-        spec["live_rule_7_snapshot"]["terms"] = [
-            t for t in spec["live_rule_7_snapshot"]["terms"] if t != "delve"]
-        try:
-            slop_score.RULES_FILE.write_text(json.dumps(spec, indent=2))
-            self.assertEqual(slop_score.check_drift(), 1)
-        finally:
-            slop_score.RULES_FILE.write_text(original)
+        live = {"additionally", "crucial", "delve", "enduring", "enhance",
+                "garner", "interplay", "intricate", "pivotal", "brand-new-term"}
+        self._with_snapshot(live - {"brand-new-term"})
+        self.assertEqual(slop_score.check_drift(self._synthetic_live(live)), 1)
 
-    def test_the_unmodified_tree_passes_the_drift_check(self):
-        if slop_score.find_live_unslop() is None:
-            self.skipTest("no installed unslop on this machine; it is user-local")
-        self.assertEqual(slop_score.check_drift(), 0)
+    def test_a_matching_snapshot_passes_without_an_installed_unslop(self):
+        live = {"additionally", "crucial", "delve", "enduring", "enhance",
+                "garner", "interplay", "intricate", "pivotal"}
+        self._with_snapshot(live)
+        self.assertEqual(slop_score.check_drift(self._synthetic_live(live)), 0)
+
+    def test_a_missing_live_file_skips_rather_than_fails(self):
+        self.assertEqual(
+            slop_score.check_drift(pathlib.Path("/nonexistent/unslop/SKILL.md")), 0)
 
     def test_vendored_list_covers_the_live_one(self):
         """The drift check itself, run as a test so a stale vendor fails the suite."""

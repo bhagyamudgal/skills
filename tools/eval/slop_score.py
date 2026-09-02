@@ -178,16 +178,22 @@ def find_live_unslop():
     return next((path for path in LIVE_UNSLOP_CANDIDATES if path.is_file()), None)
 
 
-def check_drift():
+def check_drift(live_path=None):
     """Compare the vendored vocabulary against the live user-local unslop skill.
 
     The live file is machine-specific and absent in CI, so its absence is a skip and never
     a failure. Same contract as check_global_rules_mirror_drift in tools/verify_skills.py.
+
+    live_path lets a caller supply the live source instead of discovering it. The tests that
+    prove this gate rejects drift need one, because on a machine with no installed unslop
+    the skip above returns 0 before any comparison happens, and a mutation test asserting
+    failure would fail for the wrong reason.
     """
-    live_path = find_live_unslop()
-    if live_path is None:
+    live_path = live_path or find_live_unslop()
+    if live_path is None or not live_path.is_file():
         print("drift check skipped, no installed unslop at "
-              + " or ".join(str(p) for p in LIVE_UNSLOP_CANDIDATES))
+              + (str(live_path) if live_path
+                 else " or ".join(str(p) for p in LIVE_UNSLOP_CANDIDATES)))
         return 0
     live = extract_live_vocabulary(live_path.read_text())
     if live is None:
