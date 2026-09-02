@@ -16,8 +16,6 @@ import signal
 import subprocess
 import tempfile
 
-GIT_QUIET = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
-
 
 def make_sandbox(prefix, fixture_src, fixture_dest=".", skills=(), post_commit_edit=None):
     """Copy a fixture into a throwaway git repo. Returns (temp_root, repo_path).
@@ -39,18 +37,31 @@ def make_sandbox(prefix, fixture_src, fixture_dest=".", skills=(), post_commit_e
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(skill, target, dirs_exist_ok=True)
 
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, **GIT_QUIET)
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, **GIT_QUIET)
-    subprocess.run(["git", "-c", "user.email=eval@local", "-c", "user.name=eval",
-                    "commit", "-qm", "fixture"], cwd=repo, check=True, **GIT_QUIET)
+    # A global commit.gpgsign with no key, or a core.hooksPath pointing at a failing hook,
+    # fails here. Discarding git's stderr leaves only "returned non-zero exit status 128".
+    for argv in (["git", "init", "-q"],
+                 ["git", "add", "-A"],
+                 ["git", "-c", "user.email=eval@local", "-c", "user.name=eval",
+                  "commit", "-qm", "fixture"]):
+        done = subprocess.run(argv, cwd=repo, capture_output=True, text=True)
+        if done.returncode != 0:
+            raise RuntimeError(
+                f"sandbox setup failed: {' '.join(argv)} exited {done.returncode}: "
+                f"{(done.stderr or done.stdout).strip()[:300]}")
     if post_commit_edit:
         post_commit_edit(repo)
     return temp_root, repo
 
 
+# A result event can signal failure through `subtype` without setting `is_error`, so keying
+# only on the boolean scores a truncated or turn-capped run as clean.
+FAILURE_SUBTYPES = frozenset({"error_max_turns", "error_during_execution"})
+
+
 def format_result_error(event, detail_source=None):
     """Render a `result` event's failure as one line, or None when it succeeded."""
-    if not event.get("is_error"):
+    subtype = event.get("subtype")
+    if not event.get("is_error") and subtype not in FAILURE_SUBTYPES:
         return None
     status = event.get("api_error_status")
     terminal_reason = event.get("terminal_reason")
@@ -59,6 +70,7 @@ def format_result_error(event, detail_source=None):
     return ": ".join(
         part for part in [
             f"api error {status}" if status else None,
+            subtype if subtype in FAILURE_SUBTYPES else None,
             terminal_reason if terminal_reason and terminal_reason != "completed" else None,
             detail or None,
         ] if part
@@ -90,6 +102,7 @@ def parse_transcript(output):
     tool_calls = []
     tool_calls_by_id = {}
     result_error = None
+    saw_result = False
     for event in iter_events(output):
         if event.get("type") == "assistant":
             message_text = []
@@ -117,9 +130,15 @@ def parse_transcript(output):
                     tool_call["result"] = (result if isinstance(result, str)
                                            else json.dumps(result))
         elif event.get("type") == "result":
+            saw_result = True
             result = event.get("result", "")
             final_text = result if isinstance(result, str) else json.dumps(result)
             result_error = format_result_error(event, final_text)
+    # A transcript with no result event was cut off: the process was killed, or the last
+    # line was half-written and iter_events dropped it. The text below is then a retracted
+    # draft, and scoring it as a finished answer is how a truncated run reads as a clean one.
+    if not saw_result and result_error is None:
+        result_error = "missing result event, transcript truncated"
     # The `result` event carries the final assistant message; earlier messages are drafts,
     # and joining them lets a card be assembled field-wise across drafts the model retracted.
     return final_text or last_assistant_message, tool_calls, result_error
@@ -135,17 +154,22 @@ def kill_process_group(proc, partial_stdout=""):
     transcript worth asserting against, so every path here falls back to it rather than
     reporting an empty run, which would read as a clean miss instead of a truncation.
     """
-    try:
-        os.killpg(proc.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    # Only signal a process that has not been reaped. Once wait() has collected it the pid
+    # can be recycled, and killpg would deliver SIGKILL to an unrelated process group.
+    if proc.returncode is None:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
     try:
         stdout, stderr = proc.communicate(timeout=1)
         return stdout or partial_stdout, stderr
     except subprocess.TimeoutExpired as drain_error:
-        drained = drain_error.stdout
-        if isinstance(drained, bytes):
-            drained = drained.decode(errors="replace")
+        def decoded(stream):
+            return stream.decode(errors="replace") if isinstance(stream, bytes) else stream
+
+        drained = decoded(drain_error.stdout)
+        drained_stderr = decoded(drain_error.stderr) or ""
         for pipe in (proc.stdout, proc.stderr):
             if pipe and not pipe.closed:
                 pipe.close()
@@ -153,7 +177,7 @@ def kill_process_group(proc, partial_stdout=""):
             proc.wait(timeout=1)
         except subprocess.TimeoutExpired:
             pass
-        return drained or partial_stdout, ""
+        return drained or partial_stdout, drained_stderr
 
 
 def verdict(hits, total, has_error=False):

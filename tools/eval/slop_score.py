@@ -24,9 +24,26 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 RULES_FILE = HERE / "slop_rules.json"
-LIVE_UNSLOP = pathlib.Path.home() / ".claude" / "skills" / "unslop" / "SKILL.md"
+# Both roots are live install locations on a machine that uses these skills, so checking
+# only the first prints "not on this machine" while the file sits in the second.
+LIVE_UNSLOP_CANDIDATES = (
+    pathlib.Path.home() / ".claude" / "skills" / "unslop" / "SKILL.md",
+    pathlib.Path.home() / ".agents" / "skills" / "unslop" / "SKILL.md",
+)
 
-FENCE = re.compile(r"^[ \t]*(```|~~~).*?^[ \t]*\1[ \t]*$", re.MULTILINE | re.DOTALL)
+FENCE = re.compile(r"^[ \t]*(```|~~~)([^\n`]*)\n(.*?)^[ \t]*\1[ \t]*$",
+                   re.MULTILINE | re.DOTALL)
+# Strip a fence only when its info string names a programming or data language. A model
+# asked for a PR body wraps the deliverable in ```markdown so it can be copy-pasted, and
+# puts the title in a bare fence, so stripping every fence deletes the artifact under
+# measurement and scores the chat commentary about it instead.
+CODE_LANGUAGES = frozenset({
+    "diff", "patch", "js", "javascript", "jsx", "ts", "typescript", "tsx", "python", "py",
+    "bash", "sh", "shell", "zsh", "fish", "console", "json", "jsonc", "yaml", "yml", "toml",
+    "ini", "sql", "go", "rust", "rs", "java", "kotlin", "swift", "c", "cpp", "csharp", "cs",
+    "ruby", "rb", "php", "perl", "lua", "r", "scala", "html", "css", "scss", "xml", "svg",
+    "dockerfile", "docker", "make", "makefile", "cmake", "graphql", "proto", "hcl", "tf",
+})
 WORD = re.compile(r"[A-Za-z][A-Za-z'’-]*")
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?])[\s\n]+")
 LONG_SENTENCE_WORDS = 35
@@ -57,9 +74,17 @@ def load_rules(path=RULES_FILE):
 
 
 def strip_code(text):
-    """Drop fenced blocks. A long code block would otherwise dilute every per-100-word rate
-    and make a code-heavy answer look cleaner than a prose one."""
-    return FENCE.sub("\n", text)
+    """Drop fenced code, keep fenced prose unwrapped.
+
+    A long code block would otherwise dilute every per-100-word rate and make a code-heavy
+    answer look cleaner than a prose one. But a fence holding the deliverable is the thing
+    being measured, so language decides: a named code language goes, anything else stays.
+    """
+    def replace(match):
+        language = match.group(2).strip().lower().split(":")[0]
+        return "\n" if language in CODE_LANGUAGES else "\n" + match.group(3) + "\n"
+
+    return FENCE.sub(replace, text)
 
 
 def sentences(prose):
@@ -78,9 +103,16 @@ def score(text, rules=None, measures=None):
     per_100 = (lambda n: round(100.0 * n / total_words, 2)) if total_words else (lambda n: 0.0)
 
     hits = {}
+    covered = set()
     for rule in rules:
-        found = rule["regex"].findall(prose)
-        hits[rule["name"]] = {"count": len(found), "per_100w": per_100(len(found))}
+        spans = [m.span() for m in rule["regex"].finditer(prose)]
+        hits[rule["name"]] = {"count": len(spans), "per_100w": per_100(len(spans))}
+        covered.update(spans)
+    # Per-rule counts stay raw for diagnostics, but the headline total counts each matched
+    # span once. Some terms are filed under two rules on purpose (`vibrant` is promotional
+    # and AI vocabulary; `great question` is a chatbot phrase and sycophancy), and summing
+    # the rules would silently weight those double against every other tell.
+    total_tells = len(covered)
 
     lengths = [len(WORD.findall(s)) for s in sentences(prose)]
     lowered = [w.lower() for w in words]
@@ -93,8 +125,7 @@ def score(text, rules=None, measures=None):
         "words": total_words,
         "sentences": len(lengths),
         "rules": hits,
-        "tells_per_100w": round(sum(h["count"] for h in hits.values()) * 100.0 / total_words, 2)
-        if total_words else 0.0,
+        "tells_per_100w": round(total_tells * 100.0 / total_words, 2) if total_words else 0.0,
         "measures": {
             "mean_sentence_words": round(statistics.fmean(lengths), 2) if lengths else 0.0,
             # Uniform sentence length is the register tell unslop's "vary rhythm" names, and
@@ -123,6 +154,12 @@ def delta(before, after):
     return out
 
 
+# Rule 7 has listed at least a dozen terms in every version of unslop. A capture that comes
+# back with fewer means the regex clipped the list, not that the rule shrank, and a drift
+# check that compares one term against the vendored list passes while comparing nothing.
+MIN_PLAUSIBLE_VOCABULARY = 8
+
+
 def extract_live_vocabulary(text):
     """Pull unslop rule 7's word list out of the live SKILL.md, or None if its shape moved."""
     match = re.search(r"\*\*AI vocabulary\.\*\*\s*(.+?)\s*Replace", text, re.DOTALL)
@@ -133,7 +170,14 @@ def extract_live_vocabulary(text):
         cleaned = re.sub(r"\(.*?\)", "", chunk).strip().strip(".").lower()
         if cleaned:
             terms.add(cleaned)
-    return terms or None
+    if len(terms) < MIN_PLAUSIBLE_VOCABULARY:
+        return None
+    return terms
+
+
+def find_live_unslop():
+    """The installed unslop skill, or None when it is not on this machine."""
+    return next((path for path in LIVE_UNSLOP_CANDIDATES if path.is_file()), None)
 
 
 def check_drift():
@@ -142,12 +186,15 @@ def check_drift():
     The live file is machine-specific and absent in CI, so its absence is a skip and never
     a failure. Same contract as check_global_rules_mirror_drift in tools/verify_skills.py.
     """
-    if not LIVE_UNSLOP.is_file():
-        print(f"drift check skipped, {LIVE_UNSLOP} is not on this machine")
+    live_path = find_live_unslop()
+    if live_path is None:
+        print("drift check skipped, no installed unslop at "
+              + " or ".join(str(p) for p in LIVE_UNSLOP_CANDIDATES))
         return 0
-    live = extract_live_vocabulary(LIVE_UNSLOP.read_text())
+    live = extract_live_vocabulary(live_path.read_text())
     if live is None:
-        print(f"drift check FAILED to parse rule 7 out of {LIVE_UNSLOP}. The vendored list "
+        print(f"drift check FAILED to parse a plausible rule 7 out of {live_path}. Either "
+              f"the rule moved or the regex clipped its list; either way the vendored list "
               f"may be stale and this check can no longer tell.", file=sys.stderr)
         return 1
 

@@ -6,7 +6,16 @@
       "id": 1,
       "name": "puffery",
       "kind": "phrases",
-      "terms": ["pivotal moment", "testament to", "evolving landscape", "setting the stage for", "indelible mark", "deeply rooted", "rich history", "stands the test of time"]
+      "terms": [
+        "pivotal moment",
+        "testament to",
+        "evolving landscape",
+        "setting the stage for",
+        "indelible mark",
+        "deeply rooted",
+        "rich history",
+        "stands the test of time"
+      ]
     },
     {
       "id": 3,
@@ -19,25 +28,76 @@
       "id": 4,
       "name": "promotional",
       "kind": "words",
-      "terms": ["nestled", "vibrant", "breathtaking", "groundbreaking", "renowned", "stunning", "must-visit", "unparalleled", "cutting-edge", "state-of-the-art"]
+      "terms": [
+        "nestled",
+        "vibrant",
+        "breathtaking",
+        "groundbreaking",
+        "renowned",
+        "stunning",
+        "must-visit",
+        "unparalleled",
+        "cutting-edge",
+        "state-of-the-art"
+      ]
     },
     {
       "id": 5,
       "name": "vague-attribution",
       "kind": "phrases",
-      "terms": ["experts believe", "experts say", "industry reports suggest", "some critics argue", "studies show", "research suggests", "it is widely believed", "many would argue"]
+      "terms": [
+        "experts believe",
+        "experts say",
+        "industry reports suggest",
+        "some critics argue",
+        "studies show",
+        "research suggests",
+        "it is widely believed",
+        "many would argue"
+      ]
     },
     {
       "id": 6,
       "name": "formulaic-challenge",
       "kind": "phrases",
-      "terms": ["despite challenges", "despite these challenges", "continues to thrive", "while challenges remain"]
+      "terms": [
+        "despite challenges",
+        "despite these challenges",
+        "continues to thrive",
+        "while challenges remain"
+      ]
     },
     {
       "id": 7,
       "name": "ai-vocabulary",
       "kind": "words",
-      "terms": ["additionally", "crucial", "delve", "enduring", "enhance", "enhances", "enhanced", "fostering", "garner", "interplay", "intricate", "pivotal", "showcase", "showcases", "tapestry", "testament", "underscore", "underscores", "vibrant", "seamless", "seamlessly", "robust", "comprehensive", "myriad", "realm"]
+      "terms": [
+        "additionally",
+        "crucial",
+        "delve",
+        "enduring",
+        "enhance",
+        "enhances",
+        "enhanced",
+        "fostering",
+        "garner",
+        "interplay",
+        "intricate",
+        "pivotal",
+        "showcase",
+        "showcases",
+        "tapestry",
+        "testament",
+        "underscore",
+        "underscores",
+        "vibrant",
+        "seamless",
+        "seamlessly",
+        "robust",
+        "comprehensive",
+        "myriad",
+        "realm"
+      ]
     },
     {
       "id": 8,
@@ -80,7 +140,8 @@
       "id": 18,
       "name": "emoji",
       "kind": "regex",
-      "pattern": "[\\U0001F300-\\U0001FAFF\\u2190-\\u21FF\\u2600-\\u27BF\\u2B00-\\u2BFF\\uFE0F]"
+      "pattern": "[\\U0001F300-\\U0001FAFF\\u2600-\\u27BF\\u2B00-\\u2BFF]",
+      "why": "Arrows (U+2190-U+21FF) are deliberately excluded: `->` is prescribed report formatting, not decoration."
     },
     {
       "id": 19,
@@ -92,19 +153,41 @@
       "id": 20,
       "name": "chatbot-phrase",
       "kind": "phrases",
-      "terms": ["i hope this helps", "let me know if", "feel free to", "of course!", "certainly!", "happy to help", "is there anything else", "great question", "absolutely!"]
+      "terms": [
+        "i hope this helps",
+        "let me know if",
+        "feel free to",
+        "of course!",
+        "certainly!",
+        "happy to help",
+        "is there anything else",
+        "great question",
+        "absolutely!"
+      ]
     },
     {
       "id": 22,
       "name": "sycophancy",
-      "kind": "phrases",
-      "terms": ["great question", "you're absolutely right", "you are absolutely right", "excellent point", "that's a great", "good catch!", "spot on"]
+      "kind": "regex",
+      "pattern": "\\b(great question|you'?re absolutely right|you are absolutely right|excellent point|that'?s a great|good catch|spot on)\\b",
+      "why": "Anchored on word boundaries; unanchored `spot on` matched inside 'was spot online'."
     },
     {
       "id": 23,
       "name": "filler",
       "kind": "phrases",
-      "terms": ["in order to", "due to the fact that", "it is important to note", "it's important to note", "it is worth noting", "it's worth noting", "needless to say", "at the end of the day", "when it comes to", "the fact that"]
+      "terms": [
+        "in order to",
+        "due to the fact that",
+        "it is important to note",
+        "it's important to note",
+        "it is worth noting",
+        "it's worth noting",
+        "needless to say",
+        "at the end of the day",
+        "when it comes to",
+        "the fact that"
+      ]
     },
     {
       "id": 24,
@@ -116,7 +199,24 @@
       "id": 26,
       "name": "abstract-metaphor-noun",
       "kind": "words",
-      "terms": ["substrate", "wedge", "locus", "vantage", "nexus", "bedrock", "modality", "paradigm", "gold-plating", "flywheel", "endgame", "north star", "ratchet", "landscape", "ecosystem", "journey"]
+      "terms": [
+        "substrate",
+        "wedge",
+        "locus",
+        "vantage",
+        "nexus",
+        "bedrock",
+        "modality",
+        "paradigm",
+        "gold-plating",
+        "flywheel",
+        "endgame",
+        "north star",
+        "ratchet",
+        "landscape",
+        "ecosystem",
+        "journey"
+      ]
     },
     {
       "id": 29,
@@ -129,12 +229,75 @@
       "id": 31,
       "name": "fancy-synonym",
       "kind": "words",
-      "terms": ["utilize", "utilizes", "utilizing", "leverage", "leverages", "leveraging", "facilitate", "facilitates", "numerous", "commence", "endeavor", "ascertain", "subsequently", "aforementioned", "furthermore", "moreover", "nevertheless", "utilization"]
+      "terms": [
+        "utilize",
+        "utilizes",
+        "utilizing",
+        "leverage",
+        "leverages",
+        "leveraging",
+        "facilitate",
+        "facilitates",
+        "numerous",
+        "commence",
+        "endeavor",
+        "ascertain",
+        "subsequently",
+        "aforementioned",
+        "furthermore",
+        "moreover",
+        "nevertheless",
+        "utilization"
+      ]
     }
   ],
   "measures": {
     "note": "Continuous register signals rather than countable tells. These are what issue #37 is actually about: uniform sentence length and dense nominalised prose are the register, and no word list detects them.",
-    "adverb_exceptions": ["only", "early", "likely", "family", "supply", "reply", "apply", "multiply", "assembly", "anomaly", "ally", "rely", "july", "italy", "ugly", "silly", "daily", "weekly", "monthly", "yearly", "hourly", "friendly", "costly", "lonely", "holy", "poly", "fly", "belly", "jelly", "rally", "really", "fully", "solely", "wholly"],
-    "nominalisation_suffixes": ["tion", "sion", "ment", "ance", "ence", "ity", "ness", "ism", "ance"]
+    "adverb_exceptions": [
+      "only",
+      "early",
+      "likely",
+      "family",
+      "supply",
+      "reply",
+      "apply",
+      "multiply",
+      "assembly",
+      "anomaly",
+      "ally",
+      "rely",
+      "july",
+      "italy",
+      "ugly",
+      "silly",
+      "daily",
+      "weekly",
+      "monthly",
+      "yearly",
+      "hourly",
+      "friendly",
+      "costly",
+      "lonely",
+      "holy",
+      "poly",
+      "fly",
+      "belly",
+      "jelly",
+      "rally",
+      "really",
+      "fully",
+      "solely",
+      "wholly"
+    ],
+    "nominalisation_suffixes": [
+      "tion",
+      "sion",
+      "ment",
+      "ance",
+      "ence",
+      "ity",
+      "ness",
+      "ism"
+    ]
   }
 }

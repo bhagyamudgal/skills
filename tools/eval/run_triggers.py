@@ -91,6 +91,13 @@ def run_case(utterance, budget, timeout, tools=None, skill_path=None, ambient=AM
         kind, value = parsed
         if kind == "skill":
             for name in value:
+                # A Skill block whose input did not parse means a skill fired and the
+                # harness could not read which. Returning it as `None` is indistinguishable
+                # from the agent choosing nothing, which a `forbid` case then scores as a
+                # pass. It is an eval failure, not a routing decision.
+                if name is None:
+                    return (None, cost, time.time() - started,
+                            "Skill invoked with unreadable input", seen_ambient)
                 if name in ambient:
                     seen_ambient.append(name)
                     continue
@@ -229,8 +236,7 @@ def main():
             for fired, err in zip(fires, errors)
         )
         rate = hits / len(fires)
-        verdict = ("ERROR" if any(errors) else "PASS" if hits == len(fires)
-                   else "FLAKY" if hits else "FAIL")
+        verdict = harness.verdict(hits, len(fires), has_error=any(errors))
         seen = {}
         for fired, error in zip(fires, errors):
             outcome = f"error:{error}" if error else fired or "none"

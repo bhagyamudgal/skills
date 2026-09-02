@@ -161,6 +161,80 @@ class Rules(unittest.TestCase):
             empty.unlink()
 
 
+class ProseFences(unittest.TestCase):
+    """The defect that made the first baseline run measure the wrong text. A model asked for
+    a PR body fences it so it can be copy-pasted, and stripping every fence scored the chat
+    commentary about the body instead of the body."""
+
+    def test_a_markdown_fence_is_kept(self):
+        text = "Here is the body.\n\n```markdown\nWe utilize the delve approach.\n```\n"
+        scored = slop_score.score(text)
+        self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 1)
+        self.assertEqual(scored["rules"]["ai-vocabulary"]["count"], 1)
+
+    def test_a_bare_fence_is_kept_because_titles_use_one(self):
+        scored = slop_score.score("Title:\n\n```\nfix(x): utilize the thing\n```\n")
+        self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 1)
+
+    def test_a_diff_fence_is_dropped(self):
+        scored = slop_score.score("Body.\n\n```diff\n- utilize delve crucial\n```\n")
+        self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 0)
+        self.assertEqual(scored["rules"]["ai-vocabulary"]["count"], 0)
+
+    def test_named_code_languages_are_dropped(self):
+        for language in ("python", "ts", "bash", "json", "sql", "yaml"):
+            scored = slop_score.score(f"Body.\n\n```{language}\nutilize delve\n```\n")
+            self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 0, language)
+
+    def test_prose_fence_words_reach_the_word_count(self):
+        bare = slop_score.score("Short intro here.\n")
+        fenced = slop_score.score(
+            "Short intro here.\n\n```markdown\nOne two three four five six.\n```\n")
+        self.assertGreater(fenced["words"], bare["words"] + 5)
+
+
+class TellDeduplication(unittest.TestCase):
+    def test_a_term_filed_under_two_rules_counts_once_in_the_total(self):
+        # "great question" is both a chatbot phrase and sycophancy. Summing the rules would
+        # weight it double against every other tell.
+        scored = slop_score.score("Great question, here is the answer to it now.")
+        self.assertEqual(scored["rules"]["chatbot-phrase"]["count"], 1)
+        self.assertEqual(scored["rules"]["sycophancy"]["count"], 1)
+        raw_sum = sum(h["count"] for h in scored["rules"].values())
+        total = scored["tells_per_100w"] * scored["words"] / 100.0
+        self.assertLess(round(total), raw_sum)
+
+    def test_distinct_tells_still_add_up(self):
+        scored = slop_score.score("We utilize it. Additionally, it is crucial.")
+        total = round(scored["tells_per_100w"] * scored["words"] / 100.0)
+        self.assertEqual(total, 3)
+
+
+class RuleDataFixes(unittest.TestCase):
+    def test_an_arrow_is_not_an_emoji(self):
+        # `->` is the format the global rules prescribe for completion reports.
+        self.assertEqual(slop_score.score("Old logic → new logic.")["rules"]["emoji"]["count"], 0)
+
+    def test_a_real_emoji_still_counts(self):
+        self.assertEqual(slop_score.score("Nice \U0001F600 work.")["rules"]["emoji"]["count"], 1)
+
+    def test_sycophancy_is_word_anchored(self):
+        self.assertEqual(
+            slop_score.score("The server was spot online all day.")["rules"]["sycophancy"]["count"], 0)
+        self.assertEqual(slop_score.score("That is spot on.")["rules"]["sycophancy"]["count"], 1)
+
+    def test_nominalisation_suffixes_are_unique(self):
+        _, measures = slop_score.load_rules()
+        suffixes = measures["nominalisation_suffixes"]
+        self.assertEqual(len(suffixes), len(set(suffixes)))
+
+    def test_a_partially_parsed_vocabulary_is_rejected(self):
+        # The guard that matters: a regex that clips the list returns one term, and a drift
+        # check comparing one term passes while comparing nothing.
+        clipped = "**AI vocabulary.** delve. Replace with plain words. Also: leverage, robust."
+        self.assertIsNone(slop_score.extract_live_vocabulary(clipped))
+
+
 class CodeStripping(unittest.TestCase):
     def test_fenced_blocks_do_not_dilute_the_rate(self):
         prose = "Additionally, this is crucial.\n"
@@ -171,8 +245,8 @@ class CodeStripping(unittest.TestCase):
         self.assertEqual(bare["words"], fenced["words"])
         self.assertEqual(bare["tells_per_100w"], fenced["tells_per_100w"])
 
-    def test_tilde_fences_are_stripped_too(self):
-        scored = slop_score.score("Real prose here.\n\n~~~\nutilize leverage delve\n~~~\n")
+    def test_tilde_code_fences_are_stripped_too(self):
+        scored = slop_score.score("Real prose here.\n\n~~~python\nutilize leverage delve\n~~~\n")
         self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 0)
 
 
@@ -188,7 +262,7 @@ class Robustness(unittest.TestCase):
         self.assertEqual(scored["measures"]["sentence_words_stdev"], 0.0)
 
     def test_code_only_input_does_not_crash(self):
-        scored = slop_score.score("```\nx = 1\n```\n")
+        scored = slop_score.score("```python\nx = 1\n```\n")
         self.assertEqual(scored["words"], 0)
 
 
@@ -211,19 +285,23 @@ class Delta(unittest.TestCase):
 
 class DriftExtraction(unittest.TestCase):
     def test_parses_the_live_rule_shape(self):
-        text = ("7. **AI vocabulary.** Additionally, crucial, delve, landscape (abstract), "
+        text = ("7. **AI vocabulary.** Additionally, crucial, delve, enduring, enhance, "
+                "garner, interplay, intricate, landscape (abstract), pivotal, showcase, "
                 "vibrant. Replace with plain words.\n")
-        self.assertEqual(slop_score.extract_live_vocabulary(text),
-                         {"additionally", "crucial", "delve", "landscape", "vibrant"})
+        self.assertEqual(
+            slop_score.extract_live_vocabulary(text),
+            {"additionally", "crucial", "delve", "enduring", "enhance", "garner",
+             "interplay", "intricate", "landscape", "pivotal", "showcase", "vibrant"})
 
     def test_returns_none_when_the_shape_moved(self):
         self.assertIsNone(slop_score.extract_live_vocabulary("no such rule here"))
 
     def test_vendored_list_covers_the_live_one(self):
         """The drift check itself, run as a test so a stale vendor fails the suite."""
-        if not slop_score.LIVE_UNSLOP.is_file():
-            self.skipTest(f"{slop_score.LIVE_UNSLOP} is user-local and not on this machine")
-        live = slop_score.extract_live_vocabulary(slop_score.LIVE_UNSLOP.read_text())
+        live_path = slop_score.find_live_unslop()
+        if live_path is None:
+            self.skipTest("no installed unslop on this machine; it is user-local")
+        live = slop_score.extract_live_vocabulary(live_path.read_text())
         self.assertIsNotNone(live, "rule 7 no longer parses out of the live skill")
         spec = json.loads(slop_score.RULES_FILE.read_text())
         vendored = {t.lower() for r in spec["rules"] for t in r.get("terms", [])}

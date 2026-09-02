@@ -60,6 +60,37 @@ class FormatResultError(unittest.TestCase):
         )
 
 
+class TruncatedTranscript(unittest.TestCase):
+    """A killed or overloaded run leaves a draft, and a draft is short and unfinished in
+    exactly the direction that reads as cleaner prose. Scoring one as a finished answer is
+    how a failed run becomes a false improvement."""
+
+    def test_no_result_event_is_an_error(self):
+        text, _, error = harness.parse_transcript(
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"Draft"}]}}')
+        self.assertEqual(text, "Draft")
+        self.assertIsNotNone(error)
+        self.assertIn("truncated", error)
+
+    def test_a_half_written_result_line_is_an_error(self):
+        # iter_events drops the unparsable line, so nothing else would notice.
+        _, _, error = harness.parse_transcript(
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"Draft"}]}}\n'
+            '{"type":"result","is_error":true,"api_error_status":529,"result":"Overl')
+        self.assertIsNotNone(error)
+
+    def test_a_complete_clean_result_is_not_an_error(self):
+        _, _, error = harness.parse_transcript(
+            '{"type":"result","result":"done","is_error":false}')
+        self.assertIsNone(error)
+
+    def test_failure_subtype_without_is_error(self):
+        self.assertIsNotNone(harness.format_result_error(
+            {"is_error": False, "subtype": "error_max_turns", "result": "capped"}))
+        self.assertIsNone(harness.format_result_error(
+            {"is_error": False, "subtype": "success", "result": "fine"}))
+
+
 class ParseSkillNames(unittest.TestCase):
     def _assistant(self, *blocks):
         return {"type": "assistant", "message": {"content": list(blocks)}}
@@ -325,39 +356,75 @@ class RegisterStatistics(unittest.TestCase):
         self.sigma = run_register.difference_sigma
 
     def test_identical_arms_report_zero(self):
-        arm = {"mean": 3.17, "stdev": 1.25}
-        change, sigma = self.sigma(arm, arm, 5, 5)
+        arm = {"mean": 2.37, "stdev": 0.77}
+        change, sigma, _ = self.sigma(arm, arm, 5, 5)
         self.assertEqual(change, 0)
         self.assertEqual(sigma, 0)
 
     def test_uses_standard_error_not_raw_spread(self):
-        # Real pr-body baseline: mean 3.48, stdev 0.34 at n=5. A 0.43 improvement is 2 sigma
-        # on the standard error of the difference and would have read as noise against the
-        # raw stdev, which is the bug this replaced.
-        baseline = {"mean": 3.48, "stdev": 0.34}
-        variant = {"mean": 3.05, "stdev": 0.34}
-        _, sigma = self.sigma(baseline, variant, 5, 5)
+        # Real pr-body baseline after the language-aware code strip: nominalisation mean
+        # 3.23, stdev 0.36 at n=5. A 0.46 improvement is 2 sigma on the standard error of
+        # the difference and would have read as noise against the raw stdev.
+        baseline = {"mean": 3.23, "stdev": 0.36}
+        variant = {"mean": 2.77, "stdev": 0.36}
+        _, sigma, _ = self.sigma(baseline, variant, 5, 5)
         self.assertLess(sigma, -1.9)
-        self.assertGreater(abs(sigma), 0.43 / 0.34)
+        self.assertGreater(abs(sigma), 0.46 / 0.36)
 
     def test_a_single_run_per_arm_cannot_be_judged(self):
-        _, sigma = self.sigma({"mean": 1.0, "stdev": 0.0}, {"mean": 5.0, "stdev": 0.0}, 1, 1)
+        _, sigma, _ = self.sigma({"mean": 1.0, "stdev": 0.0}, {"mean": 5.0, "stdev": 0.0}, 1, 1)
         self.assertIsNone(sigma)
 
     def test_zero_spread_in_both_arms_is_not_infinite_confidence(self):
-        _, sigma = self.sigma({"mean": 1.0, "stdev": 0.0}, {"mean": 5.0, "stdev": 0.0}, 5, 5)
+        _, sigma, _ = self.sigma({"mean": 1.0, "stdev": 0.0}, {"mean": 5.0, "stdev": 0.0}, 5, 5)
         self.assertIsNone(sigma)
 
     def test_more_runs_raise_confidence_for_the_same_change(self):
-        baseline = {"mean": 3.48, "stdev": 0.34}
-        variant = {"mean": 3.20, "stdev": 0.34}
-        _, at_five = self.sigma(baseline, variant, 5, 5)
-        _, at_twenty = self.sigma(baseline, variant, 20, 20)
+        baseline = {"mean": 3.23, "stdev": 0.36}
+        variant = {"mean": 2.95, "stdev": 0.36}
+        _, at_five, _ = self.sigma(baseline, variant, 5, 5)
+        _, at_twenty, _ = self.sigma(baseline, variant, 20, 20)
         self.assertGreater(abs(at_twenty), abs(at_five))
 
     def test_improvement_is_negative(self):
-        _, sigma = self.sigma({"mean": 5.0, "stdev": 0.5}, {"mean": 3.0, "stdev": 0.5}, 5, 5)
+        _, sigma, _ = self.sigma({"mean": 5.0, "stdev": 0.5}, {"mean": 3.0, "stdev": 0.5}, 5, 5)
         self.assertLess(sigma, 0)
+
+    def test_zero_spread_is_not_diagnosed_as_too_few_runs(self):
+        # Eight runs per arm and a +12.5 delta once read "need 2+ runs per arm", pointing
+        # the operator at sample size when nothing had produced any variance.
+        _, sigma, why = self.sigma(
+            {"mean": 0.0, "stdev": 0.0}, {"mean": 12.5, "stdev": 0.0}, 8, 8)
+        self.assertIsNone(sigma)
+        self.assertIn("variance", why)
+        self.assertNotIn("2+", why)
+
+    def test_too_few_runs_says_so(self):
+        _, sigma, why = self.sigma({"mean": 1.0, "stdev": 0.0}, {"mean": 5.0, "stdev": 0.0}, 1, 1)
+        self.assertIsNone(sigma)
+        self.assertIn("2+", why)
+
+
+class SignificanceThreshold(unittest.TestCase):
+    def setUp(self):
+        import run_register
+        self.register = run_register
+
+    def test_small_samples_demand_more_than_two_sigma(self):
+        # df=4 at n=3 per arm: the two-sided 95% value is 2.776, not 2.0. Reading sigma
+        # against a normal would call p=0.12 "probable".
+        self.assertGreater(self.register.t_critical(4), 2.7)
+
+    def test_threshold_falls_toward_the_normal_limit(self):
+        self.assertLess(self.register.t_critical(500), 2.0)
+        self.assertGreater(self.register.t_critical(500), 1.9)
+
+    def test_thresholds_decrease_monotonically(self):
+        values = [self.register.t_critical(df) for df in range(1, 40)]
+        self.assertEqual(values, sorted(values, reverse=True))
+
+    def test_one_metric_decides_and_it_is_tracked(self):
+        self.assertIn(self.register.PRIMARY_METRIC, self.register.TRACKED_MEASURES)
 
 
 if __name__ == "__main__":
