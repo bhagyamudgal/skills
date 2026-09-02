@@ -2,14 +2,13 @@
 import argparse
 import datetime
 import json
-import os
 import pathlib
 import re
 import shutil
-import signal
 import subprocess
-import tempfile
 import uuid
+
+import harness
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parent.parent
@@ -36,19 +35,11 @@ CARD_ANCHOR = re.compile(
 
 
 def make_sandbox():
-    temporary_directory = pathlib.Path(tempfile.mkdtemp(prefix="verify-claims-eval-"))
-    repository = temporary_directory / "repo"
-    shutil.copytree(FIXTURE, repository / "tools" / "eval" / FIXTURE.name)
-    shutil.copytree(SKILL, repository / ".claude" / "skills" / SKILL.name)
-    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=repository, check=True)
-    subprocess.run(
-        ["git", "-c", "user.email=eval@local", "-c", "user.name=eval",
-         "commit", "-qm", "fixture"],
-        cwd=repository,
-        check=True,
-    )
-    return temporary_directory, repository
+    # The cases address the fixture by its in-repo path, so it has to land at the same
+    # path inside the sandbox or every Read in every prompt misses.
+    return harness.make_sandbox(
+        "verify-claims-eval-", FIXTURE,
+        fixture_dest=f"tools/eval/{FIXTURE.name}", skills=[SKILL])
 
 
 def parse_stream(output):
@@ -57,11 +48,7 @@ def parse_stream(output):
     tool_calls = []
     tool_calls_by_id = {}
     result_error = None
-    for line in output.splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    for event in harness.iter_events(output):
         if event.get("type") == "assistant":
             message_text = []
             for content in event.get("message", {}).get("content", []):
@@ -89,17 +76,7 @@ def parse_stream(output):
         elif event.get("type") == "result":
             result = event.get("result", "")
             final_text = result if isinstance(result, str) else json.dumps(result)
-            if event.get("is_error"):
-                status = event.get("api_error_status")
-                terminal_reason = event.get("terminal_reason")
-                detail = final_text.strip().replace("\n", " ")[:160]
-                result_error = ": ".join(
-                    part for part in [
-                        f"api error {status}" if status else None,
-                        terminal_reason if terminal_reason and terminal_reason != "completed" else None,
-                        detail or None,
-                    ] if part
-                ) or "result-error"
+            result_error = harness.format_result_error(event, final_text)
     # The `result` event carries the final assistant message; earlier messages are drafts, and
     # joining them lets a card be assembled field-wise across drafts the model retracted.
     return final_text or last_assistant_message, tool_calls, result_error
@@ -225,28 +202,10 @@ def run_case(case, budget, timeout):
         try:
             stdout, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired as error:
-            stdout = (
-                error.stdout.decode() if isinstance(error.stdout, bytes) else error.stdout or ""
-            )
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            try:
-                stdout, _ = process.communicate(timeout=1)
-            except subprocess.TimeoutExpired as drain_error:
-                drained_stdout = (
-                    drain_error.stdout.decode()
-                    if isinstance(drain_error.stdout, bytes)
-                    else drain_error.stdout or ""
-                )
-                stdout = drained_stdout or stdout
-                process.stdout.close()
-                process.stderr.close()
-                try:
-                    process.wait(timeout=1)
-                except subprocess.TimeoutExpired:
-                    pass
+            partial = error.stdout
+            if isinstance(partial, bytes):
+                partial = partial.decode(errors="replace")
+            stdout, _ = harness.kill_process_group(process, partial or "")
             final_text, tool_calls, _ = parse_stream(stdout)
             return final_text, tool_calls, "timeout", stdout
 
@@ -307,7 +266,7 @@ def main():
                 "failures": failures,
             })
         hits = sum(not run["failures"] for run in runs)
-        verdict = "PASS" if hits == len(runs) else "FLAKY" if hits else "FAIL"
+        verdict = harness.verdict(hits, len(runs))
         print(f"{verdict:<5} {hits}/{len(runs)}")
         summaries.append({
             "id": case["id"],
