@@ -162,24 +162,58 @@ def print_arm(label, stats, runs):
               f"{row['min']:>8} {row['max']:>8}")
 
 
-def print_delta(baseline_stats, variant_stats):
-    print("\ndelta (variant minus baseline), against the baseline spread")
-    print(f"  {'metric':<26} {'delta':>8} {'noise':>8}   verdict")
+def difference_sigma(baseline, variant, n_baseline, n_variant):
+    """How many standard errors separate the two arms' means, or None if it cannot be said.
+
+    The yardstick is the standard error of the difference, not either arm's raw standard
+    deviation. Those differ by sqrt(n), so judging a delta against the raw spread is about
+    3x too strict at n=5 and reports a real effect as noise.
+    """
+    change = variant["mean"] - baseline["mean"]
+    if n_baseline < 2 or n_variant < 2:
+        return change, None
+    pooled = (baseline["stdev"] ** 2 / n_baseline + variant["stdev"] ** 2 / n_variant) ** 0.5
+    if pooled == 0:
+        return change, None
+    return change, change / pooled
+
+
+def print_delta(baseline_stats, variant_stats, n_baseline, n_variant):
+    print("\ndelta (variant minus baseline). sigma is against the standard error of the "
+          "difference,\nso |sigma| under 2 means the run cannot tell this apart from noise.")
+    print(f"  {'metric':<26} {'delta':>8} {'sigma':>8}   reading")
     for metric in TRACKED_MEASURES:
-        change = variant_stats[metric]["mean"] - baseline_stats[metric]["mean"]
-        noise = baseline_stats[metric]["stdev"]
-        # A change smaller than the baseline's own run-to-run spread is not a result. Saying
-        # so here is the whole point; a table of unqualified deltas invites reading noise as
-        # an improvement.
-        if noise == 0:
-            verdict = "moved" if change else "flat"
-        elif abs(change) > 2 * noise:
-            verdict = "clears noise"
-        elif abs(change) > noise:
-            verdict = "within 2x noise"
+        change, sigma = difference_sigma(
+            baseline_stats[metric], variant_stats[metric], n_baseline, n_variant)
+        if sigma is None:
+            print(f"  {metric:<26} {change:>+8.2f} {'n/a':>8}   need 2+ runs per arm")
+            continue
+        if abs(sigma) >= 3:
+            reading = "clear"
+        elif abs(sigma) >= 2:
+            reading = "probable"
+        elif abs(sigma) >= 1:
+            reading = "suggestive, run more"
         else:
-            verdict = "inside noise"
-        print(f"  {metric:<26} {change:>+8.2f} {noise:>8.2f}   {verdict}")
+            reading = "indistinguishable from noise"
+        print(f"  {metric:<26} {change:>+8.2f} {sigma:>+8.2f}   {reading}")
+
+
+def print_sensitivity(stats, n):
+    """What size of change this many runs could actually detect, per metric.
+
+    Printed with the baseline because it is the number that decides whether a rewrite is
+    worth attempting. A metric whose minimum detectable effect is larger than any plausible
+    rewrite is not evidence, and running the variant arm against it only buys a false null.
+    """
+    print(f"\n  smallest change {n} runs per arm could call at 2 sigma")
+    print(f"  {'metric':<26} {'absolute':>10} {'relative':>10}")
+    for metric in TRACKED_MEASURES:
+        row = stats[metric]
+        if n < 2 or row["mean"] == 0:
+            continue
+        detectable = 2 * ((2 * row["stdev"] ** 2 / n) ** 0.5)
+        print(f"  {metric:<26} {detectable:>10.2f} {100 * detectable / row['mean']:>9.0f}%")
 
 
 def main():
@@ -252,9 +286,12 @@ def main():
             print_arm(arm_name, stats_by_arm[arm_name], runs)
             if runs:
                 print(f"  unslop fired in {ambient_hits}/{len(runs)} scored runs")
+            if arm_name == "baseline" and len(runs) > 1:
+                print_sensitivity(stats_by_arm[arm_name], len(runs))
 
         if variant_root and runs_by_arm["baseline"] and runs_by_arm["variant"]:
-            print_delta(stats_by_arm["baseline"], stats_by_arm["variant"])
+            print_delta(stats_by_arm["baseline"], stats_by_arm["variant"],
+                        len(runs_by_arm["baseline"]), len(runs_by_arm["variant"]))
 
         (output_dir / f"{case['id']}.summary.json").write_text(
             json.dumps(stats_by_arm, indent=2) + "\n")

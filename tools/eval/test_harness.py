@@ -316,5 +316,49 @@ class RegisterStaging(unittest.TestCase):
         self.assertNotIn("Bash", self.register.CASE_TOOLS)
 
 
+class RegisterStatistics(unittest.TestCase):
+    """The delta verdict decides whether a 90,000-word rewrite goes ahead, so the yardstick
+    it uses has to be the right one."""
+
+    def setUp(self):
+        import run_register
+        self.sigma = run_register.difference_sigma
+
+    def test_identical_arms_report_zero(self):
+        arm = {"mean": 3.17, "stdev": 1.25}
+        change, sigma = self.sigma(arm, arm, 5, 5)
+        self.assertEqual(change, 0)
+        self.assertEqual(sigma, 0)
+
+    def test_uses_standard_error_not_raw_spread(self):
+        # Real pr-body baseline: mean 3.48, stdev 0.34 at n=5. A 0.43 improvement is 2 sigma
+        # on the standard error of the difference and would have read as noise against the
+        # raw stdev, which is the bug this replaced.
+        baseline = {"mean": 3.48, "stdev": 0.34}
+        variant = {"mean": 3.05, "stdev": 0.34}
+        _, sigma = self.sigma(baseline, variant, 5, 5)
+        self.assertLess(sigma, -1.9)
+        self.assertGreater(abs(sigma), 0.43 / 0.34)
+
+    def test_a_single_run_per_arm_cannot_be_judged(self):
+        _, sigma = self.sigma({"mean": 1.0, "stdev": 0.0}, {"mean": 5.0, "stdev": 0.0}, 1, 1)
+        self.assertIsNone(sigma)
+
+    def test_zero_spread_in_both_arms_is_not_infinite_confidence(self):
+        _, sigma = self.sigma({"mean": 1.0, "stdev": 0.0}, {"mean": 5.0, "stdev": 0.0}, 5, 5)
+        self.assertIsNone(sigma)
+
+    def test_more_runs_raise_confidence_for_the_same_change(self):
+        baseline = {"mean": 3.48, "stdev": 0.34}
+        variant = {"mean": 3.20, "stdev": 0.34}
+        _, at_five = self.sigma(baseline, variant, 5, 5)
+        _, at_twenty = self.sigma(baseline, variant, 20, 20)
+        self.assertGreater(abs(at_twenty), abs(at_five))
+
+    def test_improvement_is_negative(self):
+        _, sigma = self.sigma({"mean": 5.0, "stdev": 0.5}, {"mean": 3.0, "stdev": 0.5}, 5, 5)
+        self.assertLess(sigma, 0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
