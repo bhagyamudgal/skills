@@ -89,6 +89,10 @@ Several skills use progressive disclosure — `SKILL.md` holds the spine, and br
 | `skills/coderabbit-config/` | `.coderabbit.yaml` template + persistent-learnings sidecar. Copy into a repo so CodeRabbit absorbs style + convention findings before `/review-pr` runs. See [`skills/coderabbit-config/README.md`](skills/coderabbit-config/README.md) for bootstrap instructions. |
 | `tools/verify_skills.py` | Structural verifier across all skills — frontmatter, code fences, pointer form, severity-ladder consistency, dangling and orphan references, cross-skill duplication. Plus produce → validate → consume dataflow checks scoped to `review-pr` and `fix-pr-review`. Run `python3 tools/verify_skills.py ./skills`; exits non-zero on failure. |
 | `tools/eval/run_verify_claims.py` | Fresh-session behavioral evaluator for `verify-claims` across code, external mutation, configuration, data, missing evidence, contradiction, and material reversal. Raw streams and final cards are saved under `.eval-results/`. |
+| `tools/eval/run_triggers.py` | Routing eval. Runs each utterance in a fresh session and records which skill fires first, so a description change can be checked against 54 cases. Skills that a standing instruction fires in every session, `unslop` among them, are passed over rather than recorded as the answer. |
+| `tools/eval/run_register.py` | Register eval for issue #37. Asks a skill for a PR body, issue, commit message or completion report, then scores the result with `slop_score.py`. Without `--variant` it reports the run-to-run spread, which is the noise floor; with one it reports the delta against that floor. |
+| `tools/eval/slop_score.py` | Scores prose for the AI tells `unslop` names, plus sentence-length uniformity and nominalisation density. Rules are vendored in `slop_rules.json`; `--check-drift` compares them against the live user-local `unslop` skill. |
+| `tools/eval/harness.py` | Sandbox construction, transcript parsing and process cleanup shared by the three evaluators. Covered by `python3 -m unittest discover -s tools/eval`, which runs fully offline. |
 
 ## Usage
 
