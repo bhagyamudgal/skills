@@ -101,7 +101,7 @@ findings:
 | `findings[].id` | string | yes | First 10 hex chars of `sha1(...)`: see ID strategy below |
 | `findings[].file` | string | yes | Repo-relative path |
 | `findings[].enclosing_symbol` | string | yes | Function/class/component containing the finding |
-| `findings[].rule_class` | string | yes | 2–3-word slug categorizing the issue (see vocabulary below) |
+| `findings[].rule_class` | string | yes | 2 to 3 word slug categorizing the issue (see vocabulary below) |
 | `findings[].severity` | enum | yes | `Critical \| Serious \| Moderate \| Minor` |
 | `findings[].label_history` | string[] | yes | Per-round label (e.g., `M3`), useful for debugging label drift |
 | `findings[].status` | enum | yes | `active \| resolved \| dismissed \| wontfix \| regression` |
@@ -169,7 +169,7 @@ One id, not a list: the single *nearest* cause. When several closed findings cou
 
 - **`resolved`**: subagent saw the fix in the diff between `commit_sha_resolved` and the prior round's HEAD, **and** every `class_sites` entry is `handled: true`. A fix that lands on the cited site while a sibling site stays unhandled leaves the finding `active`. No automated writer sets this today. See the writer caveat at the end of "Phase 4: write back".
 - **`dismissed`**: an explicit disposition imported from prior state or a downstream triage workflow. `dismissal_reason` is required. `/review-pr` never creates this status by deselecting a finding.
-- **`wontfix`**: user rejected the finding as wrong / out-of-scope. `dismissal_reason` is required (e.g., "intentional design — see the linked design issue").
+- **`wontfix`**: user rejected the finding as wrong / out-of-scope. `dismissal_reason` is required (e.g., "intentional design, see the linked design issue").
 - **`regression`**: subagent emits a finding whose `id` matches an existing `resolved` entry, AND the diff shows the resolving code was reverted/edited. Treat as a fresh active finding but keep the history.
 - **`dismissed`/`wontfix` → `active`**: the code condition recorded in `depends_on` no longer holds at the current head, so the rationale that closed the finding no longer applies. Reopen as `active`; keep `dismissal_reason` and the original `round_resolved` as history, and note which commit voided the condition. There is no separate "voided" status. A void dismissal is just an open finding again.
 
@@ -288,11 +288,11 @@ Pass `PRIOR_STATE.findings` (filtered to status in `{resolved, dismissed, wontfi
 > ...
 > ```
 
-The same filtered set — plus each entry's `class_sites`, `inverse_risk`, `depends_on`, and `commit_sha_resolved` — goes to the regression-sweep verifier in Phase 3, which re-checks every closed finding at the current head. Those four fields are the entire reason the state file persists them. A round that loads the state file but drops them degrades the sweep to an ID-hash match, which is exactly what the sweep exists to replace.
+The same filtered set goes to the regression-sweep verifier in Phase 3, which re-checks every closed finding at the current head. Send that set with each entry's `class_sites`, `inverse_risk`, `depends_on`, and `commit_sha_resolved`. Those four fields are the entire reason the state file persists them. A round that loads the state file but drops them degrades the sweep to an ID-hash match, which is exactly what the sweep exists to replace.
 
 ### Phase 3: filter
 
-After existing critic-pass steps 1–4 + 4.5 + unified rules table (4.6), add:
+After existing critic-pass steps 1-4 + 4.5 + unified rules table (4.6), add:
 
 Ahead of suppression, the regression sweep re-checks every entry with `status in {resolved, dismissed, wontfix}` against the current head, using the fields loaded in Phase 1: is every `class_sites` entry still handled, has the recorded `inverse_risk` failure mode appeared, does the `depends_on` condition still hold? Its per-entry verdicts are what Phase 4 (step 4 below) writes back.
 

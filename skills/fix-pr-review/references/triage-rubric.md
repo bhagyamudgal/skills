@@ -56,7 +56,7 @@ Loaded by the triage subagent at STEP 4 of `triage-prompt.md`. Main never reads 
       out-of-scope refactor that needs a ticket. Route to R9
       (NEEDS-INPUT) with:
         why_unclear: "out-of-scope reuse refactor (<LOC estimate>
-                      LOC across untouched files) — needs a tracking
+                      LOC across untouched files) needing a tracking
                       ticket reference before this can be either FIXed
                       or DEFERred"
       This surfaces to the user at the end of the run for manual

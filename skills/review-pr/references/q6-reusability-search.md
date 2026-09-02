@@ -81,9 +81,9 @@ Glob("packages/ui/src/components/**/<kebab-case-name>*.ts")
 For each candidate match from steps 1-3, **Read the file** and confirm it is a REAL semantic match (not a substring collision, e.g., `formatter.ts` matching on `format` does NOT automatically mean the new code duplicates the existing one).
 
 Record one of:
-- `verified: yes — <what the existing impl does and whether it's a real match>`
-- `verified: no — substring collision`
-- `verified: no — different semantics`
+- `verified: yes. <what the existing impl does and whether it's a real match>`
+- `verified: no. substring collision`
+- `verified: no. different semantics`
 
 ---
 
