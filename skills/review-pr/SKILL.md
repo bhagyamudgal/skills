@@ -60,9 +60,11 @@ Fires when the user provides **2+ PR URLs** or asks to review **all open PRs**. 
 Run these as **two separate Bash tool calls in a single assistant message**. True parallelism needs separate tool_use blocks, not `&&` chained.
 
 ```bash
-gh pr view <url> --json number,title,body,author,baseRefName,headRefName,additions,deletions,changedFiles,files,closingIssuesReferences,reviews,comments,state,isDraft
+gh pr view <url> --json number,title,body,author,baseRefName,headRefName,headRefOid,baseRefOid,additions,deletions,changedFiles,files,closingIssuesReferences,reviews,comments,state,isDraft
 gh pr diff <url>
 ```
+
+Record `CURRENT_HEAD` from `headRefOid` plus the base OID. A push landing between the two calls mixes revisions, so after the diff lands, re-read `headRefOid` and require equality. On mismatch, discard both results and restart Phase 1 once. A second mismatch proceeds with a note that the PR moved mid-review.
 
 Phase 1 fetches the **full diff**. Stash it in main context. The error-handling content scan and the Phase 3 critic reference check both need it.
 
@@ -208,7 +210,7 @@ If `PRIOR_STATE.convergence` exists, invoke `converge-reviews` with the current 
 
 If `packages/` or `apps/` exists, load `${CLAUDE_SKILL_DIR}/references/repo-map.md` and run the block for the mode you are in: it holds both shell blocks (the cross-repo `gh api` tree fetch and the local `bash -c` find/grep pair, each truncating at 500 lines) and stashes `repo_map_files` + `repo_map_exports` for Subagent 1's prompt. It is the one copy of that shell, shared with `/fix-pr-review` and `/harden-plan`.
 
-If neither directory exists, skip the shell. Set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false`. Subagent 1 reroutes greps to `src/`.
+If neither directory exists, skip the shell. Set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false`. Subagent 1 reroutes greps to the changed files' directories, or the repository root when those reveal nothing. Never assume `src/`.
 
 ### Check for error-handling touches (flag for Phase 2)
 
@@ -258,7 +260,7 @@ suppressions:
 
 If file exists, pass into Subagent 1 prompt as "Review suppressions: patterns this project has already accepted; skip them". Phase 3 step 5.5 also applies as safety net.
 
-In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<head-sha>`. Skip on 404.
+In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<baseRefName>`. Skip on 404. The base revision is trusted; the PR head is not, so a PR can never suppress its own review.
 
 ---
 

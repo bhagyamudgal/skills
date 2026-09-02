@@ -41,6 +41,7 @@ Once green, I grep the changed lines for all four escape hatches, `as` assertion
 
 ```bash
 git diff -U0 HEAD -- '*.ts' '*.tsx' | grep '^+' | grep -E '\bas\b|@ts-ignore|@ts-expect-error|[]A-Za-z0-9_$)][!]([^=]|$)' | grep -v 'as const'
+git ls-files --others --exclude-standard -- '*.ts' '*.tsx' | tr '\n' '\0' | xargs -0 grep -nE '\bas\b|@ts-ignore|@ts-expect-error|[]A-Za-z0-9_$)][!]([^=]|$)' | grep -v 'as const'
 ```
 
 The `[...][!]([^=]|$)` shape matches a postfix assertion, a value character before the bang and no equals after it, so `value!`, `value!.x`, `value![0]`, and `value!()` all hit while `!=`, `!==`, and prefix negation like `!ready` stay out.

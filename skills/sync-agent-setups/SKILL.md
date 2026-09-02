@@ -30,15 +30,15 @@ Classify every in-scope pair per `${CLAUDE_SKILL_DIR}/references/manifest.md`. L
 
 ## 3. Confirm the write set
 
-Ask the user to select or confirm the target agents from the preview. Detection is not write authorization. A confirmation covers only the named targets, `ready` item IDs, backup path, exact-copy link targets, staged adaptation paths and checksums, semantic deltas, and proposed actions shown in the current manifest.
+Ask the user to select or confirm the target agents from the preview. Detection is not write authorization. A confirmation covers only the named targets, `ready` item IDs, backup path, exact-copy link targets, staged adaptation paths, checksums, and intended modes, semantic deltas, and proposed actions shown in the current manifest.
 
-Re-inventory after confirmation, re-resolve the backup path, and rehash every staged adaptation. Any changed source checksum, target state, classification, path, selected target, resolved backup path, staged bytes, or staged checksum invalidates that item and returns it to preview. Change confirmed `ready` items to `pending`; retain every `blocked`, `preserved-unsupported`, and `preserved-orphaned` row in the ledger.
+Re-inventory after confirmation, re-resolve the backup path, and rehash every staged adaptation. Any changed source checksum, target state, classification, path, selected target, resolved backup path, staged bytes, staged checksum, or intended mode invalidates that item and returns it to preview. Change confirmed `ready` items to `pending`; retain every `blocked`, `preserved-unsupported`, and `preserved-orphaned` row in the ledger.
 
 **Gate.** every `pending` item belongs to an explicitly confirmed target and still matches its preview, while every non-ready item remains outside the mutation batch with its status and reason intact.
 
 ## 4. Preflight and back up
 
-Immediately before the first backup or target write, invoke `preflight-mutations` for only the selected `pending` items. Include their target agents, source and target paths, current checksums and link targets, staged adaptation paths and checksums, semantic deltas, confirmation source, shared-symlink risk, resolved timestamped backup path, invalidators, per-item recovery, and post-write read-back. Reference the complete ledger for context, but do not put `blocked`, `preserved-unsupported`, or `preserved-orphaned` items into the mutation card's targets or batch items. Continue only when this independently ready mutation batch returns `ready` with unchanged guards.
+Immediately before the first backup or target write, invoke `preflight-mutations` for only the selected `pending` items. Include their target agents, source and target paths, current checksums and link targets, staged adaptation paths, checksums, and intended modes, semantic deltas, confirmation source, shared-symlink risk, resolved timestamped backup path, invalidators, per-item recovery, and post-write read-back. Reference the complete ledger for context, but do not put `blocked`, `preserved-unsupported`, or `preserved-orphaned` items into the mutation card's targets or batch items. Continue only when this independently ready mutation batch returns `ready` with unchanged guards.
 
 Create the confirmed timestamped backup at the recorded resolved physical path before changing a target. Preserve for every affected path:
 

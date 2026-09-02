@@ -81,7 +81,7 @@ Three outcomes:
 
 1. **Field entirely missing**: PROMPT NON-COMPLIANCE. Drop ALL Q6 "No issues" claims AND add a Serious finding "Reviewer did not include `reusability_searches:` audit, so Q6 was not performed."
 
-2. **Field present with sentinel `N/A (no new top-level definitions in diff)`**: verify `new_definitions_count == 0`. If holds, audit is valid. If not, treat as shallow per outcome 3.
+2. **Field present with sentinel `N/A (no new definitions in diff)`**: verify `new_definitions_count == 0`. If holds, audit is valid. If not, treat as shallow per outcome 3.
 
 3. **Field present with entries**: count entries. If `searches_count < new_definitions_count`, drop "Q6 No issues" claims AND add a Moderate finding "Reusability check was shallow (<S> searches for <N> new definitions). Manual scan recommended before merging."
 

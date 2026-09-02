@@ -92,11 +92,13 @@ echo "EXIT=$?"
 Then produce the evidence:
 
 ```bash
+LISTDIR=$(mktemp -d "$BACKUP_DIR/.listings-XXXXXXXX") || exit 1
 zstd -t "$BACKUP_DIR/raw/openclaw-state-raw.tar.zst"
-tar --use-compress-program="zstd -d" -tf "$BACKUP_DIR/raw/openclaw-state-raw.tar.zst" > /tmp/rawlist.txt
-wc -l < /tmp/rawlist.txt
-grep -c 'sessions/.*\.jsonl' /tmp/rawlist.txt
-grep -c 'node_modules' /tmp/rawlist.txt
+tar --use-compress-program="zstd -d" -tf "$BACKUP_DIR/raw/openclaw-state-raw.tar.zst" > "$LISTDIR/rawlist.txt"
+wc -l < "$LISTDIR/rawlist.txt"
+grep -c 'sessions/.*\.jsonl' "$LISTDIR/rawlist.txt"
+grep -c 'node_modules' "$LISTDIR/rawlist.txt"
+rm -rf -- "$LISTDIR"
 ```
 
 Pass this step only when `zstd -t` passes and the session `.jsonl` count is greater than zero on an install with conversation history. A zero count means the exclude pattern is wrong. Fix it and re-run. `tar` exits non-zero when a file changes mid-read. On a hot backup record that as a warning in the report.
@@ -116,12 +118,14 @@ echo "EXIT=$?"
 Then produce the evidence:
 
 ```bash
+LISTDIR=$(mktemp -d "$BACKUP_DIR/.listings-XXXXXXXX") || exit 1
 zstd -t "$BACKUP_DIR/workspace/openclaw-workspace.tar.zst"
-tar --use-compress-program="zstd -d" -tf "$BACKUP_DIR/workspace/openclaw-workspace.tar.zst" > /tmp/workspacelist.txt
-wc -l < /tmp/workspacelist.txt
+tar --use-compress-program="zstd -d" -tf "$BACKUP_DIR/workspace/openclaw-workspace.tar.zst" > "$LISTDIR/workspacelist.txt"
+wc -l < "$LISTDIR/workspacelist.txt"
+rm -rf -- "$LISTDIR"
 ```
 
-Pass this step only when `zstd -t` passes and the listing is non-empty. `tar` exits non-zero when a file changes mid-read. On a hot backup record that as a warning in the report.
+Pass this step only when `zstd -t` passes and the listing is non-empty. Capture the tar exit status: 0 passes clean, 1 records a hot-read warning in the report, 2 or higher fails the step.
 
 ## Step 6: Metadata
 

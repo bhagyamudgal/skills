@@ -1,6 +1,6 @@
 # Q6a Reusability: search algorithm and audit format
 
-**Subagent 1** loads this when the diff has 1+ new top-level definitions, for STEP A onward. The main SKILL.md keeps only the Q6a header and reporting format. This reference explains HOW to search.
+**Subagent 1** loads this when the diff has 1+ new definitions, top-level or methods added to existing classes, for STEP A onward. The main SKILL.md keeps only the Q6a header and reporting format. This reference explains HOW to search.
 
 STEP B searches against `repo_map_files` / `repo_map_exports`, which main computes in Phase 1. That shell is in `${CLAUDE_SKILL_DIR}/references/repo-map.md`, the copy `/fix-pr-review` and `/harden-plan` share.
 
@@ -104,7 +104,7 @@ reusability_searches:
 - **At least one entry per item enumerated in STEP A.**
 - For each search where `N > 0`, `verified:` is MANDATORY. Critic rejects audits that claim "0 matches" for all searches as shallow / suspicious. If `N == 0`, write `verified: n/a`.
 - If STEP A was empty, write EXACTLY:
-  `reusability_searches: N/A (no new top-level definitions in diff)`
+  `reusability_searches: N/A (no new definitions in diff)`
 
 ---
 

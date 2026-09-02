@@ -25,8 +25,10 @@ Render a manifest before any write:
 - **Excluded surfaces:** <surface and reason>
 - **Proposed backup:** <timestamped path> → <resolved physical path>
 
-| ID | Target | Kind | Claude-visible source | Resolved source | Source checksum | Target path | Existing kind / checksum | Classification | Link target or staged path / checksum | Semantic delta | Planned action | Status / reason |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ID | Target | Kind | Claude-visible source | Resolved source | Source checksum | Target path | Existing kind / checksum | Classification | Link target or staged path / checksum | Intended mode | Semantic delta | Planned action | Status / reason |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+
+For an adaptation whose confirmed target is authoritatively absent, the `Intended mode` cell carries the recorded mode: `0600` by default, `0700` when the consumer must execute the target.
 ```
 
 For an exact copy, record both the proposed link target and resolved physical source. Assign one pre-confirmation status to every item:

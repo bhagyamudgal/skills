@@ -12,7 +12,9 @@ Derive the file set from git rather than typing paths. It respects `.gitignore`,
 
 ```bash
 BASE=<merge-base or the commit you branched from>
-FILES=$(git ls-files 'apps' 'packages' 'src' 2>/dev/null | grep -vE '\.d\.ts$')
+TOUCHED=$(git diff --name-only "$BASE" -- . 2>/dev/null; git ls-files --others --exclude-standard)
+SIBLINGS=$(printf '%s\n' "$TOUCHED" | while IFS= read -r f; do [ -n "$f" ] && dirname -- "$f"; done | sort -u | while IFS= read -r d; do git ls-files -- "$d"; done)
+FILES=$(printf '%s\n%s\n%s' "$(git ls-files 'apps' 'packages' 'src' 2>/dev/null)" "$TOUCHED" "$SIBLINGS" | grep -vE '\.d\.ts$' | sort -u)
 [ -n "$FILES" ] || FILES=$(git ls-files | grep -vE '\.d\.ts$')
 
 # 1. Literals repeated 3+ times: the ones worth naming, or already named
@@ -30,7 +32,7 @@ git diff -U0 "$BASE" \
   | grep -E '^\+\s*(//|\*)' | sed 's/^+[[:space:]]*//' \
   | grep -oE '[A-Za-z][A-Za-z ]{28,}' | sed 's/  */ /g; s/^ //; s/ $//' | sort -u \
   | while IFS= read -r phrase; do
-      hit=$(grep -rlF "$phrase" docs/ ./*.md 2>/dev/null | head -1)
+      hit=$(git ls-files -z '*.md' | xargs -0 grep -lF "$phrase" 2>/dev/null | head -1)
       [ -n "$hit" ] && printf '  %s -> %s\n' "$phrase" "$hit"
     done
 ```

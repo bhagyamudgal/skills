@@ -1,6 +1,6 @@
 # Schema design checks (Q7-Q9)
 
-Loaded by Subagent 1 only when `INCLUDE_SCHEMA_CHECKS = true` (PR adds new database tables, detected in Phase 1 by grepping the diff for `pgTable\(`, `createTable\(`, `CREATE TABLE`, `knex.schema.createTable`, etc.).
+Loaded by Subagent 1 when `INCLUDE_SCHEMA_CHECKS = true`, and by V3 when the Phase 3 gap check covers Q7-Q9 (PR adds new database tables, detected in Phase 1 by grepping the diff for `pgTable\(`, `createTable\(`, `CREATE TABLE`, `knex.schema.createTable`, etc.).
 
 The main SKILL.md keeps a 5-line conditional that loads this file. Loading it inline on every run wastes context on non-schema PRs.
 

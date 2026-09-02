@@ -4,7 +4,7 @@
 
 1. Parse `owner`, `repo`, `num` from the URL.
 2. Run `gh repo view --json nameWithOwner -q .nameWithOwner` and compare it with the URL `owner/repo`. On mismatch, fail fast and tell the user to `cd` into the right clone. Cloning and directory changes stay with them, since the fix is theirs to make.
-3. Run `gh pr view <url> --json headRefName,baseRefName -q .` to get the PR branch name and the base branch.
+3. Run `gh pr view <url> --json headRefName,baseRefName,headRefOid,headRepository -q .` to get the PR branch name, the base branch, the head SHA, and the head repository identity. Record all four. When the head repository differs from the URL repository, the PR comes from a fork: continue only when `gh pr checkout <num>` lands exactly the recorded head SHA (`git rev-parse HEAD` must equal it), otherwise abort. A same-named local branch from another fork is never an acceptable stand-in.
 4. Run `git branch --show-current` to get the current branch. It returns an empty string on detached HEAD.
 5. Branch state handling:
    - **Empty output (detached HEAD)**: Use AskUserQuestion:

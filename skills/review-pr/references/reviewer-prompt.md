@@ -82,7 +82,7 @@ If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` f
 
    Q6. Reusability (Q6a only, codebase-wide): MANDATORY tool-use check.
 
-       The full STEP A enumeration + STEP B search algorithm + Q6 control-flow gap notes live in `<SKILL_DIR>/references/q6-reusability-search.md`. Load it before answering Q6 if the diff has 1+ new top-level definitions.
+       The full STEP A enumeration + STEP B search algorithm + Q6 control-flow gap notes live in `<SKILL_DIR>/references/q6-reusability-search.md`. Load it before answering Q6 if the diff has 1+ new definitions, top-level or methods added to existing classes.
 
        Q6a. Reimplements existing code (default Severity: SERIOUS; escalate to CRITICAL if existing thing lives in auth / validation / crypto package)
             <finding with concrete existing file:path to reuse>
@@ -93,7 +93,7 @@ If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` f
        REQUIRED"; write the audit as specified there, not from memory.
 
        If STEP A was empty, which is the one branch that never loads that file, write exactly:
-       `reusability_searches: N/A (no new top-level definitions in diff)`
+       `reusability_searches: N/A (no new definitions in diff)`
 
 5. **CLASS SWEEP: MANDATORY for every finding that proposes a code change.**
 
