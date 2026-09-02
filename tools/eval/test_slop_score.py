@@ -221,6 +221,16 @@ class RuleDataFixes(unittest.TestCase):
         suffixes = measures["nominalisation_suffixes"]
         self.assertEqual(len(suffixes), len(set(suffixes)))
 
+    def test_fences_longer_than_three_delimiters(self):
+        # A four-backtick fence is how a block that itself contains a fence is wrapped.
+        for fence in ("```", "````", "`````", "~~~", "~~~~"):
+            scored = slop_score.score(f"Prose.\n\n{fence}python\nutilize delve\n{fence}\n")
+            self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 0, fence)
+
+    def test_a_long_prose_fence_is_still_kept(self):
+        scored = slop_score.score("Prose.\n\n````markdown\nWe utilize this.\n````\n")
+        self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 1)
+
     def test_a_partially_parsed_vocabulary_is_rejected(self):
         clipped = "**AI vocabulary.** delve. Replace with plain words. Also: leverage, robust."
         self.assertIsNone(slop_score.extract_live_vocabulary(clipped))
@@ -286,6 +296,34 @@ class DriftExtraction(unittest.TestCase):
 
     def test_returns_none_when_the_shape_moved(self):
         self.assertIsNone(slop_score.extract_live_vocabulary("no such rule here"))
+
+    def test_a_removed_live_term_fails_the_drift_check(self):
+        """The one-way check exited 0 when the live skill dropped a term, leaving it vendored
+        and still scoring text the rule no longer calls a tell."""
+        original = slop_score.RULES_FILE.read_text()
+        spec = json.loads(original)
+        spec["live_rule_7_snapshot"]["terms"].append("zzz-no-longer-live")
+        try:
+            slop_score.RULES_FILE.write_text(json.dumps(spec, indent=2))
+            self.assertEqual(slop_score.check_drift(), 1)
+        finally:
+            slop_score.RULES_FILE.write_text(original)
+
+    def test_an_added_live_term_fails_the_drift_check(self):
+        original = slop_score.RULES_FILE.read_text()
+        spec = json.loads(original)
+        spec["live_rule_7_snapshot"]["terms"] = [
+            t for t in spec["live_rule_7_snapshot"]["terms"] if t != "delve"]
+        try:
+            slop_score.RULES_FILE.write_text(json.dumps(spec, indent=2))
+            self.assertEqual(slop_score.check_drift(), 1)
+        finally:
+            slop_score.RULES_FILE.write_text(original)
+
+    def test_the_unmodified_tree_passes_the_drift_check(self):
+        if slop_score.find_live_unslop() is None:
+            self.skipTest("no installed unslop on this machine; it is user-local")
+        self.assertEqual(slop_score.check_drift(), 0)
 
     def test_vendored_list_covers_the_live_one(self):
         """The drift check itself, run as a test so a stale vendor fails the suite."""

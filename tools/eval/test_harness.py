@@ -174,6 +174,21 @@ class KillProcessGroup(unittest.TestCase):
         harness.kill_process_group(proc)
         self.assertIsNotNone(proc.poll())
 
+    def test_a_drained_transcript_is_not_concatenated_with_the_partial(self):
+        """communicate() after a TimeoutExpired returns the whole accumulated buffer, not the
+        remainder, so appending the caller's partial would duplicate every early event."""
+        proc = self._spawn(
+            "import time\nprint('EARLY', flush=True)\ntime.sleep(1.5)\nprint('LATE')")
+        try:
+            proc.communicate(timeout=0.6)
+        except subprocess.TimeoutExpired as expiry:
+            partial = expiry.stdout
+            if isinstance(partial, bytes):
+                partial = partial.decode()
+            self.assertIn("EARLY", partial)
+            stdout, _ = harness.kill_process_group(proc, partial or "")
+            self.assertEqual(stdout.count("EARLY"), 1)
+
 
 class MakeSandbox(unittest.TestCase):
     def setUp(self):
@@ -354,7 +369,7 @@ class RegisterStatistics(unittest.TestCase):
 
     def test_identical_arms_report_zero(self):
         arm = {"mean": 2.37, "stdev": 0.77}
-        change, sigma, _ = self.sigma(arm, arm, 5, 5)
+        change, sigma, _, _ = self.sigma(arm, arm, 5, 5)
         self.assertEqual(change, 0)
         self.assertEqual(sigma, 0)
 
@@ -364,38 +379,38 @@ class RegisterStatistics(unittest.TestCase):
         # the difference and would have read as noise against the raw stdev.
         baseline = {"mean": 3.23, "stdev": 0.36}
         variant = {"mean": 2.77, "stdev": 0.36}
-        _, sigma, _ = self.sigma(baseline, variant, 5, 5)
+        _, sigma, _, _ = self.sigma(baseline, variant, 5, 5)
         self.assertLess(sigma, -1.9)
         self.assertGreater(abs(sigma), 0.46 / 0.36)
 
     def test_a_single_run_per_arm_cannot_be_judged(self):
-        _, sigma, _ = self.sigma({"mean": 1.0, "stdev": 0.0}, {"mean": 5.0, "stdev": 0.0}, 1, 1)
+        _, sigma, _, _ = self.sigma({"mean": 1.0, "stdev": 0.0}, {"mean": 5.0, "stdev": 0.0}, 1, 1)
         self.assertIsNone(sigma)
 
     def test_zero_spread_in_both_arms_is_not_infinite_confidence(self):
-        _, sigma, _ = self.sigma({"mean": 1.0, "stdev": 0.0}, {"mean": 5.0, "stdev": 0.0}, 5, 5)
+        _, sigma, _, _ = self.sigma({"mean": 1.0, "stdev": 0.0}, {"mean": 5.0, "stdev": 0.0}, 5, 5)
         self.assertIsNone(sigma)
 
     def test_more_runs_raise_confidence_for_the_same_change(self):
         baseline = {"mean": 3.23, "stdev": 0.36}
         variant = {"mean": 2.95, "stdev": 0.36}
-        _, at_five, _ = self.sigma(baseline, variant, 5, 5)
-        _, at_twenty, _ = self.sigma(baseline, variant, 20, 20)
+        _, at_five, _, _ = self.sigma(baseline, variant, 5, 5)
+        _, at_twenty, _, _ = self.sigma(baseline, variant, 20, 20)
         self.assertGreater(abs(at_twenty), abs(at_five))
 
     def test_improvement_is_negative(self):
-        _, sigma, _ = self.sigma({"mean": 5.0, "stdev": 0.5}, {"mean": 3.0, "stdev": 0.5}, 5, 5)
+        _, sigma, _, _ = self.sigma({"mean": 5.0, "stdev": 0.5}, {"mean": 3.0, "stdev": 0.5}, 5, 5)
         self.assertLess(sigma, 0)
 
     def test_zero_spread_is_not_diagnosed_as_too_few_runs(self):
-        _, sigma, why = self.sigma(
+        _, sigma, _, why = self.sigma(
             {"mean": 0.0, "stdev": 0.0}, {"mean": 12.5, "stdev": 0.0}, 8, 8)
         self.assertIsNone(sigma)
         self.assertIn("variance", why)
         self.assertNotIn("2+", why)
 
     def test_too_few_runs_says_so(self):
-        _, sigma, why = self.sigma({"mean": 1.0, "stdev": 0.0}, {"mean": 5.0, "stdev": 0.0}, 1, 1)
+        _, sigma, _, why = self.sigma({"mean": 1.0, "stdev": 0.0}, {"mean": 5.0, "stdev": 0.0}, 1, 1)
         self.assertIsNone(sigma)
         self.assertIn("2+", why)
 
@@ -415,6 +430,33 @@ class SignificanceThreshold(unittest.TestCase):
     def test_thresholds_decrease_monotonically(self):
         values = [self.register.t_critical(df) for df in range(1, 40)]
         self.assertEqual(values, sorted(values, reverse=True))
+
+    def test_an_untabulated_df_rounds_down_not_up(self):
+        # Rounding up returns a smaller critical value than the true df warrants, which is
+        # the direction that invents significance.
+        self.assertEqual(self.register.t_critical(11), self.register.t_critical(10))
+        self.assertGreater(self.register.t_critical(11), self.register.t_critical(12))
+
+    def test_welch_df_collapses_when_one_arm_is_noisier(self):
+        # 20x variance ratio at n=3: pooled says df=4 and t=2.776, Welch says df=2 and
+        # t=4.303, and a sigma of 3.0 sits between them.
+        quiet = {"mean": 1.0, "stdev": 0.1}
+        noisy = {"mean": 4.47, "stdev": 2.0}
+        degrees = self.register.welch_degrees_of_freedom(quiet, noisy, 3, 3)
+        self.assertLess(degrees, 3)
+        self.assertGreater(self.register.t_critical(degrees), 4.0)
+
+    def test_equal_variance_welch_df_matches_the_pooled_value(self):
+        arm = {"mean": 3.0, "stdev": 0.5}
+        self.assertAlmostEqual(
+            self.register.welch_degrees_of_freedom(arm, dict(arm), 5, 5), 8.0, places=6)
+
+    def test_unequal_variances_are_not_called_significant_below_95(self):
+        quiet = {"mean": 1.0, "stdev": 0.1}
+        noisy = {"mean": 4.47, "stdev": 2.0}
+        _, sigma, degrees, _ = self.register.difference_sigma(quiet, noisy, 3, 3)
+        self.assertGreater(abs(sigma), 2.776)
+        self.assertLess(abs(sigma), self.register.t_critical(degrees))
 
     def test_one_metric_decides_and_it_is_tracked(self):
         self.assertIn(self.register.PRIMARY_METRIC, self.register.TRACKED_MEASURES)

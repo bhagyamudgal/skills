@@ -194,6 +194,9 @@ def main():
                          "how this ran before and is the way to see what is being skipped.")
     args = ap.parse_args()
 
+    if args.repeat < 1:
+        ap.error("--repeat must be at least 1")
+
     ambient = frozenset() if args.no_ignore_ambient else AMBIENT_SKILLS | set(args.ignore_skill)
 
     if not FIXTURE.is_dir():

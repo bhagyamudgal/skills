@@ -65,13 +65,37 @@ T_CRITICAL_95 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7:
 
 
 def t_critical(degrees_of_freedom):
-    """Nearest tabulated two-sided 95% t value, falling back to the normal limit."""
+    """Two-sided 95% t, rounding down to the nearest tabulated row.
+
+    Rounding down is what keeps the table conservative. Picking the next row up returns a
+    smaller critical value than the true df warrants, which is the direction that invents
+    significance.
+    """
     if degrees_of_freedom < 1:
         return None
-    for df in sorted(T_CRITICAL_95):
-        if degrees_of_freedom <= df:
-            return T_CRITICAL_95[df]
-    return 1.96
+    tabulated = [df for df in sorted(T_CRITICAL_95) if df <= degrees_of_freedom]
+    if not tabulated:
+        return T_CRITICAL_95[min(T_CRITICAL_95)]
+    if degrees_of_freedom >= max(T_CRITICAL_95):
+        return 1.96
+    return T_CRITICAL_95[max(tabulated)]
+
+
+def welch_degrees_of_freedom(baseline, variant, n_baseline, n_variant):
+    """Welch-Satterthwaite df, which is what the unpooled standard error requires.
+
+    Pairing that error with the pooled n1+n2-2 assumes equal variances. When one arm is
+    noisier the pooled df is far too generous: at a 20x variance ratio and 3 runs an arm it
+    returns df=4 and a 2.776 threshold where Welch gives df=2 and demands 4.303, so a result
+    that is not significant prints as significant.
+    """
+    baseline_term = baseline["stdev"] ** 2 / n_baseline
+    variant_term = variant["stdev"] ** 2 / n_variant
+    denominator = (baseline_term ** 2 / (n_baseline - 1)
+                   + variant_term ** 2 / (n_variant - 1))
+    if denominator == 0:
+        return None
+    return (baseline_term + variant_term) ** 2 / denominator
 
 
 def flatten(scored):
@@ -249,18 +273,19 @@ def difference_sigma(baseline, variant, n_baseline, n_variant):
     """
     change = variant["mean"] - baseline["mean"]
     if n_baseline < 2 or n_variant < 2:
-        return change, None, "need 2+ scored runs per arm"
-    pooled = (baseline["stdev"] ** 2 / n_baseline + variant["stdev"] ** 2 / n_variant) ** 0.5
-    # Zero pooled variance and too few runs are different diagnoses. Reporting both as a
-    # sample-size problem points the operator at the wrong fix when the real cause is that
-    # every run collapsed to the same value, usually because none of them scored anything.
-    if pooled == 0:
-        return change, None, "no variance in either arm, check the scored runs"
-    return change, change / pooled, None
+        return change, None, None, "need 2+ scored runs per arm"
+    unpooled = (baseline["stdev"] ** 2 / n_baseline
+                + variant["stdev"] ** 2 / n_variant) ** 0.5
+    # Zero variance and too few runs are different diagnoses. Reporting both as a sample-size
+    # problem points the operator at the wrong fix when the real cause is that every run
+    # collapsed to the same value, usually because none of them scored anything.
+    if unpooled == 0:
+        return change, None, None, "no variance in either arm, check the scored runs"
+    degrees = welch_degrees_of_freedom(baseline, variant, n_baseline, n_variant)
+    return change, change / unpooled, degrees, None
 
 
 def print_delta(baseline_stats, variant_stats, n_baseline, n_variant):
-    threshold = t_critical(n_baseline + n_variant - 2)
     # The word floor drops short answers and the budget cap drops long ones, so unequal arms
     # mean any delta may be survivorship rather than effect.
     if n_baseline != n_variant:
@@ -269,23 +294,28 @@ def print_delta(baseline_stats, variant_stats, n_baseline, n_variant):
               f"with output length, so treat every row below as unreliable and rerun "
               f"until both arms are equal.")
     print(f"\ndelta (variant minus baseline). sigma is the difference over its standard "
-          f"error.\nOnly {PRIMARY_METRIC} decides; the rest describe. Threshold |t| >= "
-          f"{threshold} at 95% for n={n_baseline}+{n_variant}.")
-    print(f"  {'metric':<26} {'delta':>8} {'sigma':>8}   reading")
+          f"error, judged\nagainst a per-metric Welch threshold. Only {PRIMARY_METRIC} "
+          f"decides; the rest describe.")
+    print(f"  {'metric':<26} {'delta':>8} {'sigma':>8} {'df':>6} {'t95':>6}   reading")
     for metric in TRACKED_MEASURES:
-        change, sigma, why = difference_sigma(
+        change, sigma, degrees, why = difference_sigma(
             baseline_stats[metric], variant_stats[metric], n_baseline, n_variant)
         role = "decides" if metric == PRIMARY_METRIC else "describes"
         if sigma is None:
-            print(f"  {metric:<26} {change:>+8.2f} {'n/a':>8}   {why} [{role}]")
+            print(f"  {metric:<26} {change:>+8.2f} {'n/a':>8} {'':>6} {'':>6}   "
+                  f"{why} [{role}]")
             continue
-        if abs(sigma) >= threshold:
+        threshold = t_critical(degrees) if degrees else None
+        if threshold is None:
+            reading = "cannot set a threshold"
+        elif abs(sigma) >= threshold:
             reading = "significant at 95%"
         elif abs(sigma) >= 1:
             reading = "suggestive, underpowered"
         else:
             reading = "indistinguishable from noise"
-        print(f"  {metric:<26} {change:>+8.2f} {sigma:>+8.2f}   {reading} [{role}]")
+        print(f"  {metric:<26} {change:>+8.2f} {sigma:>+8.2f} {degrees:>6.1f} "
+              f"{threshold if threshold else 0:>6.3f}   {reading} [{role}]")
     print(f"\n  Read the [decides] row alone as the result. The [describes] rows are "
           f"context;\n  treating any of them as a finding is how six tests become one "
           f"false positive.")
@@ -298,13 +328,20 @@ def print_sensitivity(stats, n):
     worth attempting. A metric whose minimum detectable effect is larger than any plausible
     rewrite is not evidence, and running the variant arm against it only buys a false null.
     """
-    print(f"\n  smallest change {n} runs per arm could call at 2 sigma")
+    # Sized with the same t the verdict uses, not 2 sigma. A 2-sigma table understates the
+    # detectable effect against a threshold of 2.306, so a rewrite planned from it comes back
+    # "suggestive, underpowered" at exactly the size the table promised was enough.
+    threshold = t_critical(2 * n - 2)
+    if n < 2 or threshold is None:
+        return
+    print(f"\n  smallest change {n} runs per arm could call at 95% (t={threshold})")
     print(f"  {'metric':<26} {'absolute':>10} {'relative':>10}")
     for metric in TRACKED_MEASURES:
         row = stats[metric]
-        if n < 2 or row["mean"] == 0:
+        if row["mean"] == 0:
+            print(f"  {metric:<26} {'':>10} {'mean is 0':>10}")
             continue
-        detectable = 2 * ((2 * row["stdev"] ** 2 / n) ** 0.5)
+        detectable = threshold * ((2 * row["stdev"] ** 2 / n) ** 0.5)
         print(f"  {metric:<26} {detectable:>10.2f} {100 * detectable / row['mean']:>9.0f}%")
 
 

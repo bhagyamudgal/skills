@@ -31,7 +31,10 @@ LIVE_UNSLOP_CANDIDATES = (
     pathlib.Path.home() / ".agents" / "skills" / "unslop" / "SKILL.md",
 )
 
-FENCE = re.compile(r"^[ \t]*(```|~~~)([^\n`]*)\n(.*?)^[ \t]*\1[ \t]*$",
+# CommonMark allows three or more delimiters and a closing run at least as long as the
+# opening one, so a four-backtick block (used to fence content that itself contains a fence)
+# is not matched by a three-only pattern and its code would be scored as prose.
+FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,})([^\n`]*)\n(.*?)^[ \t]*\1`*~*[ \t]*$",
                    re.MULTILINE | re.DOTALL)
 # A model fences the deliverable in ```markdown to be copy-pasted and the title in a bare
 # fence, so stripping every fence scores the commentary instead of the artifact.
@@ -193,19 +196,37 @@ def check_drift():
               f"may be stale and this check can no longer tell.", file=sys.stderr)
         return 1
 
-    # Compare against every vendored rule, not just ai-vocabulary. unslop files `landscape`
-    # under rule 7 and this scorer counts it under rule 26; either way it is counted, and a
-    # per-rule comparison would report a false alarm every time a term is filed elsewhere.
     spec = json.loads(RULES_FILE.read_text())
-    vendored = {term.lower()
-                for rule in spec["rules"]
-                for term in rule.get("terms", [])}
-    missing = sorted(live - vendored)
-    print(f"live rule 7 lists {len(live)} terms; the vendored rules carry {len(vendored)}")
-    if missing:
-        print(f"counted by the live skill and by no vendored rule: {', '.join(missing)}")
+    snapshot = {term.lower() for term in spec["live_rule_7_snapshot"]["terms"]}
+    # Both directions against the snapshot. Comparing only live-minus-vendored misses a term
+    # the live skill removed, which stays vendored and keeps scoring text the rule no longer
+    # calls a tell. The union of all vendored terms cannot serve as the yardstick, because
+    # the other rules deliberately carry terms rule 7 never listed.
+    added = sorted(live - snapshot)
+    removed = sorted(snapshot - live)
+    print(f"live rule 7 lists {len(live)} terms; the vendored snapshot holds {len(snapshot)}")
+
+    failed = False
+    if added:
+        print(f"added to the live rule since vendoring: {', '.join(added)}")
+        failed = True
+    if removed:
+        print(f"removed from the live rule but still vendored: {', '.join(removed)}")
+        failed = True
+
+    # A snapshot term still has to be counted by some rule. unslop files `landscape` under
+    # rule 7 and this scorer counts it under rule 26, so the coverage question is answered
+    # against every vendored rule rather than per rule.
+    vendored = {term.lower() for rule in spec["rules"] for term in rule.get("terms", [])}
+    uncovered = sorted(snapshot - vendored)
+    if uncovered:
+        print(f"in the snapshot but counted by no vendored rule: {', '.join(uncovered)}")
+        failed = True
+
+    if failed:
+        print("update slop_rules.json, then re-snapshot live_rule_7_snapshot", file=sys.stderr)
         return 1
-    print("every live term is covered by some vendored rule")
+    print("live rule 7 matches the vendored snapshot, and every term is counted")
     return 0
 
 

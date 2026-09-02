@@ -299,5 +299,26 @@
       "ness",
       "ism"
     ]
+  },
+  "live_rule_7_snapshot": {
+    "note": "Exactly unslop rule 7's vocabulary as it stood when this mirror was vendored. --check-drift compares the live rule against this in BOTH directions, so a term the live skill removes or renames fails too. Comparing only against the union of vendored terms cannot do that, because the vendored rules deliberately carry many terms rule 7 never listed.",
+    "terms": [
+      "additionally",
+      "crucial",
+      "delve",
+      "enduring",
+      "enhance",
+      "fostering",
+      "garner",
+      "interplay",
+      "intricate",
+      "landscape",
+      "pivotal",
+      "showcase",
+      "tapestry",
+      "testament",
+      "underscore",
+      "vibrant"
+    ]
   }
 }
