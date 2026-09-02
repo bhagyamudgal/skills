@@ -134,9 +134,8 @@ def parse_transcript(output):
             result = event.get("result", "")
             final_text = result if isinstance(result, str) else json.dumps(result)
             result_error = format_result_error(event, final_text)
-    # A transcript with no result event was cut off: the process was killed, or the last
-    # line was half-written and iter_events dropped it. The text below is then a retracted
-    # draft, and scoring it as a finished answer is how a truncated run reads as a clean one.
+    # No result event means the transcript was cut off, so the text below is a retracted
+    # draft. Scoring one as finished is how a truncated run reads as a clean one.
     if not saw_result and result_error is None:
         result_error = "missing result event, transcript truncated"
     # The `result` event carries the final assistant message; earlier messages are drafts,

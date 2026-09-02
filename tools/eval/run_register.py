@@ -10,11 +10,14 @@ slop_score.py. Run it without --variant to establish how much the score moves be
 identical runs; that spread is the noise floor, and a rewrite has to beat it to mean
 anything. Run it with --variant pointing at a modified skills tree to get the delta.
 
-One confound this cannot remove and therefore reports: a standing instruction in the user's
-global CLAUDE.md fires the `unslop` skill in every session, which cleans the output on its
-way out no matter what the skill under test looks like. Every run records whether it fired.
-If it fired in both arms and the delta is flat, the honest reading is that the global rule
-already does this job and the rewrite buys nothing measurable.
+One confound this cannot remove, and it is wider than it looks. The user's global CLAUDE.md
+is in context for every run in both arms. It fires the `unslop` skill, and it separately
+bans `delve`, `seamless`, `Certainly!`, stacked hedges and emoji by name, and prescribes
+"prose for reasoning, bullets for lists". That is five of the rules scored here, enforced
+before any skill is consulted. So `unslop fired in 0/5 runs` does not mean the confound was
+absent; the text rule is unconditional. Read the baseline as a floor the global config
+already imposes, not as what the skill's prose produces on its own. If the delta is flat,
+the honest reading is that the global rule already does this job.
 
     python3 tools/eval/run_register.py --case pr-body --repeat 5
     python3 tools/eval/run_register.py --case pr-body --repeat 3 --variant ../rewritten/skills
@@ -44,23 +47,19 @@ SKILLS = REPO / "skills"
 # PR, file an issue, or push. The diff each case needs is in its prompt instead.
 CASE_TOOLS = ["Skill", "Read", "Glob", "Grep"]
 
-# Below this, a per-100-word rate is arithmetic on noise: one stray tell in a 20-word answer
-# reads as 5.0, above the whole observed baseline. A reply that is only a fenced code block
-# scores a flawless zero on every metric and drags its arm toward a false improvement.
+# Below this a per-100-word rate is arithmetic on noise, and a code-block-only reply scores
+# a flawless zero on every metric.
 MIN_SCORABLE_WORDS = 80
 
 TRACKED_MEASURES = ["tells_per_100w", "nominalisation_per_100w", "adverb_per_100w",
                     "sentence_words_stdev", "mean_sentence_words", "pct_sentences_over_35w"]
 
-# One metric decides, the other five describe. Testing all six at a 2-sigma threshold is a
-# 24% chance of at least one false "probable" per case under a true null, and across four
-# cases the run would more often than not report an effect on an unchanged tree. This is the
-# metric issue #37 names ("dense nominalised spec prose") and the tightest in the baseline.
+# One metric decides, the rest describe: six tested at 2 sigma is a 24% false-positive rate
+# per case. This is the one issue #37 names and the tightest in the baseline.
 PRIMARY_METRIC = "nominalisation_per_100w"
 
-# Two-sided 95% critical values of t by degrees of freedom. With n=3 per arm the spread is
-# estimated from 3 points and df=4, where the real threshold is 2.776 rather than 2.0, so
-# reading sigma against a normal would call p=0.12 "probable".
+# Two-sided 95% t by degrees of freedom. At n=3 per arm df=4 and the threshold is 2.776, so
+# reading sigma against a normal would call p=0.12 significant.
 T_CRITICAL_95 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
                  8: 2.306, 9: 2.262, 10: 2.228, 12: 2.179, 15: 2.131, 20: 2.086, 30: 2.042}
 
@@ -97,10 +96,8 @@ def failed_skill_load(tool_calls, slug):
              if call["name"] == "Skill" and (call["input"] or {}).get("skill") == slug]
     if not calls:
         return f"{slug} never fired (fired: {', '.join(named) or 'nothing'})"
-    # The rename stops the installed copy from *shadowing* the sandbox one, not from also
-    # loading. The installed `done` says it is mandatory before reporting any task complete,
-    # so it can fire alongside `done-under-test` and put prose into the answer that is
-    # byte-identical in both arms, shrinking the delta toward zero.
+    # The rename stops the installed copy shadowing the sandbox one, not from also loading
+    # alongside it and putting prose byte-identical in both arms into the answer.
     original = slug.removesuffix("-under-test")
     if original in named:
         return f"the installed {original} loaded alongside {slug}, so both arms share prose"
@@ -147,9 +144,8 @@ def run_once(case, skills_root, budget, timeout):
         temp_root, repo = harness.make_sandbox(
             "register-eval-", FIXTURE, skills=[staged_skill])
     except (ValueError, OSError, RuntimeError) as error:
-        # Sandbox setup fails for ordinary reasons: a signing hook, a full disk, a bad
-        # global git config. Letting it escape kills every remaining case and loses the
-        # arm's collected results, because the summary is only written at case end.
+        # Escaping here kills every remaining case and loses the arm, since the summary is
+        # only written at case end.
         if temp_root:
             shutil.rmtree(temp_root, ignore_errors=True)
         return None, "", [], f"sandbox setup failed: {error}"
@@ -184,9 +180,6 @@ def run_once(case, skills_root, budget, timeout):
         ambient = [name
                    for event in harness.iter_events(stdout)
                    for name in harness.parse_skill_names(event)]
-        # A cut-off run holds a draft, not an answer, and a draft is short and unfinished in
-        # exactly the direction that reads as cleaner prose. Scoring one biases the arm it
-        # lands in toward a false improvement.
         if timed_out:
             return None, final_text, ambient, f"timeout after {timeout}s"
         if result_error:
@@ -268,6 +261,13 @@ def difference_sigma(baseline, variant, n_baseline, n_variant):
 
 def print_delta(baseline_stats, variant_stats, n_baseline, n_variant):
     threshold = t_critical(n_baseline + n_variant - 2)
+    # The word floor drops short answers and the budget cap drops long ones, so unequal arms
+    # mean any delta may be survivorship rather than effect.
+    if n_baseline != n_variant:
+        print(f"\n  WARNING: arms are unbalanced, {n_baseline} baseline against "
+              f"{n_variant} variant scored runs. Runs are dropped for reasons correlated "
+              f"with output length, so treat every row below as unreliable and rerun "
+              f"until both arms are equal.")
     print(f"\ndelta (variant minus baseline). sigma is the difference over its standard "
           f"error.\nOnly {PRIMARY_METRIC} decides; the rest describe. Threshold |t| >= "
           f"{threshold} at 95% for n={n_baseline}+{n_variant}.")
@@ -375,8 +375,6 @@ def main():
                 exit_code = 1
             stats_by_arm[arm_name] = summarise(runs)
             runs_by_arm[arm_name] = runs
-            # Dropped runs are not random: if one arm errors more often, its survivors are a
-            # biased sample. A mean with no run count beside it hides that completely.
             audit_by_arm[arm_name] = {
                 "requested": args.repeat,
                 "scored": len(runs),

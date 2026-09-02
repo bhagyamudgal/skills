@@ -258,8 +258,6 @@ class MigratedCallers(unittest.TestCase):
     def test_claims_fixture_lands_where_the_prompts_address_it(self):
         root, repo = self.claims.make_sandbox()
         self.roots.append(root)
-        # The case prompts name this path literally. If it moves, every Read in every
-        # prompt misses and the run fails for a reason no assertion names.
         self.assertTrue((repo / "tools" / "eval" / "verify-claims-fixture"
                          / "code" / "discount.py").is_file())
         self.assertTrue((repo / ".claude" / "skills" / "verify-claims" / "SKILL.md").is_file())
@@ -343,7 +341,6 @@ class RegisterStaging(unittest.TestCase):
                             case["skill"])
 
     def test_no_case_grants_bash(self):
-        # A case with Bash could open the PR it was asked to draft.
         self.assertNotIn("Bash", self.register.CASE_TOOLS)
 
 
@@ -391,8 +388,6 @@ class RegisterStatistics(unittest.TestCase):
         self.assertLess(sigma, 0)
 
     def test_zero_spread_is_not_diagnosed_as_too_few_runs(self):
-        # Eight runs per arm and a +12.5 delta once read "need 2+ runs per arm", pointing
-        # the operator at sample size when nothing had produced any variance.
         _, sigma, why = self.sigma(
             {"mean": 0.0, "stdev": 0.0}, {"mean": 12.5, "stdev": 0.0}, 8, 8)
         self.assertIsNone(sigma)
@@ -411,8 +406,6 @@ class SignificanceThreshold(unittest.TestCase):
         self.register = run_register
 
     def test_small_samples_demand_more_than_two_sigma(self):
-        # df=4 at n=3 per arm: the two-sided 95% value is 2.776, not 2.0. Reading sigma
-        # against a normal would call p=0.12 "probable".
         self.assertGreater(self.register.t_critical(4), 2.7)
 
     def test_threshold_falls_toward_the_normal_limit(self):

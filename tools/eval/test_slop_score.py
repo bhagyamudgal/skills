@@ -67,8 +67,6 @@ class Separation(unittest.TestCase):
         self.assertGreater(slop_rate, plain_rate * 2)
 
     def test_plain_prose_is_not_scored_as_perfect_by_accident(self):
-        # Guards against the scorer silently matching nothing at all, which would make
-        # every text look clean and every delta look like a null result.
         self.assertGreater(self.plain["words"], 50)
         self.assertGreater(self.plain["sentences"], 5)
 
@@ -92,8 +90,6 @@ class Rules(unittest.TestCase):
                                      "ai-vocabulary"), 0)
 
     def test_ai_vocabulary_respects_word_boundaries(self):
-        # "enhance" must not fire inside "enhancement" handling, and "realm" not in "realms"
-        # is fine, but a substring match would flag "crucially" as "crucial".
         self.assertEqual(self._count("delved", "ai-vocabulary"), 0)
 
     def test_trailing_ing_clause_needs_the_comma(self):
@@ -195,8 +191,6 @@ class ProseFences(unittest.TestCase):
 
 class TellDeduplication(unittest.TestCase):
     def test_a_term_filed_under_two_rules_counts_once_in_the_total(self):
-        # "great question" is both a chatbot phrase and sycophancy. Summing the rules would
-        # weight it double against every other tell.
         scored = slop_score.score("Great question, here is the answer to it now.")
         self.assertEqual(scored["rules"]["chatbot-phrase"]["count"], 1)
         self.assertEqual(scored["rules"]["sycophancy"]["count"], 1)
@@ -212,7 +206,6 @@ class TellDeduplication(unittest.TestCase):
 
 class RuleDataFixes(unittest.TestCase):
     def test_an_arrow_is_not_an_emoji(self):
-        # `->` is the format the global rules prescribe for completion reports.
         self.assertEqual(slop_score.score("Old logic → new logic.")["rules"]["emoji"]["count"], 0)
 
     def test_a_real_emoji_still_counts(self):
@@ -229,8 +222,6 @@ class RuleDataFixes(unittest.TestCase):
         self.assertEqual(len(suffixes), len(set(suffixes)))
 
     def test_a_partially_parsed_vocabulary_is_rejected(self):
-        # The guard that matters: a regex that clips the list returns one term, and a drift
-        # check comparing one term passes while comparing nothing.
         clipped = "**AI vocabulary.** delve. Replace with plain words. Also: leverage, robust."
         self.assertIsNone(slop_score.extract_live_vocabulary(clipped))
 

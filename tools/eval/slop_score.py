@@ -33,10 +33,8 @@ LIVE_UNSLOP_CANDIDATES = (
 
 FENCE = re.compile(r"^[ \t]*(```|~~~)([^\n`]*)\n(.*?)^[ \t]*\1[ \t]*$",
                    re.MULTILINE | re.DOTALL)
-# Strip a fence only when its info string names a programming or data language. A model
-# asked for a PR body wraps the deliverable in ```markdown so it can be copy-pasted, and
-# puts the title in a bare fence, so stripping every fence deletes the artifact under
-# measurement and scores the chat commentary about it instead.
+# A model fences the deliverable in ```markdown to be copy-pasted and the title in a bare
+# fence, so stripping every fence scores the commentary instead of the artifact.
 CODE_LANGUAGES = frozenset({
     "diff", "patch", "js", "javascript", "jsx", "ts", "typescript", "tsx", "python", "py",
     "bash", "sh", "shell", "zsh", "fish", "console", "json", "jsonc", "yaml", "yml", "toml",
@@ -108,10 +106,8 @@ def score(text, rules=None, measures=None):
         spans = [m.span() for m in rule["regex"].finditer(prose)]
         hits[rule["name"]] = {"count": len(spans), "per_100w": per_100(len(spans))}
         covered.update(spans)
-    # Per-rule counts stay raw for diagnostics, but the headline total counts each matched
-    # span once. Some terms are filed under two rules on purpose (`vibrant` is promotional
-    # and AI vocabulary; `great question` is a chatbot phrase and sycophancy), and summing
-    # the rules would silently weight those double against every other tell.
+    # Per-rule counts stay raw for diagnostics; the total counts each span once. Terms filed
+    # under two rules on purpose would otherwise weight double against every other tell.
     total_tells = len(covered)
 
     lengths = [len(WORD.findall(s)) for s in sentences(prose)]
@@ -154,9 +150,8 @@ def delta(before, after):
     return out
 
 
-# Rule 7 has listed at least a dozen terms in every version of unslop. A capture that comes
-# back with fewer means the regex clipped the list, not that the rule shrank, and a drift
-# check that compares one term against the vendored list passes while comparing nothing.
+# Rule 7 has always listed a dozen-plus terms, so a shorter capture means the regex clipped
+# the list and the drift check would pass while comparing nothing.
 MIN_PLAUSIBLE_VOCABULARY = 8
 
 
