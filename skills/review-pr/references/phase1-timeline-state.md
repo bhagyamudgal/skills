@@ -2,7 +2,7 @@
 
 ### Build the prior-review timeline
 
-Fetch ALL reviews (not just latest) so the critic can track which findings were raised at which commit, whether they were resolved, and whether an unresolved finding is still valid on the current head.
+Fetch all reviews, not just the latest. The critic tracks which findings came up at which commit, whether they resolved, and whether an unresolved finding still holds on the current head.
 
 ```bash
 gh api graphql -f query='
@@ -81,4 +81,4 @@ CURRENT_HEAD=$(gh pr view <url> --json headRefOid -q .headRefOid)
 
 Use `REVIEW_CACHE_CONTRACT_VERSION` from `references/finding-state-schema.md`, already loaded for the review-state read. Validate `contract_version` before reading any cache field. A missing or mismatched version invalidates the complete cache and starts a full fresh review. For a current cache, comparing `last_run_sha` to `CURRENT_HEAD` selects one of three branches: replay the cached run unchanged, re-review only the new commits, or invalidate and start fresh. The cache schema and the full body of each branch live in that reference under "Run-over-run cache".
 
-After a successful run, write `contract_version: REVIEW_CACHE_CONTRACT_VERSION` with the result in `$CACHE_FILE` at the end of Phase 4. The cache is local and independent of GitHub state.
+After a successful run, write `contract_version: REVIEW_CACHE_CONTRACT_VERSION` with the result in `$CACHE_FILE` at the end of Phase 4. The cache stays local and never touches GitHub state.

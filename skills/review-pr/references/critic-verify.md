@@ -6,12 +6,12 @@ Merge findings describing the same issue across reviewers AND within a reviewer'
 
 **Dedupe key**: `(file_path, post_image_line, normalized_symbol_name)`, NOT `Category`. For findings without a valid diff line, use `"file-level:<category>"` in place of `post_image_line` (e.g., `(config.ts, file-level:Architecture, missingvalidation)`). Two findings on the same `(file, line, symbol)` are duplicates regardless of category: merge, keep higher severity, concatenate reasoning.
 
-Normalize symbol names: lowercase + strip CamelCase boundaries (`renderUserCard` → `renderusercard`).
+Lowercase symbol names and strip CamelCase boundaries. `renderUserCard` becomes `renderusercard`.
 
 Dedupe priority when merging:
 1. Severity wins: `Critical > Serious > Moderate > Minor`.
 2. Category precedence for ties: `Security > Reusability > Silent-failure > Breaking-change > Performance > DRY > Unnecessary > Intent > Architecture`.
-3. Confidence: keep highest.
+3. Keep the highest confidence.
 4. **Site list always survives.** When a cross-file finding (Subagent 3) merges with a
    single-file one, keep the UNION of their sites in `Class-sites`. Collapsing a
    "3 of 4 hooks handled" finding down to the one hook a chunk reviewer happened to cite
@@ -30,16 +30,16 @@ For each finding with a `File: <path:line>` reference, before expensive Step 2 v
 
 ### 2. Verify `file:line`
 
-The full diff is in main context (stashed in Phase 1). Main verifies references against it, independently of the subagent's now-discarded context.
+The full diff sits in main context, stashed in Phase 1. Main verifies references against it, independently of the subagent now-discarded context.
 
-- PRs `< 500` lines: verify ALL findings.
+- For PRs under `< 500` lines, verify all findings.
 - PRs `>= 500` lines: verify all Critical + Serious; for Moderate/Minor on files not fully stashed, fetch per-file patch:
   ```bash
   gh api repos/<owner>/<repo>/pulls/<num>/files --jq '.[] | select(.filename=="<path>") | .patch'
   ```
-- **Routing**: line-numbered finding → line verification. No line number → file-level verification. Mutually exclusive.
-- **Line verification**: `<path:line>` must refer to a line on the **post-image / new side** of the hunk. References to old-side-only, deleted lines, or lines not in any hunk → DROP, log `hallucinated reference`.
-- **File-level verification**: verify `path` appears in PR's changed files. Not in changed files → DROP, log `hallucinated file reference`.
+- **Routing.** Line-numbered findings go to line verification. Findings without a line number go to file-level verification. The two never mix.
+- **Line verification.** `<path:line>` must point to a line on the **post-image / new side** of the hunk. Old-side-only references, deleted lines, or lines outside any hunk drop as `hallucinated reference`.
+- **File-level verification.** Verify `path` appears in the PR changed files. A path outside the changed files drops as `hallucinated file reference`.
 
 ### 3. Drop already-known
 
@@ -47,16 +47,16 @@ If a finding matches "Prior findings" from Phase 1 AND is NOT marked `Prior-find
 
 ### 4. Challenge with the 3-prong test
 
-For each remaining finding, drop **only if ALL three** hold:
+For each remaining finding, drop **only if all three** hold:
 - (a) symptom is purely cosmetic or a nit
 - (b) no user-visible behavior changes if ignored
 - (c) no downstream refactor cost
 
-Keep if **ANY one** fails. Log drops as `noise / 3-prong test`.
+Keep if **any one** fails. Log drops as `noise / 3-prong test`.
 
 ### 4.5. Reusability audit verification
 
-For each reviewer's "Q6 No issues" response, verify the audit. Catches: missing audit field, insufficient search count, class-method definitions not counted.
+For each reviewer Q6 No issues response, verify the audit. It catches a missing audit field, an insufficient search count, and uncounted class-method definitions.
 
 #### 4.5a: Count new definitions in the diff
 
@@ -69,7 +69,7 @@ Match added lines (starting with `+`) against:
 +\s+(private|protected|public|async|static)(\s+(private|protected|public|async|static))*\s+\w+\s*\(
 ```
 
-Patterns cover: standard function/class/interface/type, arrow-function consts, default exports, **class methods inside class bodies** (NestJS-style services). Track `{`/`}` nesting from the nearest `class X {` to count only methods inside class blocks.
+Patterns cover standard function/class/interface/type, arrow-function consts, default exports, and **class methods inside class bodies** for NestJS-style services. Track `{`/`}` nesting from the nearest `class X {` to count only methods inside class blocks.
 
 Combine into `new_definitions_count`.
 
@@ -102,7 +102,7 @@ proposes a code change passes through this step; every finding carrying a `Sugge
 passes through 4.56.
 
 Batch every finding needing verification into **V1: Class-sweep verifier** and dispatch it
-alongside V2/V3. Main applies the rules below to what V1 returns.
+alongside V2/V3, within the 4-subagent cap and V1 batching in `<SKILL_DIR>/references/verification-subagents.md`. Main applies the rules below to what V1 returns.
 
 1. **Field missing entirely**: the sweep was not run. Keep the finding and let V1 run the
    sweep. Derive the signature from `Rule-class`, and append V1's result to the finding. Log

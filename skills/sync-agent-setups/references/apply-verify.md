@@ -1,8 +1,8 @@
 # Apply and verify
 
-Protect each target's check/write/read-back interval with the platform's native conditional or atomic write when it exposes one. Otherwise acquire a compact exclusive lock for that target in its parent directory with an atomic lock operation, record the lock path and item ID, and release it through a guaranteed cleanup path. The fallback lock serializes this workflow's writers; it is not a claim that unrelated processes honor universal compare-and-swap.
+Protect each target's check/write/read-back interval with the platform's native conditional or atomic write when it exposes one. Otherwise take a compact exclusive lock for that target in its parent directory with an atomic lock operation, record the lock path and item ID, and release it through a guaranteed cleanup path. The fallback lock serializes this workflow's writers; it is not a claim that unrelated processes honor universal compare-and-swap.
 
-Under that protection, re-read and compare the target's file kind, symlink text and resolved path, checksum, and every applicable platform revision with the confirmed manifest. For an exact copy, also resolve and rehash the confirmed Claude source; for an adaptation, rehash the staged artifact. A mismatch preserves the target, marks the item `blocked`, and releases the lock without a write.
+Under that protection, reread and compare the target's file kind, symlink text and resolved path, checksum, and every applicable platform revision against the confirmed manifest. For an exact copy, also resolve and rehash the confirmed Claude source. For an adaptation, rehash the staged artifact. A mismatch preserves the target, marks the item `blocked`, and releases the lock without a write.
 
 - `exact-copy`: replace only the confirmed target path with the recorded symlink to the just-revalidated Claude source.
 - `adaptation`: write the confirmed staged bytes without regeneration, using a same-directory temporary file plus atomic replacement when the target surface supports it, and retain its source/target provenance in the manifest.
@@ -13,7 +13,7 @@ Keep the protection until authoritative read-back matches the exact confirmed re
 
 Deletion of orphaned drift and promotion of downstream content into Claude are separate decisions. Preview and preflight either operation as a new mutation batch.
 
-**Gate:** every attempted item has a read-back state, and untouched classifications remain byte- and link-identical to their preflight state.
+**Gate.** every attempted item has a read-back state, and untouched classifications remain byte- and link-identical to their preflight state.
 
 ## 6. Verify each target
 

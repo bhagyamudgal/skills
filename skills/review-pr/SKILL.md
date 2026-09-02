@@ -5,19 +5,19 @@ description: Review a GitHub PR, then automatically request changes for any find
 
 # /review-pr: Deep GitHub PR Review
 
-Reviews a remote GitHub PR with anti-slop filtering. Input: **PR URL only**.
+Reviews a remote GitHub PR with anti-slop filtering. It takes a PR URL and nothing else.
 
 Goal: produce an accurate, critical, actionable PR review, filter out noise (style nitpicks, hallucinated references, duplicates, generic advice), and submit the result to GitHub. Reviews of another author's PR use `REQUEST_CHANGES` or `APPROVE`; self-reviews use `COMMENT` because GitHub forbids authors from approving their own PRs.
 
 **Cascade** is the failure this review is built to prevent: a fix shipped for round N's finding becomes round N+1's finding. Two things feed it: the suggested fix carries a defect of its own, and the fix lands on the cited site while identical sibling sites go untouched. So every finding proposing a code change carries an `Inverse risk:` and a `Class-sites:` count, one field per feeder. Phase 3 measures the result as `cascade_share` at step 7.5, the verdict at step 8 reads it to say whether the PR is converging, and Phase 4 prints it.
 
-This skill assumes CodeRabbit is configured on the repo via `.coderabbit.yaml`. CodeRabbit catches style + convention findings before this skill runs; `/review-pr` focuses on what only deep semantic + codebase-wide review can do.
+This skill expects CodeRabbit on the repo via `.coderabbit.yaml`. CodeRabbit handles style and convention findings first. `/review-pr` handles the deep semantic and codebase-wide review only it can do.
 
-**Use AskUserQuestion for user-facing decisions that still require judgment**: stop-and-ask, large-PR confirmation, and post-failure recovery. Posting is not a decision point: invoking `/review-pr` authorizes submission of the complete review. Any sentence that offers the user 2+ labeled paths is an AskUserQuestion call. Options are cursor-selectable, concrete, and considered. Put the strongest first and mark it "(Recommended)".
+**Use AskUserQuestion for user-facing decisions that still require judgment**: stop-and-ask, large-PR confirmation, and post-failure recovery. Posting is not a decision point. Invoking `/review-pr` authorizes submission of the complete review. Any sentence that offers the user 2+ labeled paths is an AskUserQuestion call. Options are cursor-selectable, concrete, and considered. Put the strongest first and mark it "(Recommended)".
 
 ## Reference files
 
-Each one is loaded only on the branch that reaches it, some by main, some by a subagent. Loader and firing condition:
+Main or a subagent loads each file only on the branch that reaches it. Loader and firing condition:
 
 - `references/batch-mode.md`: orchestration rules, "don't stop" semantics, consolidated-report template, and automatic posting sequence. Loaded by **main** at Phase 1 when the user gives 2+ PR URLs or asks for all open PRs.
 - `references/reviewer-prompt.md`: the whole Subagent 1 prompt, the anti-slop rules it works under, and the note on why the finding shape is not restated inside it. Loaded by **main** at the Phase 2 dispatch on every `SIZE_MODE` branch, `solo-main` included.
@@ -39,7 +39,7 @@ Each one is loaded only on the branch that reaches it, some by main, some by a s
 
 ## Planning-doc grounding (optional pre-review context)
 
-If `docs/superpowers/specs/` or `~/.claude/plans/*.md` reference this PR, check the diff against those documented design decisions and flag undocumented deviations under Q1 (Intent); if no such files exist, skip this check.
+If `docs/superpowers/specs/` or `~/.claude/plans/*.md` reference this PR, check the diff against those documented design decisions and flag undocumented deviations under Q1 Intent. If no such files exist, skip this check.
 
 ## Usage
 
@@ -57,14 +57,14 @@ Fires when the user provides **2+ PR URLs** or asks to review **all open PRs**. 
 
 ## Phase 1: Gather context (main)
 
-Run these as **two separate Bash tool calls in a single assistant message** (true parallelism requires separate tool_use blocks, not `&&` chained):
+Run these as **two separate Bash tool calls in a single assistant message**. True parallelism needs separate tool_use blocks, not `&&` chained.
 
 ```bash
 gh pr view <url> --json number,title,body,author,baseRefName,headRefName,additions,deletions,changedFiles,files,closingIssuesReferences,reviews,comments,state,isDraft
 gh pr diff <url>
 ```
 
-Phase 1 fetches the **full diff**. Stash it in main context, needed for the error-handling content scan AND Phase 3 critic's reference verification.
+Phase 1 fetches the **full diff**. Stash it in main context. The error-handling content scan and the Phase 3 critic reference check both need it.
 
 ### Empty-diff short-circuit
 
@@ -129,7 +129,7 @@ Trigger if **no linked issue** AND the PR description **lacks all** of these:
 - A reproduction command
 - A linked issue URL in body (even outside `closingIssuesReferences`)
 
-Thin descriptions ("update X", "fix bug", "wip") fail. Terse-but-grounded ("Fix race in `auth/cache.ts` eviction; repros with `make stress-test-auth`") pass.
+Thin descriptions like "update X", "fix bug", or "wip" fail. Terse but grounded descriptions like "Fix race in `auth/cache.ts` eviction; repros with `make stress-test-auth`" pass.
 
 On trigger, AskUserQuestion:
 
@@ -142,7 +142,7 @@ options:
   - "I'll provide intent": Wait for user to type intent text
 ```
 
-On "I'll provide intent": wait for follow-up text, then build the intent model from it.
+On "I'll provide intent", wait for follow-up text, then build the intent model from it.
 
 ### Size warning
 
@@ -166,7 +166,7 @@ Cross-repo mode changes:
 1. Repo map computation falls back to remote `gh api` tree fetch.
 2. Phase 3 already-fixed check uses `gh api` instead of local `git log`.
 
-Note in Phase 4 output header.
+Note it in the Phase 4 output header.
 
 ### CodeRabbit config check (one-time hint)
 
@@ -195,7 +195,7 @@ elif SIZE <= 2000:    SIZE_MODE = "parallel-chunked"      # Per-chunk Claude rev
 else:                 SIZE_MODE = "parallel-chunked-confirm"  # AskUserQuestion: Continue vs Cancel
 ```
 
-For `solo-main`, Phase 2's Subagent 1 section runs inline in main context (no Agent tool call) with the same prompt body.
+For `solo-main`, Phase 2's Subagent 1 section runs inline in main context with the same prompt body and no Agent tool call.
 
 ### Run-over-run cache check
 
@@ -208,7 +208,7 @@ If `PRIOR_STATE.convergence` exists, invoke `converge-reviews` with the current 
 
 If `packages/` or `apps/` exists, load `${CLAUDE_SKILL_DIR}/references/repo-map.md` and run the block for the mode you are in: it holds both shell blocks (the cross-repo `gh api` tree fetch and the local `bash -c` find/grep pair, each truncating at 500 lines) and stashes `repo_map_files` + `repo_map_exports` for Subagent 1's prompt. It is the one copy of that shell, shared with `/fix-pr-review` and `/harden-plan`.
 
-If neither directory exists, skip the shell: set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false`. Subagent 1 reroutes greps to `src/`.
+If neither directory exists, skip the shell. Set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false`. Subagent 1 reroutes greps to `src/`.
 
 ### Check for error-handling touches (flag for Phase 2)
 
@@ -218,7 +218,7 @@ Grep the diff content for error-handling patterns in **added or modified lines**
 try \{ | catch \( | catch \{ | throw new | throw \s | \.catch\( | Result< | rescue | err := | raise
 ```
 
-If any pattern appears OR user mentions error handling, set `INCLUDE_SILENT_FAILURE_HUNTER = true`.
+If any pattern appears or the user mentions error handling, set `INCLUDE_SILENT_FAILURE_HUNTER = true`.
 
 ### Check for new database tables (flag for Phase 2)
 
@@ -228,9 +228,9 @@ Grep the diff content in **added lines**:
 pgTable\( | createTable\( | CREATE TABLE | knex\.schema\.createTable | Schema\.create\(
 ```
 
-If any pattern appears, set `INCLUDE_SCHEMA_CHECKS = true`. Also extract `SCHEMA_DIR` (typical: `db/schema/`, `drizzle/schema/`, `src/schema/`, `migrations/`). If unidentifiable, set `SCHEMA_DIR = "."` and limit Q7-Q9 grepping to files matching the table-definition pattern (e.g., `Grep("pgTable", ".", glob: "**/*.ts")`).
+If any pattern appears, set `INCLUDE_SCHEMA_CHECKS = true`. Also extract `SCHEMA_DIR`. Typical values are `db/schema/`, `drizzle/schema/`, `src/schema/`, or `migrations/`. If unidentifiable, set `SCHEMA_DIR = "."` and limit Q7-Q9 grepping to files matching the table-definition pattern, for example `Grep("pgTable", ".", glob: "**/*.ts")`.
 
-Cross-repo: use `gh api git/trees/<head-sha>?recursive=1` for file listing; Q7-Q9 reads via `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>`.
+In cross-repo mode, use `gh api git/trees/<head-sha>?recursive=1` for file listing. Q7-Q9 reads use `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>`.
 
 ### Load project-level review suppressions
 
@@ -254,35 +254,32 @@ suppressions:
     reason: "Timeout handled at caller level"
 ```
 
-`pattern` (required): case-insensitive substring matched against finding's `Issue` text. `category`/`file` (optional): scope the suppression. `reason` (required): logged in Filtered Out for auditability.
+`pattern` is required. It matches case-insensitively against the finding `Issue` text. `category` and `file` are optional and scope the suppression. `reason` is required and appears in Filtered Out for auditability.
 
 If file exists, pass into Subagent 1 prompt as "Review suppressions: patterns this project has already accepted; skip them". Phase 3 step 5.5 also applies as safety net.
 
-Cross-repo: fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<head-sha>`. Skip on 404.
+In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<head-sha>`. Skip on 404.
 
 ---
 
 ## Phase 2: Reviewer subagents
 
-Launch in a **single message with multiple Agent tool calls** based on `SIZE_MODE`. One dispatch per invocation: the reviewer subagents go out once here, Phase 3's verifiers go out once there, and that is the whole review. If the PR needs a second look, that is a fresh `/review-pr` run. Never a re-dispatch inside this one.
+Launch in a **single message with multiple Agent tool calls** based on `SIZE_MODE`. The reviewer subagents go out once here and the Phase 3 verifiers go out once there. That is the whole review. If the PR needs a second look, start a fresh `/review-pr` run. Never re-dispatch inside this one.
 
 ### Dispatch strategy
 
 **`SIZE_MODE == "solo-main"`** (PR < 100 lines):
 - Run Subagent 1 prompt inline in main context (no Agent tool call). Main reads stashed diff once, answers questions, populates `reusability_searches:`, outputs in same format as subagent.
-- Still dispatch silent-failure hunter (if triggered): fixed-cost subagent saves main context, runs in parallel.
+- Still dispatch the silent-failure hunter when triggered. This fixed-cost subagent saves main context and runs in parallel.
 
 **`SIZE_MODE == "parallel-standard"`** (100-500 lines, default):
 - Dispatch Subagent 1 (Claude reviewer) + conditional Subagent 2 (silent-failure hunter) in parallel.
 
 **`SIZE_MODE == "parallel-chunked"`** (500-2000 lines):
-- Split diff by file into ~500-line chunks (don't split a file across chunks).
+- Split the diff by file into ~500-line chunks. Never split a file across chunks.
 - Dispatch ONE Subagent 1 PER CHUNK with full intent model + prior review timeline + repo map + schema context, but only its chunk's files in scope. Prompt: "Your scope is the files listed above. Do not report findings in other files."
-- Dispatch ONE silent-failure hunter at full PR scope.
-- Dispatch ONE **cross-cutting reviewer** (Subagent 3) at full PR scope; see below. Chunk
-  reviewers report within their own chunk only, so Subagent 3 is the one reviewer that can
-  see a defect class spanning two chunks. Without it, that class is a straight path into
-  the cascade.
+- Dispatch one silent-failure hunter at full PR scope.
+- Dispatch one **cross-cutting reviewer** at full PR scope as Subagent 3. See below. Chunk reviewers report within their own chunk only, so Subagent 3 is the one reviewer that can see a defect class spanning two chunks. Without it, that class feeds the cascade directly.
 
 **`SIZE_MODE == "parallel-chunked-confirm"`** (> 2000 lines):
 
@@ -296,9 +293,9 @@ options:
 
 ### Degraded-mode rule
 
-If any subagent errors out or returns empty, continue with the remaining and note `<reviewer> unavailable` in Phase 4 output header. Abort only if ALL fail.
+If any subagent errors out or returns empty, continue with the remaining ones and note `<reviewer> unavailable` in the Phase 4 output header. Abort only if all fail.
 
-**Note on CodeRabbit**: CodeRabbit's findings arrive through the prior-review timeline in Phase 1, pulled from the PR's existing comments (assuming `.coderabbit.yaml` is configured; see the one-time hint above), so no CodeRabbit subagent is dispatched. If the PR's latest commit has no CodeRabbit comment yet, Subagent 1 carries the load and the next round picks up CR's input.
+**Note on CodeRabbit.** CodeRabbit findings arrive through the prior-review timeline in Phase 1, pulled from the PR existing comments when the repo has `.coderabbit.yaml`. See the one-time hint above. No CodeRabbit subagent goes out. If the PR latest commit has no CodeRabbit comment yet, Subagent 1 carries the load and the next round picks up the CodeRabbit input.
 
 ### Subagent 1: Claude reviewer (`general-purpose`)
 
@@ -329,11 +326,9 @@ this dispatch.
 
 ## Phase 3: Critic pass (main context)
 
-The critic pass always runs. It is the second-biggest anti-slop lever after the reviewer
-prompt, and no branch of this skill prints, posts, or persists findings that have not been
-through it.
+The critic pass always runs. It catches slop the reviewer prompt misses. No branch prints, posts, or persists findings that skipped it.
 
-After ALL subagents return, main Claude runs the critic pass, splitting the work on one line:
+After all subagents return, main Claude runs the critic pass, splitting the work on one line:
 
 - **Judgment stays in main.** Dedupe, the 3-prong test, false-positive rules, suppressions,
   ranking, verdict. These need the intent model and the prior-review timeline, which main
@@ -342,7 +337,7 @@ After ALL subagents return, main Claude runs the critic pass, splitting the work
   enumerating callers, or re-reading files at HEAD. These burn context proportional to the
   codebase and return a few lines of verdict. Main should hold the verdict, not the search.
 
-Steps 4.55, 4.9 and 6 dispatch subagents (see **Phase 3 verification subagents** below).
+Steps 4.55, 4.9 and 6 dispatch subagents per `${CLAUDE_SKILL_DIR}/references/verification-subagents.md`. Load it when you reach the first of those steps whose condition holds, and keep it for the others. The three dispatch in one message. If none holds, the file is never needed.
 Everything else runs inline. A verification subagent reports evidence in a compact
 structured verdict; main rules on severity, on drops, and on the state file.
 
@@ -435,7 +430,7 @@ If ALL specified conditions match: DROP, log `suppressed by .claude/review-suppr
 
 For any question category where Subagent 1 said nothing, briefly think about whether the diff has anything in that category. Add findings if you spot misses. Include Q7-Q9 only if `INCLUDE_SCHEMA_CHECKS = true`.
 
-**Large-PR routing**: if `additions + deletions >= 500` AND main lacks the full diff,
+**Large-PR routing.** If `additions + deletions >= 500` and main lacks the full diff,
 route this check to **V3: Deep gap check** and fold its findings in here. V3 has the
 context budget to answer from the diff itself, where main would be guessing from a
 file list. Pass V3 `INCLUDE_SCHEMA_CHECKS` and `SCHEMA_DIR`. It is dispatched precisely
@@ -504,7 +499,7 @@ Write a one-sentence approval reason grounded in the most important finding or t
 
 ## Phase 4: Output
 
-Every Phase 4 path reaches **Convergence handoff** after the GitHub review is authoritatively submitted and local state is written back.
+Every Phase 4 path reaches **Convergence handoff** after main submits the GitHub review and writes back local state.
 
 ### Print this block to terminal, always
 
@@ -551,7 +546,7 @@ Every Phase 4 path reaches **Convergence handoff** after the GitHub review is au
 **Verdict**: approve → ✅ · request-changes → ❌
 **Severity headers**: Critical → 🔴 · Serious → 🟠 · Moderate → 🟡 · Minor → 🔵
 
-Filtered out is mandatory in terminal output. It is the only way to see when the critic is over-filtering. Multi-round status is mandatory when `PRIOR_STATE.findings` is non-empty.
+Terminal output must include Filtered out. It shows when the critic over-filters. Include multi-round status when `PRIOR_STATE.findings` is non-empty.
 
 ### Cascade check
 

@@ -5,9 +5,9 @@ description: Triage and fix review findings that already exist on a GitHub PR, t
 
 # /fix-pr-review: Triage, Fix, and Resolve PR Review Comments
 
-Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding, applies validated fixes, runs `/done`, and replies + resolves conversations on GitHub, all in one flow.
+Takes a PR review from CodeRabbit, `/review-pr`, or pasted text. It triages each finding, applies validated fixes, runs `/done`, then replies to and resolves the GitHub conversations in one flow.
 
-**Use AskUserQuestion only when the run still needs a user decision**: branch safety, stash confirmation, contested-item confirmation, `--interactive` per-fix confirmations, type-check failure triage, and post-completion next actions. Invoking `/fix-pr-review` or imperatively asking to fix review findings authorizes execution of the validated FIX plan; do not ask for separate plan approval. Every required option is a concrete, considered answer, strongest first and marked "(Recommended)".
+**Use AskUserQuestion only when the run still needs a user decision**: branch safety, stash confirmation, contested-item confirmation, `--interactive` per-fix confirmations, type-check failure triage, and post-completion next actions. Invoking `/fix-pr-review` or imperatively asking to fix review findings authorizes execution of the validated FIX plan. Do not ask for separate plan approval. Mark every required option as concrete and considered, strongest first with "(Recommended)".
 
 ## Quick Reference
 
@@ -53,7 +53,7 @@ Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding
 
 ### Reference files
 
-Each carries its firing condition in the pointer at the point of use; load it there, not up front.
+Each carries its firing condition in the pointer at the point of use. Load it there, not up front.
 
 - `references/fetch-review-data.md`: per-input-type GraphQL/REST fetch, CodeRabbit review-body anatomy, `Comment` schema. Loaded by main in Phase 2, at the GitHub fetch step, and again at the `Comment`-schema normalisation step if the local-file path meant it was not read there.
 - `references/triage-prompt.md`: the whole Phase 3 subagent prompt (STEP 0 → STEP 6 + output format). Read by main in Phase 3, placeholder-substituted, passed verbatim.
@@ -130,7 +130,7 @@ Stash as `BASE_SHA` for use in Phase 3's already-fixed checks.
 
 ### Pre-fix type-check baseline (what the narrow type-check compares against)
 
-Run ONE baseline type-check before Phase 5, capture the set of files already failing:
+Run one baseline type-check before Phase 5, capture the set of files already failing:
 
 ```bash
 bun turbo run check-types 2>&1 | tee /tmp/fix-pr-review-baseline-$$.log
@@ -140,7 +140,7 @@ Define one parser for the whole run. For each diagnostic, key its file and build
 
 ### Compute shared-package repo map (for reusability-aware classification)
 
-Inventory shared packages AND apps so the Phase 3 classifier can cross-check comments about reuse/extraction against what already exists. Scan BOTH `packages/` and `apps/`. Cross-app helper duplication (e.g., `apps/backend/src/modules/v1/feature-a/helpers.ts` vs `feature-b/helpers.ts`) is common in NestJS-style monorepos and is invisible to a packages-only scan.
+Inventory shared packages and apps so the Phase 3 classifier can cross-check comments about reuse and extraction against what already exists. Scan both `packages/` and `apps/`. Cross-app helper duplication, for example `apps/backend/src/modules/v1/feature-a/helpers.ts` versus `feature-b/helpers.ts`, is common in NestJS-style monorepos and stays invisible to a packages-only scan.
 
 Load `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` and run its **Local mode** block, the one copy of this shell, shared with `/review-pr` and `/harden-plan`. It carries the `bash -c` wrapping the globs need to survive zsh, and caps each half at 500 lines with the truncation marked. Load it when `packages/` or `apps/` exists; when neither does there is nothing to run and the fallback below applies.
 
@@ -152,7 +152,7 @@ Stash both outputs as `repo_map_files` and `repo_map_exports` for the Phase 3 su
 
 ### Dual-path input for /review-pr findings
 
-`/review-pr` now posts findings as **individual inline comments** (one per finding, each on a specific code line). These create standard `PullRequestReviewThread`s on GitHub, identical to CodeRabbit threads. The existing GraphQL fetch below handles them with zero special parsing.
+`/review-pr` now posts findings as **individual inline comments**, one per finding on a specific code line. These create standard `PullRequestReviewThread`s on GitHub, identical to CodeRabbit threads. The existing GraphQL fetch below handles them with zero special parsing.
 
 Manually exported or legacy `/review-pr` findings files use the existing local-file path. Phase 7 skips GitHub operations for those inputs.
 
@@ -185,13 +185,13 @@ Every input path ends here. The `Comment` schema, the exact field names Phases 3
 
 ### Load review suppressions (main agent, before dispatch)
 
-Before dispatching the subagent, load `.claude/review-suppressions.yml` from the project root (if it exists). In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<head-sha>`. If not found, set `SUPPRESSIONS = ""`.
+Before dispatching the subagent, load `.claude/review-suppressions.yml` from the project root if it exists. In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<head-sha>`. If not found, set `SUPPRESSIONS = ""`.
 
 Pass loaded suppressions into the subagent prompt as a `## Review suppressions` section (same approach as CLAUDE.md content, PR diff, and repo maps; main agent fetches, subagent receives as context).
 
 ### Dispatch
 
-Dispatch **one** `general-purpose` subagent with `Read`, `Grep`, and `Bash` tools. The triage plan comes from this subagent alone. If it fails outright, abort the run and say so; classifying inline skips the grounding and class-sweep passes the whole plan is built on.
+Dispatch **one** `general-purpose` subagent with `Read`, `Grep`, and `Bash` tools. The triage plan comes from this subagent alone. If it fails outright, abort the run and say so. Classifying inline skips the grounding and class-sweep passes the whole plan is built on.
 
 **Important**: The Bash allowlist (`git log/diff/blame/show/merge-base/rev-parse`, `grep`, `rg`) is a **prompt-level instruction**. Claude Code's Agent tool doesn't sandbox Bash per-command. The subagent is trusted not to run other commands, not mechanically prevented from doing so.
 
@@ -282,7 +282,7 @@ Nothing is posted or resolved during this step. Phase 7 remains the only place G
 
 If `--dry-run`: print the plan, print `dry run, not executing`, restore stash, exit 0.
 
-If `EXECUTION_AUTHORIZED=true`, proceed directly to Phase 5. The invocation already authorizes execution of every validated FIX item. If `--interactive` was set, ask for per-item confirmation in Phase 5; it does not add a plan-level confirmation.
+If `EXECUTION_AUTHORIZED=true`, proceed directly to Phase 5. The invocation already authorizes execution of every validated FIX item. If `--interactive` was set, ask for per-item confirmation in Phase 5. It does not add a plan-level confirmation.
 
 Otherwise, use AskUserQuestion:
 
@@ -343,8 +343,8 @@ landed_fix_statuses = {ok, retried_ok, inconclusive, type_check_skipped}
 
 ## Phase 5.5: Convergence (subagent)
 
-Run after all fixes are applied, BEFORE the `/done` pipeline. A run converges when every
-fix is class-complete, carries no inverse risk, and spawned no new siblings; anything
+Run after all fixes are applied, before the `/done` pipeline. A run converges when every
+fix is class-complete, carries no inverse risk, and spawned no new siblings. Anything
 short of that is what the next review round will find.
 
 Dispatch ONE `general-purpose` subagent. It gets `git diff HEAD` plus, per fix, the

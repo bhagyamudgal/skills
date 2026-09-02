@@ -21,21 +21,21 @@ For each FIX item in topological order:
 
    On "Apply fix": continue with steps 2-7. In ordinary Phase 5, "Skip" marks `fix_status[idx] = skipped` and advances to the next fix; "Skip remaining" marks every remaining fix `skipped` and jumps to Phase 6. In Phase 8 context, "Skip" restores every declared path from `active_snapshot` through the state-preserving restore rule with fallback `skipped`, sets `needs_input_status[idx]=skipped` and `convergence[idx]=not-run, user skipped before edit`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, user skipped before edit` otherwise. Phase 8 "Skip remaining" performs that same restore and settlement for the current item; it marks each not-yet-run fix skipped unless its current status is `inverse_risk_applied`, which remains unchanged with its publication blocker. Earlier landed fixes remain untouched. Both choices clear `phase8_triage_context`, terminate the nested Phase 5 path immediately, bypass Phases 5.5-6, and rejoin Phase 8 at the next independent item. On "Other": treat as freeform instruction (e.g., "modify the fix plan for this item").
 
-2. In ordinary context, first add any never-edited declared path to `preedit_snapshot`, then capture every declared path in `perfix_snapshot[idx]` and bind it as `active_snapshot` before editing. In Phase 8 context, require every declared path in `active_snapshot`; a missing entry violates the declared-path gate, so stop the item and use Phase 8's expansion rule to append that new path and baseline before editing while existing entries remain immutable.
+2. In ordinary context, first add any never-edited declared path to `preedit_snapshot`. Then capture every declared path in `perfix_snapshot[idx]` and bind it as `active_snapshot` before editing. In Phase 8 context, every declared path must already sit in `active_snapshot`. A missing entry violates the declared-path gate, so stop the item and use the Phase 8 expansion rule to append that new path and baseline before editing. Existing entries stay immutable.
 3. Apply the change(s) via `Edit` tool.
 4. **Narrow type-check (this file only)**:
-   - Detect project type: if `turbo.json` exists → turborepo mode; else if `tsconfig.json` exists → plain TS mode; else → skip the check.
+   - Detect project type. With `turbo.json`, use turborepo mode. With `tsconfig.json` and no turbo file, use plain TS mode. With neither, skip the check.
    - Turborepo: run `bun turbo run check-types --filter=<package>` (or `pnpm turbo run check-types --filter=<package>` if the repo uses pnpm), targeting the workspace package containing the edited file. The `turbo run` form is what carries `--filter` through; `bun` alone drops unknown flags instead of forwarding them to the underlying script.
    - Plain TS: `bunx tsc --noEmit` or `npx tsc --noEmit`.
-   - No TS tooling: skip the check with a one-line note, and let `/done` in Phase 6 catch what it would have caught.
-5. **Compare diagnostic-identity multisets**: parse the current output with Phase 1's parser, then subtract `active_baseline_errors[path]` from the current multiset by identity and count. Ordinary Phase 5 uses the Phase 1 run baseline; a Phase 8 item uses the baseline captured immediately before that item's edits. Classifications:
-   - **pass**: the current multiset for every edited file is empty.
-   - **failed**: `current - baseline` is non-empty for any edited file; report those remaining identities as genuinely new errors.
-   - **inconclusive, preexisting errors**: current errors remain, but `current - baseline` is empty because every current identity and duplicate count is covered by the baseline. Continue.
-6. On **pass** or **inconclusive**: mark `[<idx>] ✓ fixed` / `[<idx>] ~ inconclusive`, continue.
-7. On **failed**:
+   - Without TS tooling, skip the check with a one-line note. `/done` in Phase 6 catches what the narrow check would have caught.
+5. **Compare diagnostic-identity multisets.** Parse the current output with Phase 1's parser, then subtract `active_baseline_errors[path]` from the current multiset by identity and count. Ordinary Phase 5 uses the Phase 1 run baseline; a Phase 8 item uses the baseline captured immediately before that item's edits. Classifications:
+   - **pass.** The current multiset for every edited file is empty.
+   - **failed.** `current - baseline` is non-empty for any edited file; report those remaining identities as genuinely new errors.
+   - **inconclusive, preexisting errors.** Current errors remain, but `current - baseline` is empty because every current identity and duplicate count is covered by the baseline. Continue.
+6. On **pass** or **inconclusive**, mark `[<idx>] ✓ fixed` or `[<idx>] ~ inconclusive` and continue.
+7. On **failed.**
 
-   Print the error output (trimmed to ~30 lines), then use AskUserQuestion:
+   Print the error output trimmed to ~30 lines, then use AskUserQuestion:
 
    Question:
      header: "Type-check"

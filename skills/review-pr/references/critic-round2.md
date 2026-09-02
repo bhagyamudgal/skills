@@ -2,7 +2,7 @@
 
 ### 4.9. Proactive regression sweep (runs before prior-state suppression, 4.95)
 
-Skip entirely when `CURRENT_ROUND == 1`.
+Skip the whole step when `CURRENT_ROUND == 1`.
 
 Step 4.95 below only re-examines a resolved finding when a reviewer happens to re-raise
 its exact ID: regressions caught by luck. This step catches them on purpose.

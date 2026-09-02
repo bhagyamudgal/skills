@@ -6,11 +6,11 @@ disable-model-invocation: true
 
 # Sync Agent Setups
 
-Claude Code is the only source of truth. This workflow inventories every detected non-Claude agent, but it writes only to targets the user confirms during this invocation. It never starts automatically.
+Claude Code is the only source of truth. This workflow lists every detected non-Claude agent, but it writes only to targets the user confirms during this invocation. It never starts automatically.
 
 ## 1. Inventory source and targets
 
-Discover Claude's active user-level setup from the current machine rather than assuming fixed paths. Inventory only user-authored behavior:
+Find Claude's active user-level setup on the current machine rather than assuming fixed paths. List only user-authored behavior:
 
 - global rules;
 - skills;
@@ -22,7 +22,7 @@ Exclude credentials, conversation history, caches, telemetry, generated runtime 
 
 Resolve each Claude-visible source through any symlink and calculate its checksum. Read the target's current path, file kind, link target, and checksum without following a downstream difference back into Claude.
 
-**Gate:** every source and detected target has a stable path, ownership classification, and explicit in-scope or excluded reason.
+**Gate.** every source and detected target has a stable path, ownership classification, and explicit in-scope or excluded reason.
 
 ## 2. Produce the dry-run manifest
 
@@ -34,7 +34,7 @@ Ask the user to select or confirm the target agents from the preview. Detection 
 
 Re-inventory after confirmation, re-resolve the backup path, and rehash every staged adaptation. Any changed source checksum, target state, classification, path, selected target, resolved backup path, staged bytes, or staged checksum invalidates that item and returns it to preview. Change confirmed `ready` items to `pending`; retain every `blocked`, `preserved-unsupported`, and `preserved-orphaned` row in the ledger.
 
-**Gate:** every `pending` item belongs to an explicitly confirmed target and still matches its preview, while every non-ready item remains outside the mutation batch with its status and reason intact.
+**Gate.** every `pending` item belongs to an explicitly confirmed target and still matches its preview, while every non-ready item remains outside the mutation batch with its status and reason intact.
 
 ## 4. Preflight and back up
 
@@ -49,11 +49,11 @@ Create the confirmed timestamped backup at the recorded resolved physical path b
 
 Write a backup manifest mapping each item ID to its recovery action. Verify the backup inventory and checksums before the first target mutation.
 
-**Gate:** every pending target path has a verified recovery record, including preserved link metadata and resolved content evidence.
+**Gate.** every pending target path has a verified recovery record, including preserved link metadata and resolved content evidence.
 
 ## 5. Apply confirmed items
 
 Apply each item and verify each target per `${CLAUDE_SKILL_DIR}/references/apply-verify.md`. Load it now. It holds the write protection, the per-kind apply rules, the restore discipline, and the per-target verification. Exit only when every attempted item has a read-back state and everything untouched is byte- and link-identical to preflight.
 
 
-**Done:** every detected target and source artifact is accounted for, only confirmed targets changed, every changed path is recoverable, and each target's parity claim is capped at its weakest acceptance surface.
+**Done.** every detected target and source artifact is accounted for, only confirmed targets changed, every changed path is recoverable, and each target's parity claim is capped at its weakest acceptance surface.

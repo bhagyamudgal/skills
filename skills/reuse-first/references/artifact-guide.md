@@ -17,16 +17,16 @@
 
 **reuse > compose > extend > generalize > write new**
 
-1.  **Reuse** as-is if the existing utility fits, even if the name is not ideal
+1.  **Reuse** as-is if the existing utility fits, even when the name is not ideal
 2.  **Compose** existing utilities to build the new behavior
-3.  **Extend** by passing options/generics to the existing one
-4.  **Generalize** the existing utility (move to a shared location, add a parameter, keep callers working)
+3.  **Extend** by passing options or generics to the existing one
+4.  **Generalize** the existing utility. Move it to a shared location, add a parameter, and keep callers working
 5.  **Write new** as a last resort, and if it overlaps with an existing one, propose deprecating the older one in the same PR
 
 ### When duplication is acceptable
 
 Reach this section only after all three layers have returned.
 
-- **Two unrelated domains** that happen to look similar: DRY is about shared knowledge, not shared appearance. A `userId` validator and a `productId` validator can both be `z.string().uuid()` independently; coupling them creates fake polymorphism
-- **Premature abstraction**: three similar lines is fine; abstract on the fourth occurrence, not the second
-- **Tests**: explicit setup in each test often beats shared fixtures that hide what is being tested
+- **Two unrelated domains** that happen to look similar. DRY is about shared knowledge, not shared appearance. A `userId` validator and a `productId` validator can both be `z.string().uuid()` independently. Coupling them creates fake polymorphism
+- **Premature abstraction.** Three similar lines are fine. Abstract on the fourth occurrence, not the second
+- **Tests.** Explicit setup in each test often beats shared fixtures that hide what is being tested

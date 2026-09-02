@@ -1,7 +1,6 @@
 ---
 name: discover-product-domain
 description: Generate, remix, and rank product or app names, then verify their exact standard-price .com domains. Use when naming an app or product, remixing name fragments or an existing name, or checking a name shortlist.
-disable-model-invocation: true
 ---
 
 # Discover product domains

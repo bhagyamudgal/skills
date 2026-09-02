@@ -1,7 +1,6 @@
 ---
 name: design-director
 description: Direct brand and visual-design work from brief through production handoff. Use for logo exploration or refinement, layout, typography, color systems, critique, brand identity, brief simplification, or final SVG and PNG asset packages.
-disable-model-invocation: true
 ---
 
 # Design director

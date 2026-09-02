@@ -1,10 +1,12 @@
 # Phase 3 verification subagents (V1 / V2 / V3)
 
-Loaded by main in Phase 3, at the first of steps 4.55 / 4.9 / 6 whose dispatch condition holds. Keep it loaded for the others, since all three go out in one message. SKILL.md keeps the rules main itself must obey: the judgment-vs-evidence split, the 4-subagent cap, and the degraded-mode rule. This file holds each verifier's dispatch condition and its exact prompt.
+Loaded by main in Phase 3, at the first of steps 4.55 / 4.9 / 6 whose dispatch condition holds. Keep it loaded for the others, since all three go out in one message. This file owns the verifier orchestration main must obey: the 4-subagent cap with V1 batching, and the degraded-mode rule. The judgment-vs-evidence split lives in SKILL.md Phase 3. This file also holds each verifier's dispatch condition and its exact prompt.
+
+Cap: **at most 4 verification subagents in total.** V2 and V3 are one each by nature: V2 reads a short prior-state list, V3 runs one gap check. Only V1 batches, so it gets at most 2, at 10 findings per subagent. Findings past V1's first 20, ordered Critical → Minor, are verified inline in main. If a verifier errors or returns empty, run its step inline in main and note `<verifier> unavailable, so verified inline` in the Phase 4 header.
 
 All three are `general-purpose`, dispatched in ONE message so they run in parallel, and all three fetch what they need themselves (`gh pr diff`, Grep, Read) rather than being handed the diff. Each returns a compact block, no prose, no restated file contents.
 
-Substitute `<SKILL_DIR>` in every prompt below before dispatching, exactly as for Subagent 1 (SKILL.md, Phase 2). Verifiers inherit the user's repo as their working directory, so a bare `references/...` path resolves against that repo and silently finds nothing. V3's prompt also carries `<PROMPT_PREAMBLE>`: the shared reference-paths + output-format block defined in that same SKILL.md section; substitute it there with `<SKILL_DIR>` already resolved.
+Substitute `<SKILL_DIR>` in every prompt below before dispatching, exactly as for Subagent 1 (SKILL.md, Phase 2). Verifiers inherit the user's repo as their working directory, so a bare `references/...` path resolves against that repo and silently finds nothing. V3's prompt also carries `<PROMPT_PREAMBLE>`: the shared reference-paths + output-format block defined in `<SKILL_DIR>/references/dispatch-prompts.md` (pointed at from SKILL.md Phase 2); substitute it there with `<SKILL_DIR>` already resolved.
 
 ---
 

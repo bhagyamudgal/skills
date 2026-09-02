@@ -36,6 +36,6 @@ For an exact copy, record both the proposed link target and resolved physical so
 - `preserved-unsupported`: the target cannot reproduce required behavior; or
 - `preserved-orphaned`: downstream-only user content remains untouched.
 
-Summarize per target: item counts by classification, paths to change, unsupported behavior, orphaned drift, collisions, and acceptance surfaces. State that an exact-copy symlink shares physical content: editing through the downstream path also changes Claude's source, so authority is procedural rather than filesystem-isolated.
+Summarize per target. List item counts by classification, paths to change, unsupported behavior, orphaned drift, collisions, and acceptance surfaces. An exact-copy symlink shares physical content. Editing through the downstream path also changes Claude's source, so authority stays procedural rather than filesystem-isolated.
 
-**Gate:** the manifest accounts for the full in-scope Claude inventory and all detected downstream user-authored artifacts, every adaptation's final bytes and semantic delta are previewable, and every item has exactly one status without proposing any import or deletion.
+**Gate.** the manifest accounts for the full in-scope Claude inventory and all detected downstream user-authored artifacts, every adaptation's final bytes and semantic delta are previewable, and every item has exactly one status without proposing any import or deletion.
