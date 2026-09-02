@@ -61,23 +61,30 @@ PRIMARY_METRIC = "nominalisation_per_100w"
 # Two-sided 95% t by degrees of freedom. At n=3 per arm df=4 and the threshold is 2.776, so
 # reading sigma against a normal would call p=0.12 significant.
 T_CRITICAL_95 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
-                 8: 2.306, 9: 2.262, 10: 2.228, 12: 2.179, 15: 2.131, 20: 2.086, 30: 2.042}
+                 8: 2.306, 9: 2.262, 10: 2.228, 12: 2.179, 15: 2.131, 20: 2.086, 30: 2.042,
+                 40: 2.021, 60: 2.000, 120: 1.980}
+
+# t converges on the normal only in the limit, and is still 1.980 at df=120. Falling back
+# earlier hands out a threshold below the true one, which is how a run claims 95% it has not
+# reached. 16 runs an arm already reaches df=30.
+NORMAL_LIMIT_95 = 1.960
+LARGE_SAMPLE_DF = 120
 
 
 def t_critical(degrees_of_freedom):
     """Two-sided 95% t, rounding down to the nearest tabulated row.
 
-    Rounding down is what keeps the table conservative. Picking the next row up returns a
-    smaller critical value than the true df warrants, which is the direction that invents
+    Rounding down keeps the table conservative. Picking the next row up returns a smaller
+    critical value than the true df warrants, which is the direction that invents
     significance.
     """
     if degrees_of_freedom < 1:
         return None
+    if degrees_of_freedom > LARGE_SAMPLE_DF:
+        return NORMAL_LIMIT_95
     tabulated = [df for df in sorted(T_CRITICAL_95) if df <= degrees_of_freedom]
     if not tabulated:
         return T_CRITICAL_95[min(T_CRITICAL_95)]
-    if degrees_of_freedom >= max(T_CRITICAL_95):
-        return 1.96
     return T_CRITICAL_95[max(tabulated)]
 
 

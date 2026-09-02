@@ -431,6 +431,21 @@ class SignificanceThreshold(unittest.TestCase):
         values = [self.register.t_critical(df) for df in range(1, 40)]
         self.assertEqual(values, sorted(values, reverse=True))
 
+    def test_matches_the_published_t_table(self):
+        """Monotonicity alone let t_critical(30) return 1.96 where the table holds 2.042: a
+        wrongly low value still decreases. Only checking against real values catches that."""
+        for degrees, expected in {1: 12.706, 4: 2.776, 8: 2.306, 20: 2.086,
+                                  30: 2.042, 40: 2.021, 60: 2.000, 120: 1.980}.items():
+            self.assertEqual(self.register.t_critical(degrees), expected, f"df={degrees}")
+
+    def test_never_returns_below_the_normal_limit_inside_the_table(self):
+        for degrees in range(1, 121):
+            self.assertGreaterEqual(self.register.t_critical(degrees), 1.980, f"df={degrees}")
+
+    def test_the_normal_limit_applies_only_past_the_table(self):
+        self.assertEqual(self.register.t_critical(200), 1.960)
+        self.assertGreater(self.register.t_critical(120), 1.960)
+
     def test_an_untabulated_df_rounds_down_not_up(self):
         # Rounding up returns a smaller critical value than the true df warrants, which is
         # the direction that invents significance.

@@ -34,7 +34,13 @@ LIVE_UNSLOP_CANDIDATES = (
 # CommonMark allows three or more delimiters and a closing run at least as long as the
 # opening one, so a four-backtick block (used to fence content that itself contains a fence)
 # is not matched by a three-only pattern and its code would be scored as prose.
-FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,})([^\n`]*)\n(.*?)^[ \t]*\1`*~*[ \t]*$",
+# Group 2 pins the delimiter character so the closing run can only extend with more of the
+# same one. Allowing backticks and tildes to mix let a `````~~~` line close a backtick block,
+# which CommonMark reads as code content, ending the block early and scoring the rest as prose.
+# An unclosed fence runs to end of document per CommonMark, which is also what a truncated
+# answer leaves behind. Without the \Z arm the pattern matched nothing and the code inside
+# was scored as prose, the opposite of the intended direction.
+FENCE = re.compile(r"^[ \t]*((`|~)\2{2,})([^\n`]*)\n(.*?)(?:^[ \t]*\1\2*[ \t]*$|\Z)",
                    re.MULTILINE | re.DOTALL)
 # A model fences the deliverable in ```markdown to be copy-pasted and the title in a bare
 # fence, so stripping every fence scores the commentary instead of the artifact.
@@ -82,8 +88,8 @@ def strip_code(text):
     being measured, so language decides: a named code language goes, anything else stays.
     """
     def replace(match):
-        language = match.group(2).strip().lower().split(":")[0]
-        return "\n" if language in CODE_LANGUAGES else "\n" + match.group(3) + "\n"
+        language = match.group(3).strip().lower().split(":")[0]
+        return "\n" if language in CODE_LANGUAGES else "\n" + match.group(4) + "\n"
 
     return FENCE.sub(replace, text)
 

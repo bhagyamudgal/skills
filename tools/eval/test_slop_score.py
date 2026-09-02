@@ -229,6 +229,32 @@ class RuleDataFixes(unittest.TestCase):
             scored = slop_score.score(f"Prose.\n\n{fence}python\nutilize delve\n{fence}\n")
             self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 0, fence)
 
+    def test_a_mixed_delimiter_line_does_not_close_a_fence(self):
+        """CommonMark reads ````~~~ as code content, not a closing fence, so the block runs
+        to end of document and everything in it stays code."""
+        for opener, intruder in (("````", "~~~"), ("~~~~", "```")):
+            text = (f"Prose.\n\n{opener}python\nutilize delve\n"
+                    f"{opener}{intruder}\nmore utilize here\n")
+            scored = slop_score.score(text)
+            self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 0, opener)
+
+    def test_a_longer_same_character_close_still_closes(self):
+        scored = slop_score.score("Prose.\n\n````python\nutilize\n`````\nplain tail\n")
+        self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 0)
+
+    def test_an_unterminated_code_fence_runs_to_the_end(self):
+        scored = slop_score.score("Prose.\n\n```python\nutilize delve and never close\n")
+        self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 0)
+
+    def test_an_unterminated_prose_fence_is_still_kept(self):
+        scored = slop_score.score("Prose.\n\n```markdown\nWe utilize this, unterminated\n")
+        self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 1)
+
+    def test_prose_between_two_code_fences_is_counted(self):
+        scored = slop_score.score(
+            "We utilize A.\n\n```python\ndelve\n```\n\nWe utilize B.\n")
+        self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 2)
+
     def test_a_long_prose_fence_is_still_kept(self):
         scored = slop_score.score("Prose.\n\n````markdown\nWe utilize this.\n````\n")
         self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 1)
