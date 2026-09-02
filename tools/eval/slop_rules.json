@@ -1,0 +1,324 @@
+{
+  "source": "~/.claude/skills/unslop/SKILL.md",
+  "note": "Vendored copy of the mechanically countable subset of unslop's 31 rules. The live file is user-local and absent in CI, so this mirror is what the scorer reads; slop_score.py --check-drift compares the two where both exist, following the same pattern as check_global_rules_mirror_drift in tools/verify_skills.py. Rules 2, 10, 11, 12, 21, 25 and 27 are deliberately absent: name-dropping, rule-of-three, synonym cycling, false ranges, cutoff disclaimers, generic conclusions and say-what-it-does need a reader, not a regex. A score here is a floor on slop, never a ceiling.",
+  "rules": [
+    {
+      "id": 1,
+      "name": "puffery",
+      "kind": "phrases",
+      "terms": [
+        "pivotal moment",
+        "testament to",
+        "evolving landscape",
+        "setting the stage for",
+        "indelible mark",
+        "deeply rooted",
+        "rich history",
+        "stands the test of time"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "trailing-ing-clause",
+      "kind": "regex",
+      "pattern": ",\\s+(highlighting|ensuring|reflecting|showcasing|fostering|underscoring|emphasizing|demonstrating|allowing|enabling|providing|offering)\\b",
+      "why": "The tell is the comma plus participle tacked onto a finished sentence, not the word itself. Matching the bare verb would flag every honest use of `allowing`."
+    },
+    {
+      "id": 4,
+      "name": "promotional",
+      "kind": "words",
+      "terms": [
+        "nestled",
+        "vibrant",
+        "breathtaking",
+        "groundbreaking",
+        "renowned",
+        "stunning",
+        "must-visit",
+        "unparalleled",
+        "cutting-edge",
+        "state-of-the-art"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "vague-attribution",
+      "kind": "phrases",
+      "terms": [
+        "experts believe",
+        "experts say",
+        "industry reports suggest",
+        "some critics argue",
+        "studies show",
+        "research suggests",
+        "it is widely believed",
+        "many would argue"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "formulaic-challenge",
+      "kind": "phrases",
+      "terms": [
+        "despite challenges",
+        "despite these challenges",
+        "continues to thrive",
+        "while challenges remain"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "ai-vocabulary",
+      "kind": "words",
+      "terms": [
+        "additionally",
+        "crucial",
+        "delve",
+        "enduring",
+        "enhance",
+        "enhances",
+        "enhanced",
+        "fostering",
+        "garner",
+        "interplay",
+        "intricate",
+        "pivotal",
+        "showcase",
+        "showcases",
+        "tapestry",
+        "testament",
+        "underscore",
+        "underscores",
+        "vibrant",
+        "seamless",
+        "seamlessly",
+        "robust",
+        "comprehensive",
+        "myriad",
+        "realm"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "fancy-is",
+      "kind": "regex",
+      "pattern": "\\b(serves as|stands as|boasts|serves to)\\b"
+    },
+    {
+      "id": 9,
+      "name": "not-just-but",
+      "kind": "regex",
+      "pattern": "\\bnot (just|only|merely)\\b[^.!?]{0,80}?\\bbut\\b"
+    },
+    {
+      "id": 13,
+      "name": "em-dash",
+      "kind": "regex",
+      "pattern": "\\u2014"
+    },
+    {
+      "id": 13.1,
+      "name": "en-dash",
+      "kind": "regex",
+      "pattern": "\\u2013"
+    },
+    {
+      "id": 15,
+      "name": "boldface",
+      "kind": "regex",
+      "pattern": "\\*\\*[^*\\n]+\\*\\*"
+    },
+    {
+      "id": 16,
+      "name": "inline-header-list",
+      "kind": "regex",
+      "pattern": "(?m)^[ \\t]*(?:[-*+][ \\t]+)?\\*\\*[^*\\n]+:\\*\\*",
+      "why": "Rule 16's tell is a bold label ending in a colon that restates its own line. Whether it restates needs a reader, so this counts the shape and the delta between two runs carries the signal."
+    },
+    {
+      "id": 18,
+      "name": "emoji",
+      "kind": "regex",
+      "pattern": "[\\U0001F300-\\U0001FAFF\\u2600-\\u27BF\\u2B00-\\u2BFF]",
+      "why": "Arrows (U+2190-U+21FF) are deliberately excluded: `->` is prescribed report formatting, not decoration."
+    },
+    {
+      "id": 19,
+      "name": "curly-quote",
+      "kind": "regex",
+      "pattern": "[\\u2018\\u2019\\u201C\\u201D]"
+    },
+    {
+      "id": 20,
+      "name": "chatbot-phrase",
+      "kind": "phrases",
+      "terms": [
+        "i hope this helps",
+        "let me know if",
+        "feel free to",
+        "of course!",
+        "certainly!",
+        "happy to help",
+        "is there anything else",
+        "great question",
+        "absolutely!"
+      ]
+    },
+    {
+      "id": 22,
+      "name": "sycophancy",
+      "kind": "regex",
+      "pattern": "\\b(great question|you'?re absolutely right|you are absolutely right|excellent point|that'?s a great|good catch|spot on)\\b",
+      "why": "Anchored on word boundaries; unanchored `spot on` matched inside 'was spot online'."
+    },
+    {
+      "id": 23,
+      "name": "filler",
+      "kind": "phrases",
+      "terms": [
+        "in order to",
+        "due to the fact that",
+        "it is important to note",
+        "it's important to note",
+        "it is worth noting",
+        "it's worth noting",
+        "needless to say",
+        "at the end of the day",
+        "when it comes to",
+        "the fact that"
+      ]
+    },
+    {
+      "id": 24,
+      "name": "stacked-hedge",
+      "kind": "regex",
+      "pattern": "\\b(might|may|could|would)\\s+(potentially|possibly|perhaps|conceivably|arguably)\\b|\\b(potentially|possibly)\\s+(might|may|could)\\b"
+    },
+    {
+      "id": 26,
+      "name": "abstract-metaphor-noun",
+      "kind": "words",
+      "terms": [
+        "substrate",
+        "wedge",
+        "locus",
+        "vantage",
+        "nexus",
+        "bedrock",
+        "modality",
+        "paradigm",
+        "gold-plating",
+        "flywheel",
+        "endgame",
+        "north star",
+        "ratchet",
+        "landscape",
+        "ecosystem",
+        "journey"
+      ]
+    },
+    {
+      "id": 29,
+      "name": "passive-voice",
+      "kind": "regex",
+      "pattern": "\\b(is|are|was|were|be|been|being)\\s+(\\w+ed|written|done|made|taken|given|shown|known|seen|built|held|kept|sent|set|put|found|brought|thought|caught|left|lost|meant|met|paid|said|sold|told)\\b",
+      "why": "Catches auxiliary plus past participle. Adjectival uses like `is tired` are false positives, but they land equally in both trees of an A/B run and cancel in the delta."
+    },
+    {
+      "id": 31,
+      "name": "fancy-synonym",
+      "kind": "words",
+      "terms": [
+        "utilize",
+        "utilizes",
+        "utilizing",
+        "leverage",
+        "leverages",
+        "leveraging",
+        "facilitate",
+        "facilitates",
+        "numerous",
+        "commence",
+        "endeavor",
+        "ascertain",
+        "subsequently",
+        "aforementioned",
+        "furthermore",
+        "moreover",
+        "nevertheless",
+        "utilization"
+      ]
+    }
+  ],
+  "measures": {
+    "note": "Continuous register signals rather than countable tells. These are what issue #37 is actually about: uniform sentence length and dense nominalised prose are the register, and no word list detects them.",
+    "adverb_exceptions": [
+      "only",
+      "early",
+      "likely",
+      "family",
+      "supply",
+      "reply",
+      "apply",
+      "multiply",
+      "assembly",
+      "anomaly",
+      "ally",
+      "rely",
+      "july",
+      "italy",
+      "ugly",
+      "silly",
+      "daily",
+      "weekly",
+      "monthly",
+      "yearly",
+      "hourly",
+      "friendly",
+      "costly",
+      "lonely",
+      "holy",
+      "poly",
+      "fly",
+      "belly",
+      "jelly",
+      "rally",
+      "really",
+      "fully",
+      "solely",
+      "wholly"
+    ],
+    "nominalisation_suffixes": [
+      "tion",
+      "sion",
+      "ment",
+      "ance",
+      "ence",
+      "ity",
+      "ness",
+      "ism"
+    ]
+  },
+  "live_rule_7_snapshot": {
+    "note": "Exactly unslop rule 7's vocabulary as it stood when this mirror was vendored. --check-drift compares the live rule against this in BOTH directions, so a term the live skill removes or renames fails too. Comparing only against the union of vendored terms cannot do that, because the vendored rules deliberately carry many terms rule 7 never listed.",
+    "terms": [
+      "additionally",
+      "crucial",
+      "delve",
+      "enduring",
+      "enhance",
+      "fostering",
+      "garner",
+      "interplay",
+      "intricate",
+      "landscape",
+      "pivotal",
+      "showcase",
+      "tapestry",
+      "testament",
+      "underscore",
+      "vibrant"
+    ]
+  }
+}
