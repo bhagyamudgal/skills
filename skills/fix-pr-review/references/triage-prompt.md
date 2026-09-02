@@ -98,7 +98,7 @@ every caller has been classified affected / not-affected.
 
 Fold every affected site into the SAME fix plan. One finding, N sites.
 
-Fixing only the cited site is the fastest way to earn a follow-up round. The reviewer re-reads the file, spots the sibling you left, and files it as a new finding. I have watched this play out. One fix added error branches to three sibling
+Fixing only the cited site is the fastest way to earn a follow-up round. The reviewer re-reads the file, spots the sibling you left, and files it as a new finding. One fix added error branches to three sibling
 hooks and missed the fourth in the same file; another added `role="alert"` to
 two components and missed the third.
 

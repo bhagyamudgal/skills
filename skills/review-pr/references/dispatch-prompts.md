@@ -60,6 +60,8 @@ reaches it, `solo-main` included, since that mode runs the same prompt body inli
 holds the prompt, the anti-slop rules the reviewer works under, and the note on why the
 finding shape is never restated inside it.
 
+### Subagent 2 (conditional): Silent-failure hunter
+
 The context packet is part of the prompt, not commentary around it. Dispatch the whole block below. With only a URL, this subagent does not know what the PR is for or what earlier rounds closed. It re-finds settled issues and misses the rest.
 
 Prompt:

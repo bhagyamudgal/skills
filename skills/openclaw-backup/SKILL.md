@@ -204,7 +204,7 @@ NOT DONE:  restore has not been rehearsed against this backup
 VERDICT: <BACKUP COMPLETE | INCOMPLETE, reason>
 ```
 
-Pass this step only when every gate from Steps 0-8 appears under `VERIFIED` with its evidence, or under `ASSUMED` with the reason it was not run. `BACKUP COMPLETE` requires all of them verified.
+Pass this step only when every "Pass this step only when" condition from Steps 0-8 appears under `VERIFIED` with its evidence, or under `ASSUMED` with the reason it was not run. `BACKUP COMPLETE` requires all of them verified.
 
 Two claims to keep accurate:
 

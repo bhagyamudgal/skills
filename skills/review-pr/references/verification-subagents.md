@@ -6,7 +6,7 @@ Cap: **at most 4 verification subagents in total.** V2 and V3 are one each by na
 
 All three are `general-purpose`, dispatched in ONE message so they run in parallel, and all three fetch what they need themselves (`gh pr diff`, Grep, Read) rather than being handed the diff. Each returns a compact block, no prose, no restated file contents.
 
-Substitute `<SKILL_DIR>` in every prompt below before dispatching, exactly as for Subagent 1 (SKILL.md, Phase 2). Verifiers inherit the user's repo as their working directory, so a bare `references/...` path resolves against that repo and silently finds nothing. V3's prompt also carries `<PROMPT_PREAMBLE>`: the shared reference-paths + output-format block defined in `<SKILL_DIR>/references/dispatch-prompts.md` (pointed at from SKILL.md Phase 2); substitute it there with `<SKILL_DIR>` already resolved.
+Substitute `<SKILL_DIR>` in every prompt below before dispatching, exactly as defined in `<SKILL_DIR>/references/dispatch-prompts.md`. Verifiers inherit the user's repo as their working directory, so a bare `references/...` path resolves against that repo and silently finds nothing. V3's prompt also carries `<PROMPT_PREAMBLE>`: the shared reference-paths + output-format block defined in `<SKILL_DIR>/references/dispatch-prompts.md` (pointed at from SKILL.md Phase 2); substitute it there with `<SKILL_DIR>` already resolved.
 
 ---
 

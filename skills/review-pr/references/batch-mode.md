@@ -16,7 +16,7 @@ For "all open PRs", enumerate via `gh pr list --json number,url,title --limit 50
 
 Every per-PR subagent runs the full single-PR flow, so it loads the same reference files main would: the Q6 search algorithm, the false-positive table, the state schema, the verifier prompts. It also dispatches its own Subagent 1 / Subagent 3 / verifiers, whose prompts carry `<SKILL_DIR>` placeholders of their own. A subagent has no way to derive that value: its working directory is the user's repo, not the skill directory, so every bare `references/...` load silently finds nothing and it reviews from memory.
 
-`<SKILL_DIR>` is the absolute directory of the SKILL.md the orchestrator is executing, resolved through any symlink, per "Subagent 1" in SKILL.md Phase 2. The orchestrator resolves it once and opens every per-PR subagent prompt with it:
+`<SKILL_DIR>` is defined in `<SKILL_DIR>/references/dispatch-prompts.md`, pointed at from "Subagent 1" in SKILL.md Phase 2. The orchestrator resolves it once and opens every per-PR subagent prompt with it:
 
 ```
 SKILL_DIR: <SKILL_DIR>

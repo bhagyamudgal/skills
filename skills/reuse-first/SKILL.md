@@ -1,6 +1,6 @@
 ---
 name: reuse-first
-description: "Search before you write, sweep before you finish. Use BEFORE creating any utility, type, schema, component, hook, constant, module, or package; BEFORE hardcoding a literal that may be an exported constant; when copy-pasting code; and as a completion gate over every file the task touched, not just the diff."
+description: "Search before you write, sweep before you finish. Use BEFORE creating any utility, type, schema, component, hook, constant, module, or package; BEFORE hardcoding a literal that may be an exported constant; when about to copy-paste similar code; and as a completion gate over every file the task touched, not just the diff."
 ---
 
 # Reuse first
@@ -33,7 +33,7 @@ If you cannot name three behavior keywords for the thing you are about to write,
 
 ## What to do with what you find
 
-Load `${CLAUDE_SKILL_DIR}/references/artifact-guide.md` now. It holds the where-to-search table by artifact, the reuse hierarchy, and the cases where duplication is acceptable. Reach the acceptable-duplication section only after all three layers have returned.
+Load `${CLAUDE_SKILL_DIR}/references/artifact-guide.md` now. Reach its acceptable-duplication section only after all three layers have returned.
 
 ## Signs you are about to fork
 
@@ -47,4 +47,4 @@ Load `${CLAUDE_SKILL_DIR}/references/artifact-guide.md` now. It holds the where-
 
 ## Sweep mode: before claiming the task done
 
-The pre-creation search only sees what you were about to write. It cannot see what was already duplicated. Load `${CLAUDE_SKILL_DIR}/references/sweep-mode.md` now and run the full sweep it describes, scoped to every file the task touched plus their siblings, not the diff. Report the sweep even when it finds nothing. A silent sweep and a skipped sweep read identically to the person checking your work, and only one of them is honest.
+The pre-creation search only sees what you were about to write. Load `${CLAUDE_SKILL_DIR}/references/sweep-mode.md` now and run the full sweep it describes before claiming the task done.

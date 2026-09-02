@@ -15,7 +15,7 @@ None of the three can be undone after the upload, so I read them as a checklist,
 
 **It expires in one day.** The `201` carries the exact `expires` timestamp. I hand it to the user beside the link. After it, reads answer `404`.
 
-**The page is inert.** A hosted document cannot run JavaScript, load an external stylesheet, font, or image, submit a form, or be framed. An HTML report that pulls a chart library from a CDN renders as a blank page, and I have seen that blank page. Folslate also strips every `<meta http-equiv>` and every `<noscript>` at upload.
+**The page is inert.** A hosted document cannot run JavaScript, load an external stylesheet, font, or image, submit a form, or be framed. An HTML report that pulls a chart library from a CDN renders as a blank page. Folslate also strips every `<meta http-equiv>` and every `<noscript>` at upload.
 
 What I can do instead depends on the upload type. A `text/html` upload keeps inline `<style>`, and images load as `data:` URIs, so I inline the SVG the CDN would have drawn. A `text/markdown` upload escapes raw HTML rather than passing it through, so an `<svg>` or `<style>` block written into Markdown arrives as visible text. Folslate styles Markdown itself, and a chart has to become a `data:` image.
 

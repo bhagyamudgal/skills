@@ -34,7 +34,7 @@ Main or a subagent loads each file only on the branch that reaches it. Loader an
 - `references/github-posting.md`: three-phase REST/GraphQL posting flow + rolling-review fix + re-run preflight (verdict-body sync, thread resolution) + failure recovery. Loaded by **main** in Phase 4 for every completed review.
 - `references/phase1-timeline-state.md`: prior-review thread query plus shaping, the review-state read plus round seeding, and the run-over-run cache branches. Loaded by **main** in Phase 1 at the timeline, state, and cache steps.
 - `references/dispatch-prompts.md`: the `<SKILL_DIR>` derivation, the `<PROMPT_PREAMBLE>` and `<GROUND_TRUTH>` blocks, and the silent-failure hunter context packet. Loaded by **main** at the Phase 2 dispatch.
-- `references/critic-verify.md`: critic steps 1 through 4.56, dedupe through inverse-risk verification. Loaded by **main** at Phase 3 step 1, kept through step 4.56.
+- `references/critic-verify.md`: critic steps 1 through 4.56, dedupe through inverse-risk verification. Loaded by **main** at Phase 3 step 1, kept through step 4.56, reloaded at step 6 for routed findings.
 - `references/critic-round2.md`: critic steps 4.9, 4.95 and 4.96, regression sweep plus suppression plus lineage. Loaded by **main** at Phase 3 step 4.9, only from round 2 on.
 
 ## Planning-doc grounding (optional pre-review context)
@@ -116,7 +116,7 @@ Pull every review thread and read the saved state per `${CLAUDE_SKILL_DIR}/refer
 
 ### Load review-state (multi-round dedup)
 
-Covered by the reference loaded above. `PRIOR_STATE.findings` is passed into Subagent 1's prompt (filtered to `status in {resolved, dismissed, wontfix}`) so the reviewer suppresses already-handled findings upfront. Phase 3 step 4.95 enforces this as a safety net.
+Covered by the reference loaded above.
 
 
 ### Stop-and-ask fallback
@@ -199,7 +199,7 @@ For `solo-main`, Phase 2's Subagent 1 section runs inline in main context with t
 
 ### Run-over-run cache check
 
-Check the run-over-run cache per `${CLAUDE_SKILL_DIR}/references/phase1-timeline-state.md`, loaded above. A missing or mismatched contract version invalidates the complete cache and starts a full fresh review.
+Check the run-over-run cache per `${CLAUDE_SKILL_DIR}/references/phase1-timeline-state.md`, loaded above.
 
 
 If `PRIOR_STATE.convergence` exists, invoke `converge-reviews` with the current request, base/head, diff hash, paths, and planned roster/lenses before Phase 2. Reuse a matching result without dispatch. When it returns `closure_check: available`, dispatch the one targeted check over only the named blocker IDs and changed sites. Keep the recorded round unchanged and reject any new finding or widened coverage from that check. Feed its evidence and updated blocker dispositions back through `converge-reviews`, persist the new result plus `closure_check: passed | failed`, then apply that result: a passing check may return `converged`; a failed check remains `blocked-at-cap` at the current round. When the initial result is `continue`, review only the invalidated coverage it names; apply any other result without starting another round.
@@ -299,7 +299,7 @@ If any subagent errors out or returns empty, continue with the remaining ones an
 
 ### Subagent 1: Claude reviewer (`general-purpose`)
 
-Substitute `<SKILL_DIR>`, the shared preamble, and the ground-truth block per `${CLAUDE_SKILL_DIR}/references/dispatch-prompts.md`, then load `${CLAUDE_SKILL_DIR}/references/reviewer-prompt.md` at this dispatch. Every mode reaches it, `solo-main` included, since that mode runs the same prompt body inline. It holds the prompt, the anti-slop rules the reviewer works under, and the note on why the finding shape is never restated inside it.
+Substitute `<SKILL_DIR>`, the shared preamble, and the ground-truth block per `${CLAUDE_SKILL_DIR}/references/dispatch-prompts.md`, then load `${CLAUDE_SKILL_DIR}/references/reviewer-prompt.md` at this dispatch. Every mode reaches it, `solo-main` included.
 
 
 ### Subagent 2 (conditional): Silent-failure hunter
@@ -308,7 +308,7 @@ Only dispatch if `INCLUDE_SILENT_FAILURE_HUNTER = true`.
 
 - `subagent_type`: `pr-review-toolkit:silent-failure-hunter`
 
-The context packet is PART OF THE PROMPT, not commentary around it. Dispatch the packet in `${CLAUDE_SKILL_DIR}/references/dispatch-prompts.md` verbatim, with `<GROUND_TRUTH>` substituted. Handed only a URL, this subagent has no idea what the PR is for or what earlier rounds closed, so it re-finds settled issues and misses the rest.
+The context packet is PART OF THE PROMPT, not commentary around it. Dispatch the `### Subagent 2 (conditional)` packet in `${CLAUDE_SKILL_DIR}/references/dispatch-prompts.md` verbatim, with `<GROUND_TRUTH>` substituted. Handed only a URL, this subagent has no idea what the PR is for or what earlier rounds closed, so it re-finds settled issues and misses the rest.
 
 
 ### Subagent 3 (conditional): Cross-cutting reviewer
@@ -342,7 +342,7 @@ Everything else runs inline. A verification subagent reports evidence in a compa
 structured verdict; main rules on severity, on drops, and on the state file.
 
 Execute in order:
-Steps 1 through 4.56 run per `${CLAUDE_SKILL_DIR}/references/critic-verify.md`. Load it at step 1 and keep it through step 4.56. Steps 4.9, 4.95 and 4.96 run per `${CLAUDE_SKILL_DIR}/references/critic-round2.md`, loaded only from round 2 on.
+Steps 1 through 4.56 run per `${CLAUDE_SKILL_DIR}/references/critic-verify.md`. Load it at step 1 and keep it through step 4.56, then reload it at step 6 for findings routed back through 4.55 and 4.56. Steps 4.9, 4.95 and 4.96 run per `${CLAUDE_SKILL_DIR}/references/critic-round2.md`, loaded only from round 2 on.
 
 ### 1. Dedupe
 
@@ -437,7 +437,7 @@ file list. Pass V3 `INCLUDE_SCHEMA_CHECKS` and `SCHEMA_DIR`. It is dispatched pr
 on the large PRs where schema changes live, so dropping the flag drops Q7-Q9 exactly
 where they are most likely to fire.
 
-**Re-run the cascade gates on everything this step adds.** Findings created here, main's
+**Re-run the cascade gates on everything this step adds.** Reload `${CLAUDE_SKILL_DIR}/references/critic-verify.md` for this routing. Findings created here, main's
 own and V3's alike, arrive after steps 4.55, 4.56 and 4.96 have already run, so they
 carry an empty `Class-sites`, an empty `Inverse risk`, and no `caused_by` unless routed
 back. Route every finding this step adds back through:

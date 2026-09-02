@@ -2,7 +2,7 @@
 
 ### 1. Settle NEEDS-INPUT
 
-Keep the run-level stash untouched throughout this step. Build `needs_input_items` from current workflow state: every item still classified `NEEDS-INPUT` and every item Phase 5 or 5.5 routed there. Initialize `needs_input_status[idx]=pending` for each entry. For any entry lacking `gh_status`, initialize paired `not-applicable` states when `has_github_surface=false`; otherwise initialize paired `skipped` states with `NEEDS-INPUT not yet authorized`. Do not derive this count from a rendered report. If the count is nonzero, use AskUserQuestion:
+Keep the run-level stash untouched throughout this step. Initialize `needs_input_status[idx]=pending` for each `needs_input_items` entry. For any entry lacking `gh_status`, initialize paired `not-applicable` states when `has_github_surface=false`; otherwise initialize paired `skipped` states with `NEEDS-INPUT not yet authorized`. If the count is nonzero, use AskUserQuestion:
 
    Question:
      header: "NEEDS-INPUT"

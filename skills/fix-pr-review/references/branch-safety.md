@@ -35,22 +35,3 @@
 
    - **On the PR branch.** Continue.
 
-### Auto-stash uncommitted work (branch safety)
-
-```bash
-git status --porcelain
-```
-
-If non-empty, use AskUserQuestion:
-
-   Question:
-     header: "Stash"
-     text: "Uncommitted changes detected. Auto-stash before applying fixes? Contents will be restored via 'git stash pop' at the end."
-     options:
-       - label: "Auto-stash"
-         description: "Stash changes now. They'll be restored when the run completes"
-       - label: "Abort"
-         description: "Stop. I'll commit or stash my work manually first"
-
-On "Auto-stash", run `git stash push -u -m "fix-pr-review auto-stash $(date +%s)"`. Only on success, record `STASH_OID=$(git rev-parse -q --verify refs/stash)` and set `STASH_PUSHED=true`, then confirm `git status --porcelain` is empty. A failed push records nothing and aborts the run instead of marking a stash that was never created. If the run aborts, the user can find the work in `git stash list` as `fix-pr-review auto-stash <timestamp>`.
-On "Abort", print "Commit or stash your uncommitted work first." and exit.

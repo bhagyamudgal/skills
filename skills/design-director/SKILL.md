@@ -15,7 +15,7 @@ Keep design direction inside this skill. Reach for another build tool only when 
 
 Before normal mode detection, check whether the thread already holds a selected direction, version, or asset set.
 
-- The thread holds a baseline, so set `IS_CONTINUATION = true`. State the approved baseline, the locked decisions, and the requested change in one line.
+- Set `IS_CONTINUATION = true` for an existing baseline. State the approved baseline, the locked decisions, and the requested change in one line.
 - Treat the follow-up as a delta. Preserve everything outside the named change.
 - Route a color-only change to `color` and a mark or letterform change to `logo`. Route lockup order, export, packaging, or cleanup to `finalize` only when the active baseline is an approved logo or identity asset.
 - Keep other continuations in the active mode unless the user explicitly invokes another mode.
@@ -29,7 +29,7 @@ Phase 0 ends when you set the baseline and either route the delta to a mode or c
 
 1. Read the invoking message and any attached images or Figma URLs. A bare mode word is a valid argument. Valid words are `brief`, `logo`, `layout`, `type`, `color`, `critique`, `identity`, `finalize`, and the `finalise` spelling, which you normalize later. In an approved logo or identity context, requests such as "this is final", "production brand assets", "export the approved logo as SVG/PNG", or "brand package" route to `finalize`.
 2. Match against the mode menu below. Exactly one match sets `MODE`, and you continue.
-3. Image-only fallback. The user attached an image with no clear textual instruction, so set `MODE = critique`.
+3. Image-only fallback. When the user attached an image with no clear textual instruction, set `MODE = critique`.
 4. On multiple matches, prefer the more specific mode. "Typography for a brand identity" goes to Typography. Show the menu only when no single mode is more specific or nothing matches:
 
    ```

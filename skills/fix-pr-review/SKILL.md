@@ -60,7 +60,7 @@ Each carries its firing condition in the pointer at the point of use. Load it th
 - `references/triage-rubric.md`: R1-R9 detail, NEEDS-INPUT calibration, `change_class` worked examples, reply formats. Loaded by the triage SUBAGENT at STEP 4.
 - `references/github-reply-resolve.md`: Steps 7a-7d posting/resolving mechanics. Loaded by main in Phase 7; never loaded for local-file input.
 - `references/final-report.md`: the Phase 8 report template and its rendering rules. Loaded by main in Phase 8 before printing.
-- `references/branch-safety.md`: repo plus branch landing, detached-HEAD and different-branch questions, auto-stash. Loaded by main in Phase 1 for GitHub inputs; skipped for local files.
+- `references/branch-safety.md`: repo plus branch landing with detached-HEAD and different-branch questions. Loaded by main in Phase 1 for GitHub inputs; skipped for local files.
 - `references/per-fix-loop.md`: per-fix loop, interactive confirmations, narrow type-check plus baseline compare, retry/skip/abort. Loaded by main at the Phase 5 loop.
 - `references/needs-input-triage.md`: NEEDS-INPUT settle, per-item triage, Phase 8 fix plus verify, preflight before GitHub replies. Loaded by main in Phase 8 step 1, only when the count is nonzero.
 
@@ -117,7 +117,25 @@ Parse owner, repo, and number from the URL and land on the PR branch per `${CLAU
 
 ### Auto-stash uncommitted work (branch safety)
 
-Stash or abort per the reference loaded above. Fixes never land on top of unstashed WIP.
+This step runs for every input type, GitHub or local file. Fixes never land on top of unstashed WIP.
+
+```bash
+git status --porcelain
+```
+
+If non-empty, use AskUserQuestion:
+
+   Question:
+      header: "Stash"
+      text: "Uncommitted changes detected. Auto-stash before applying fixes? Contents will be restored at the end."
+      options:
+        - label: "Auto-stash"
+          description: "Stash changes now. They'll be restored when the run completes"
+        - label: "Abort"
+          description: "Stop. I'll commit or stash my work manually first"
+
+On "Auto-stash", run `git stash push -u -m "fix-pr-review auto-stash $(date +%s)"`. Only on success, record `STASH_OID=$(git rev-parse -q --verify refs/stash)` and set `STASH_PUSHED=true`, then confirm `git status --porcelain` is empty. A failed push records nothing and aborts the run instead of marking a stash that was never created. If the run aborts, the user can find the work in `git stash list` as `fix-pr-review auto-stash <timestamp>`.
+On "Abort", print "Commit or stash your uncommitted work first." and exit.
 
 
 ### Compute the merge base (for already-fixed detection later)
@@ -326,7 +344,7 @@ Immediately before each ordinary fix, capture every declared path's then-current
 
 ### Per-fix loop
 
-For each FIX item in topological order, work the loop per `${CLAUDE_SKILL_DIR}/references/per-fix-loop.md`. Load it now. It holds the interactive confirmations, the narrow type-check with baseline compare, and the retry, skip, and abort branches. If a fix fails twice and you are reaching for a null check, a retry wrapper, or a wider timeout to make it pass, stop and use systematic-debugging instead of patching the symptom.
+For each FIX item in topological order, work the loop per `${CLAUDE_SKILL_DIR}/references/per-fix-loop.md`. Load it now. It holds the interactive confirmations, the narrow type-check with baseline compare, and the retry, skip, and abort branches, including the symptom-patching rule that sends an item to systematic-debugging instead of spending another retry.
 
 
 ### Fix execution tracking
@@ -493,7 +511,7 @@ Derive `reply_ok=true` from `reply_state ∈ {landed, verified-existing, not-app
 
 ### 1. Settle NEEDS-INPUT
 
-Keep the run-level stash untouched throughout this step. Triage every NEEDS-INPUT item per `${CLAUDE_SKILL_DIR}/references/needs-input-triage.md`, loaded only when the count is nonzero. Leave this step only when no entry is still pending.
+Keep the run-level stash untouched throughout this step. Build `needs_input_items` from current workflow state: every item still classified `NEEDS-INPUT` and every item Phase 5 or 5.5 routed there. Do not derive this count from a rendered report. Triage every NEEDS-INPUT item per `${CLAUDE_SKILL_DIR}/references/needs-input-triage.md`, loaded only when the count is nonzero. Leave this step only when no entry is still pending.
 
 
 ### 2. Restore WIP

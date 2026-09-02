@@ -125,7 +125,7 @@ Save a durable report only when the user asks for one, and follow `${CLAUDE_SKIL
 
 ## Completion gate
 
-Stop only at a terminal state: step 7's "Complete when", or a step 6 "Generation shortfall", "Evidence blocked", or "Input blocked". Account for every domain you actually queried by status.
+Stop only at a terminal state: step 7's completion condition, or a step 6 "Generation shortfall", "Evidence blocked", or "Input blocked". Account for every domain you actually queried by status.
 
 A generated `unknown` or `invalid_candidate` that you recorded and excluded does not block completion. An `unknown` returns "Evidence blocked" only when it belongs to a supplied shortlist or prevents the domain gate, and an `invalid_candidate` returns "Input blocked" only for a supplied name.
 
