@@ -6,10 +6,11 @@ Fetch all reviews, not just the latest. The critic tracks which findings came up
 
 ```bash
 gh api graphql -f query='
-query($owner:String!, $repo:String!, $num:Int!) {
+query($owner:String!, $repo:String!, $num:Int!, $after:String = null) {
   repository(owner:$owner, name:$repo) {
     pullRequest(number:$num) {
-      reviewThreads(first:100) {
+      reviewThreads(first:100, after:$after) {
+        pageInfo { hasNextPage endCursor }
         nodes {
           id isResolved isOutdated path line
           comments(first:5) {
@@ -24,6 +25,8 @@ query($owner:String!, $repo:String!, $num:Int!) {
   }
 }' -f owner=<owner> -f repo=<repo> -F num=<num>   # -f for String!, -F for Int!
 ```
+
+Paginate: while `pageInfo.hasNextPage` is true, repeat with `-f after=<endCursor>` and accumulate every page before building the timeline. Past 100 threads an unpaginated fetch silently drops history the dedupe needs.
 
 Build:
 

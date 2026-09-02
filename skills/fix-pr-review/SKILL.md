@@ -501,10 +501,11 @@ Keep the run-level stash untouched throughout this step. Triage every NEEDS-INPU
 Only after every NEEDS-INPUT item has settled, if `STASH_PUSHED=true`:
 
 ```bash
+[ "$(git rev-parse -q --verify refs/stash)" = "$STASH_OID" ] || { echo "Top stash is not the auto-stash; leaving every entry untouched"; exit 1; }
 git stash pop
 ```
 
-On stash pop conflict, leave every conflict marker exactly as `git stash pop` left it. Resolving the user's WIP is the user's call. Record `stash_restored: conflict` for the final report. No edit, type-check, convergence check, Phase 6 check, commit, or push may run after this restoration. Expose conflict resolution as the only dependency-ready next action.
+On a top-mismatch, record `stash_restored: foreign-top` for the final report and stop: another stash now sits on top of ours, and popping would restore the wrong work. On stash pop conflict, leave every conflict marker exactly as `git stash pop` left it. Resolving the user's WIP is the user's call. Record `stash_restored: conflict` for the final report. No edit, type-check, convergence check, Phase 6 check, commit, or push may run after this restoration. Expose conflict resolution as the only dependency-ready next action.
 
 ### 3. Print the final report once
 

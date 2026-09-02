@@ -13,7 +13,7 @@ Treat custom slash-workflow behavior as portable by default. Use `unsupported` o
 
 Before previewing an `adaptation`, render its complete target-native bytes into a safe local staging path outside every source and target setup root. Record the staged path, content checksum, target format, and exact semantic delta from the unchanged Claude source. A failed or ambiguous rendering is `blocked`, not a future write-time decision.
 
-Resolve the proposed backup without creating it: resolve every existing symlink component through the nearest existing ancestor, append any missing path components, and normalize the result. Require both the proposed path and resolved physical path to be outside every Claude-visible source root, resolved source root, target setup root, and resolved target root. A path equal to or beneath any such root is `blocked`. Record the resolved backup path and use only that path in confirmation, preflight, backup creation, the backup manifest, and recovery actions.
+Resolve the proposed backup without creating it: resolve every existing symlink component through the nearest existing ancestor, append any missing path components, and normalize the result. Require both the proposed path and resolved physical path to be outside every Claude-visible source root, resolved source root, target setup root, and resolved target root. A path equal to or beneath any such root is `blocked`. Record the resolved backup path and use only that path in confirmation, preflight, backup creation, the backup manifest, and recovery actions. Re-resolve immediately before creating it. A changed resolution aborts the run instead of writing.
 
 Render a manifest before any write:
 

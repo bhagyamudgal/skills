@@ -26,11 +26,29 @@ this round. V2 gathers the evidence; main applies the rules below to its verdict
    condition its rationale rests on. If a later commit invalidated that condition, the
    dismissal is void. Reopen with `status: active` and note which commit voided it.
 
-4. **Attribute the lineage: bounded to one hop.** Blame the finding's cited line
-   (`git blame -L <line>,<line>` locally; `gh api repos/<owner>/<repo>/commits?path=<path>`
-   in cross-repo mode). Set `caused_by: <prior finding id>` ONLY when blame lands on a
-   commit recorded as some prior finding's `commit_sha_resolved`. Otherwise
-   `caused_by: null`. Stop there rather than walking back through parent commits.
+4. **Attribute the lineage: bounded to one hop.** Blame the finding's cited line:
+   `git blame -L <line>,<line>` locally, or this GraphQL blame in cross-repo mode.
+   The REST commit list cannot blame a line, only a file, so it never supplies
+   the commit here.
+
+   ```graphql
+   query($owner:String!, $repo:String!, $sha:String!, $path:String!) {
+     repository(owner:$owner, name:$repo) {
+       object(expression:$sha) {
+         ... on Commit {
+           blame(path:$path) {
+             ranges { startingLine endingLine commit { oid } }
+           }
+         }
+       }
+     }
+   }
+   ```
+
+   Take the range covering the cited line and read its commit oid. Set
+   `caused_by: <prior finding id>` ONLY when that commit is recorded as some
+   prior finding's `commit_sha_resolved`. Otherwise `caused_by: null`. Stop there
+   rather than walking back through parent commits.
    This covers the findings this step REOPENS. The findings this round raised fresh get
    the same treatment at step 4.96; both feed the count at step 7.5.
 
@@ -67,8 +85,8 @@ catch: a new finding sitting on a line the previous round's fix wrote. Skip this
 
 Run it over the findings that SURVIVED step 4.95, one hop, same bound as step 4.9:
 
-1. Blame the finding's cited line: `git blame -L <line>,<line>` locally,
-   `gh api repos/<owner>/<repo>/commits?path=<path>&sha=<head_sha>` in cross-repo mode.
+1. Blame the finding's cited line: `git blame -L <line>,<line>` locally, the step 4.9
+   GraphQL blame in cross-repo mode.
 
 2. Set the field:
 

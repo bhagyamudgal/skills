@@ -13,6 +13,8 @@ opens it during an incident.
 | `<SERVICE_CTL>` | Real control command, e.g. `systemctl --user`, `systemctl`, `pm2`, `docker compose` |
 | `<SERVICE_NAME>` | Unit or process name |
 | `<RAW_ARCHIVE>` | Filename of the raw archive |
+| `<WORKSPACE_ARCHIVE>` | Filename of the workspace archive, if the workspace sits outside the state dir |
+| `<WORKSPACE_DIR>` | Restored workspace path |
 | `<OFFICIAL_ARCHIVE>` | Filename of the official archive |
 | `<DB_COUNT>` | Number of databases snapshotted |
 
@@ -41,6 +43,7 @@ Taken with the gateway `<running | stopped>`. Restores the install to its state 
 | `official/<OFFICIAL_ARCHIVE>` | `openclaw backup create --verify` output. Manifest-verified. **Excludes live-mutation files, including every session transcript.** |
 | `raw/<RAW_ARCHIVE>` | Byte-for-byte archive of `<STATE_DIR>`, `node_modules` excluded. **Includes the session transcripts.** The primary restore artifact. |
 | `sqlite/` | `VACUUM INTO` snapshots of `<DB_COUNT>` databases. Transactionally consistent. **Use these in preference to the database files inside either archive.** |
+| `workspace/<WORKSPACE_ARCHIVE>` | Archive of the workspace that sat outside the state dir. Absent when the workspace lives inside it. |
 | `meta/` | Service unit and drop-ins, environment files, version and port inventory. |
 | `MANIFEST.sha256` | SHA256 of every artifact. |
 
@@ -139,7 +142,17 @@ cp -a <BACKUP_DIR>/meta/systemd/. <unit directory>/
 
 Copy the drop-in directory too, not just the unit file. Overrides live there.
 
-### 6. Start and verify
+### 6. Restore the workspace
+
+If this backup has no workspace archive, delete this step when rendering: the workspace sat inside the state dir and step 3 already restored it.
+
+```
+tar --use-compress-program="zstd -d" -xf <BACKUP_DIR>/workspace/<WORKSPACE_ARCHIVE> -C $(dirname <WORKSPACE_DIR>)
+```
+
+Confirm `<WORKSPACE_DIR>` exists and is non-empty, and compare the extracted file count against the archive listing count. A large gap means the wrong target path: stop and re-check `<WORKSPACE_DIR>` before starting the service.
+
+### 7. Start and verify
 
 ```
 <SERVICE_CTL> start <SERVICE_NAME>
@@ -150,7 +163,7 @@ openclaw doctor
 Confirm a message round-trip on at least one channel before calling the restore good. A
 process that is up is not the same as a gateway that works.
 
-### 7. Only once verified
+### 8. Only once verified
 
 Obtain the final deletion card's explicit confirmation. Re-read the persisted reservation root
 and move-aside child, prove the root is mode `0700` and contains exactly that child with no other

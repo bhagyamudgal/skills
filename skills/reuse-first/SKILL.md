@@ -19,13 +19,13 @@ Exact name often misses it, so search in three passes:
 
 You are done when you have printed what each layer returned. Write these three lines before you write anything:
 
-```
+```text
 Name layer:      <variants grepped> -> <hits, or none>
 Behavior layer:  <3+ keywords> -> <hits, or none>
 Reference layer: <feature file opened> -> <imports followed>
 ```
 
-Those three lines are the artifact. Creating the file without them is the failure this skill exists to prevent, and it stays invisible afterwards. The new code compiles, passes review, and ships because nothing downstream re-asks the question. If you already wrote the artifact, run the search anyway and delete what it finds a home for. Do not rationalise the copy.
+Those three lines are the artifact. Creating the file without them is the failure this skill exists to prevent, and it stays invisible afterward. The new code compiles, passes review, and ships because nothing downstream re-asks the question. If you already wrote the artifact, run the search anyway and delete what it finds a home for. Do not rationalise the copy.
 
 One search per artifact, not per batch. Creating six modules in one sitting is six searches. Batching them into one glance is how a shared constant gets missed. The search that would have found it was never phrased with its keywords.
 

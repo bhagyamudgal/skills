@@ -28,7 +28,7 @@ find "$STATE_DIR" -name '*.sqlite' -not -path '*/node_modules/*' | sort
 
 Discover the databases with `find` on every run. OpenClaw relocates them between versions. 2026.7 moved the memory database from `memory/main.sqlite` to `agents/<id>/agent/openclaw-agent.sqlite`, so a hardcoded path silently finds nothing.
 
-Locate the workspace, which may sit outside the state dir. Check `OPENCLAW_WORKSPACE_DIR` and `agents.defaults.workspace` in the config. A workspace outside the state dir is a separate archive source.
+Locate the workspace, which may sit outside the state dir. Check `OPENCLAW_WORKSPACE_DIR` and `agents.defaults.workspace` in the config. A workspace outside the state dir is a separate archive source. Record its path as `WORKSPACE_DIR`, empty when it sits inside the state dir and the raw archive already covers it.
 
 Identify how the gateway runs by inspecting the host. It is a systemd user unit such as `openclaw-gateway.service`, a system unit, pm2, Docker, or launchd. A user unit needs `systemctl --user` on every command. Plain `systemctl` reports "unit not found", which reads as stopped while the service is still writing.
 
@@ -101,6 +101,28 @@ grep -c 'node_modules' /tmp/rawlist.txt
 
 Pass this step only when `zstd -t` passes and the session `.jsonl` count is greater than zero on an install with conversation history. A zero count means the exclude pattern is wrong. Fix it and re-run. `tar` exits non-zero when a file changes mid-read. On a hot backup record that as a warning in the report.
 
+## Step 5.5: Workspace archive
+
+When `WORKSPACE_DIR` is empty, skip this step: the raw archive already holds the workspace.
+
+```bash
+tar --use-compress-program="zstd -3 -T0" \
+    --warning=no-file-changed \
+    -cf "$BACKUP_DIR/workspace/openclaw-workspace.tar.zst" \
+    -C "$(dirname "$WORKSPACE_DIR")" "$(basename "$WORKSPACE_DIR")"
+echo "EXIT=$?"
+```
+
+Then produce the evidence:
+
+```bash
+zstd -t "$BACKUP_DIR/workspace/openclaw-workspace.tar.zst"
+tar --use-compress-program="zstd -d" -tf "$BACKUP_DIR/workspace/openclaw-workspace.tar.zst" > /tmp/workspacelist.txt
+wc -l < /tmp/workspacelist.txt
+```
+
+Pass this step only when `zstd -t` passes and the listing is non-empty. `tar` exits non-zero when a file changes mid-read. On a hot backup record that as a warning in the report.
+
 ## Step 6: Metadata
 
 Capture each of these into `meta/`:
@@ -131,7 +153,7 @@ Pass this step only when `MANIFEST.sha256` lists every artifact, the backup dire
 
 A backup on the same disk as the thing it protects survives config mistakes, not disk loss. If the user wants a copy elsewhere, work through this step.
 
-Before `rsync`, verify from the receiving system that the destination is encrypted at rest, accessible only to the intended recipient accounts, and governed by a known retention period and tested deletion path. A destination missing any of those controls is blocked.
+Before `rsync`, verify from the receiving system that the destination is encrypted at rest, accessible only to the intended recipient accounts, and governed by a known retention period and tested deletion path. Confirm the destination host key against a known-good value before the first transfer, so a mistyped host or a first-connect interception cannot divert the copy. A destination missing any of those controls is blocked.
 
 Immediately before `rsync`, invoke `preflight-mutations` with that evidence, the exact source and destination host and path, included artifact inventory and credential sensitivity, recipient, retention and deletion path, current destination state, checksum and access-control read-back, and the user's off-box-copy approval. Apply its result contract before copying.
 
@@ -168,6 +190,7 @@ Mode:     <zero-downtime | brief stop>
 Artifacts (<total size>, mode 0700):
   official/<name>.tar.gz     <size>   verification: <passed|NOT VERIFIED>
   raw/<name>.tar.zst         <size>   <N> entries, <M> session transcripts
+  workspace/<name>.tar.zst   <size>   <N> entries (omit when the workspace sits inside the state dir)
   sqlite/                    <size>   <X>/<X> databases, integrity ok source + snapshot
   meta/                      <size>   unit + drop-ins, env, inventory
   MANIFEST.sha256 + RESTORE.md

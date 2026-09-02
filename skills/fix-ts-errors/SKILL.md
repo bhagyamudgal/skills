@@ -12,7 +12,7 @@ I fix the types at their source and loop the workspace check until it exits 0. I
 ### Step 1: Identify Target Files
 
 - If the user specifies files, I use those.
-- If the user says "changed files", I run `git diff --name-only` to get the modified `.ts` and `.tsx` files.
+- If the user says "changed files", I run `git diff --name-only HEAD` for staged plus unstaged `.ts` and `.tsx` files, plus `git ls-files --others --exclude-standard` for untracked ones.
 - If it is unclear, I ask which files.
 
 ### Step 2: Go red
@@ -40,8 +40,10 @@ A file whose squiggles cleared is not green. A type change breaks its importers,
 Once green, I grep the changed lines for all four escape hatches, `as` assertions excluding `as const`, `@ts-ignore`, `@ts-expect-error`, and non-null assertions.
 
 ```bash
-git diff -U0 -- '*.ts' '*.tsx' | grep '^+' | grep -E '\bas\b|@ts-ignore|@ts-expect-error|!\.' | grep -v 'as const'
+git diff -U0 HEAD -- '*.ts' '*.tsx' | grep '^+' | grep -E '\bas\b|@ts-ignore|@ts-expect-error|[]A-Za-z0-9_$)][!]([^=]|$)' | grep -v 'as const'
 ```
+
+The `[...][!]([^=]|$)` shape matches a postfix assertion, a value character before the bang and no equals after it, so `value!`, `value!.x`, `value![0]`, and `value!()` all hit while `!=`, `!==`, and prefix negation like `!ready` stay out.
 
 I skip import aliases like `import { x as y }`. For every remaining hit I attempt removal with proper typing, meaning inference, narrowing, type guards, generics, or schema-derived types with `z.infer`. I re-run the check after each removal, and when errors appear I go back to Step 3. A hatch survives only when genuinely unavoidable, for example a third-party library type gap, and it must carry a comment that explains why.
 

@@ -66,10 +66,10 @@ Match added lines (starting with `+`) against:
 +\s*(export\s+(default\s+)?)?(async\s+)?(function|class|interface|type)\s+\w+
 +\s*(export\s+)?const\s+\w+\s*(:\s*[^=]+)?=\s*(async\s+)?(\([^)]*\)|[a-zA-Z_$][\w$]*)\s*=>
 +\s*(export\s+default\s+function|export\s+default\s+class|export\s+default\s+async\s+function)\s+\w+
-+\s+(private|protected|public|async|static)(\s+(private|protected|public|async|static))*\s+\w+\s*\(
++\s+(?:(?:private|protected|public|async|static)\s+)*\w+\s*\(
 ```
 
-Patterns cover standard function/class/interface/type, arrow-function consts, default exports, and **class methods inside class bodies** for NestJS-style services. Track `{`/`}` nesting from the nearest `class X {` to count only methods inside class blocks.
+Patterns cover standard function/class/interface/type, arrow-function consts, default exports, and class methods inside class bodies for NestJS-style services, modifiers or not. Track `{`/`}` nesting from the nearest `class X {` to count only methods inside class blocks, and exclude control-flow keywords (`if`, `for`, `while`, `switch`, `catch`, `return`) and bare calls, which match the same shape without defining anything.
 
 Combine into `new_definitions_count`.
 

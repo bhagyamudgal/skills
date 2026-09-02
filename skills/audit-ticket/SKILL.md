@@ -145,10 +145,10 @@ Then I print this.
 
 | # | Requirement | Source evidence | Verdict | Code evidence |
 |---|-------------|-----------------|---------|---------------|
-| R1 | <short text> | R1 → E1 | ✅ done | `<file:line>` |
-| R2 | <short text> | R2 → E2, E4 | 🟡 partial | `<file:line>`: <gap, short> |
-| R3 | <short text> | R3 → E3 | ❌ not done | none |
-| R4 | <short text> | R4 → E5 | 🪦 obsolete | <reason, short> |
+| R1 | <short text> | E1 | ✅ done | `<file:line>` |
+| R2 | <short text> | E2, E4 | 🟡 partial | `<file:line>`: <gap, short> |
+| R3 | <short text> | E3 | ❌ not done | none |
+| R4 | <short text> | E5 | 🪦 obsolete | <reason, short> |
 
 ## Source evidence map
 
@@ -213,6 +213,7 @@ After the successor lands, I apply the source-currency gate, then render and fre
 
 ## Error handling
 
-- `gh` not installed or not authed. I fail fast with `Run 'gh auth login' and retry.`
+- `gh` not installed. I fail fast with `Install gh CLI: https://cli.github.com` and stop.
+- `gh` installed but not authed. I fail fast with `Run 'gh auth login' and retry.`
 - Issue not found or no access. I report `Couldn't access issue #<n>. Check the number and repo access.`
 - Issue already closed. I still audit, since the user may want to verify the close or reopen, and I note `State: closed` prominently in the report. On "Update in place", I ask whether to also reopen.

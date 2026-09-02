@@ -13,19 +13,20 @@ Derive the file set from git rather than typing paths. It respects `.gitignore`,
 ```bash
 BASE=<merge-base or the commit you branched from>
 FILES=$(git ls-files 'apps' 'packages' 'src' 2>/dev/null | grep -vE '\.d\.ts$')
+[ -n "$FILES" ] || FILES=$(git ls-files | grep -vE '\.d\.ts$')
 
 # 1. Literals repeated 3+ times: the ones worth naming, or already named
 #    somewhere you never searched because a name search cannot find a value.
-printf '%s\n' "$FILES" | xargs grep -hoE "['\"][A-Za-z][A-Za-z0-9:._/-]{5,}['\"]" \
+printf '%s\n' "$FILES" | tr '\n' '\0' | xargs -0 grep -hoE "['\"][A-Za-z][A-Za-z0-9:._/-]{5,}['\"]" \
   | tr -d "\"'" | sort | uniq -c | sort -rn | awk '$1 >= 3'
 
 # 2. A specific literal you suspect is already an exported constant.
-printf '%s\n' "$FILES" | xargs grep -n '"text/html"'
+printf '%s\n' "$FILES" | tr '\n' '\0' | xargs -0 grep -n '"text/html"'
 
 # 3. Facts stated in a comment that already live in the docs. This is the
 #    class no clone detector sees, and the one that duplicates fastest when
 #    the same change writes the spec section and the comment.
-git diff -U0 "$BASE" -- 'apps' 'packages' \
+git diff -U0 "$BASE" \
   | grep -E '^\+\s*(//|\*)' | sed 's/^+[[:space:]]*//' \
   | grep -oE '[A-Za-z][A-Za-z ]{28,}' | sed 's/  */ /g; s/^ //; s/ $//' | sort -u \
   | while IFS= read -r phrase; do

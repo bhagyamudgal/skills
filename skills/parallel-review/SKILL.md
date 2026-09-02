@@ -21,7 +21,7 @@ I name the roster first, then launch every member in parallel with the Agent too
 
 Members 1-3 below are `subagent_type` values, and I pass them to the Agent tool as-is. Member 4 is a skill-running agent. `/web-interface-guidelines`, `/ui-skills`, and `/rams` are skills, not agent types, so they cannot go as `subagent_type`. I dispatch a `general-purpose` agent that invokes them instead.
 
-I size the roster to the diff before I name it. `done` runs this skill after every task, so an unsized roster charges a one-line fix what a rewrite costs. I measure the Step 1 scope with `git diff --shortstat HEAD`.
+I size the roster to the diff before I name it. `done` runs this skill after every task, so an unsized roster charges a one-line fix what a rewrite costs. I measure the Step 1 scope with `git diff --shortstat HEAD -- <paths>` when files were specified, or bare `git diff --shortstat HEAD` when they were not.
 
 - One file and under roughly 50 changed lines, or the user asked for a quick review, then the roster is `pr-review-toolkit:code-reviewer` alone and the rest of this step does not apply.
 - Anything larger builds the roster from the members below.

@@ -29,14 +29,14 @@ I check whether the dev server is running with `curl -s -o /dev/null -w "%{http_
 1. I navigate to the URL through Playwright MCP `browser_navigate`.
 2. I take a `browser_snapshot` of the page.
 3. I look for login form indicators, things like input[type=password], /login in the URL, or auth-related text.
-4. When the session is not logged in, I tell the user to log in manually in their browser, then say "done". I re-check after.
-5. When the session is logged in, I proceed to test execution.
+4. When I find them, the session is not logged in. I tell the user to log in manually in their browser, then say "done". I re-check after.
+5. When I find none, that alone proves nothing. A logged-out page can render without a visible form. I confirm a post-login marker first, an account name, a logout or profile control, or user-specific content. Only with a marker do I proceed to test execution. Without one I treat the session as unknown and ask the user to log in and confirm.
 
 ## Step 3: Execute Test Flow
 
 I parse the user flow into numbered steps and launch a single subagent.
 
-Playwright MCP is the only driver. When Playwright MCP is unavailable, I fall back to the `agent-browser` CLI.
+Playwright MCP is the only driver. When Playwright MCP is unavailable, I fall back to the `agent-browser` CLI. The fallback runs the same prompt template with each Playwright call translated: `browser_navigate` becomes `open`, `browser_snapshot` becomes `snapshot -i`, interactions become `click @eN` and `fill @eN "text"`, and screenshots, network, and console evidence use the closest `agent-browser` equivalents from `agent-browser --help`. The evidence bar does not drop. Every step still needs its screenshot, and evidence the CLI cannot produce is reported missing, never assumed.
 
 ### Mutation preflight (main agent, before dispatch)
 
