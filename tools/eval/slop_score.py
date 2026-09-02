@@ -31,17 +31,17 @@ LIVE_UNSLOP_CANDIDATES = (
     pathlib.Path.home() / ".agents" / "skills" / "unslop" / "SKILL.md",
 )
 
-# CommonMark allows three or more delimiters and a closing run at least as long as the
-# opening one, so a four-backtick block (used to fence content that itself contains a fence)
-# is not matched by a three-only pattern and its code would be scored as prose.
-# Group 2 pins the delimiter character so the closing run can only extend with more of the
-# same one. Allowing backticks and tildes to mix let a `````~~~` line close a backtick block,
-# which CommonMark reads as code content, ending the block early and scoring the rest as prose.
-# An unclosed fence runs to end of document per CommonMark, which is also what a truncated
-# answer leaves behind. Without the \Z arm the pattern matched nothing and the code inside
-# was scored as prose, the opposite of the intended direction.
-FENCE = re.compile(r"^[ \t]*((`|~)\2{2,})([^\n`]*)\n(.*?)(?:^[ \t]*\1\2*[ \t]*$|\Z)",
-                   re.MULTILINE | re.DOTALL)
+# Three CommonMark rules the obvious pattern gets wrong, each of which mis-scores real text:
+# a closing run may only repeat the opening character, so ```` ```~~~ ```` does not close a
+# backtick block; an unclosed fence runs to end of document, which is also what a truncated
+# answer leaves behind; and backticks are barred from the info string of a backtick fence
+# only, so `~~~python`x` is a valid tilde fence.
+FENCE = re.compile(
+    r"^[ \t]*(?:(?P<tick>`{3,})(?P<tick_info>[^\n`]*)"
+    r"|(?P<tilde>~{3,})(?P<tilde_info>[^\n]*))\n"
+    r"(?P<body>.*?)"
+    r"(?:^[ \t]*(?:(?P=tick)`*|(?P=tilde)~*)[ \t]*$|\Z)",
+    re.MULTILINE | re.DOTALL)
 # A model fences the deliverable in ```markdown to be copy-pasted and the title in a bare
 # fence, so stripping every fence scores the commentary instead of the artifact.
 CODE_LANGUAGES = frozenset({
@@ -51,6 +51,7 @@ CODE_LANGUAGES = frozenset({
     "ruby", "rb", "php", "perl", "lua", "r", "scala", "html", "css", "scss", "xml", "svg",
     "dockerfile", "docker", "make", "makefile", "cmake", "graphql", "proto", "hcl", "tf",
 })
+LANGUAGE_TOKEN = re.compile(r"[a-z0-9+#_-]*")
 WORD = re.compile(r"[A-Za-z][A-Za-z'’-]*")
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?])[\s\n]+")
 LONG_SENTENCE_WORDS = 35
@@ -88,8 +89,11 @@ def strip_code(text):
     being measured, so language decides: a named code language goes, anything else stays.
     """
     def replace(match):
-        language = match.group(3).strip().lower().split(":")[0]
-        return "\n" if language in CODE_LANGUAGES else "\n" + match.group(4) + "\n"
+        info = match.group("tick_info") if match.group("tick") else match.group("tilde_info")
+        # The language is the leading token, so `python title=x` and the tilde-fence-only
+        # form `python`x` both resolve to python, which is what a renderer highlights.
+        language = LANGUAGE_TOKEN.match(info.strip().lower()).group(0)
+        return "\n" if language in CODE_LANGUAGES else "\n" + match.group("body") + "\n"
 
     return FENCE.sub(replace, text)
 

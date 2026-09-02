@@ -64,24 +64,20 @@ T_CRITICAL_95 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7:
                  8: 2.306, 9: 2.262, 10: 2.228, 12: 2.179, 15: 2.131, 20: 2.086, 30: 2.042,
                  40: 2.021, 60: 2.000, 120: 1.980}
 
-# t converges on the normal only in the limit, and is still 1.980 at df=120. Falling back
-# earlier hands out a threshold below the true one, which is how a run claims 95% it has not
-# reached. 16 runs an arm already reaches df=30.
-NORMAL_LIMIT_95 = 1.960
-LARGE_SAMPLE_DF = 120
-
-
 def t_critical(degrees_of_freedom):
     """Two-sided 95% t, rounding down to the nearest tabulated row.
 
     Rounding down keeps the table conservative. Picking the next row up returns a smaller
     critical value than the true df warrants, which is the direction that invents
     significance.
+
+    There is deliberately no normal-limit fallback. 1.960 is the df=infinity value and every
+    finite df sits above it, so switching to it past the table hands out a threshold below
+    the true cutoff. Welch degrees of freedom are fractional, so df=120.1 is reachable.
+    Holding the df=120 row for anything larger stays conservative at every finite df.
     """
     if degrees_of_freedom < 1:
         return None
-    if degrees_of_freedom > LARGE_SAMPLE_DF:
-        return NORMAL_LIMIT_95
     tabulated = [df for df in sorted(T_CRITICAL_95) if df <= degrees_of_freedom]
     if not tabulated:
         return T_CRITICAL_95[min(T_CRITICAL_95)]

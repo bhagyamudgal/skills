@@ -238,6 +238,24 @@ class RuleDataFixes(unittest.TestCase):
             scored = slop_score.score(text)
             self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 0, opener)
 
+    def test_a_tilde_fence_may_carry_backticks_in_its_info_string(self):
+        """CommonMark bars backticks from backtick-fence info strings only. Applying that
+        restriction to tilde fences left their code unrecognised and scored as prose."""
+        scored = slop_score.score("Prose.\n\n~~~python`x\nutilize delve\n~~~\ntail\n")
+        self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 0)
+
+    def test_a_tilde_prose_fence_with_backticks_is_still_kept(self):
+        scored = slop_score.score("Prose.\n\n~~~markdown`x\nWe utilize this.\n~~~\n")
+        self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 1)
+
+    def test_a_bare_tilde_fence_is_kept(self):
+        scored = slop_score.score("Title:\n\n~~~\nfix(x): utilize the thing\n~~~\n")
+        self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 1)
+
+    def test_the_language_is_the_leading_token_of_the_info_string(self):
+        scored = slop_score.score("Prose.\n\n```python title=example\nutilize\n```\n")
+        self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 0)
+
     def test_a_longer_same_character_close_still_closes(self):
         scored = slop_score.score("Prose.\n\n````python\nutilize\n`````\nplain tail\n")
         self.assertEqual(scored["rules"]["fancy-synonym"]["count"], 0)

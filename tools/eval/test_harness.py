@@ -438,13 +438,22 @@ class SignificanceThreshold(unittest.TestCase):
                                   30: 2.042, 40: 2.021, 60: 2.000, 120: 1.980}.items():
             self.assertEqual(self.register.t_critical(degrees), expected, f"df={degrees}")
 
-    def test_never_returns_below_the_normal_limit_inside_the_table(self):
-        for degrees in range(1, 121):
+    def test_never_returns_below_the_smallest_finite_row(self):
+        for degrees in range(1, 400):
             self.assertGreaterEqual(self.register.t_critical(degrees), 1.980, f"df={degrees}")
 
-    def test_the_normal_limit_applies_only_past_the_table(self):
-        self.assertEqual(self.register.t_critical(200), 1.960)
-        self.assertGreater(self.register.t_critical(120), 1.960)
+    def test_there_is_no_normal_limit_cliff(self):
+        """1.960 is the df=infinity value and every finite df sits above it, so returning it
+        past the table handed out a threshold below the true cutoff. The previous version of
+        this test pinned that behaviour by asserting t_critical(200) == 1.960."""
+        self.assertEqual(self.register.t_critical(120), self.register.t_critical(120.1))
+        for degrees in (121, 200, 1000, 100000):
+            self.assertGreater(self.register.t_critical(degrees), 1.960, f"df={degrees}")
+
+    def test_fractional_welch_df_does_not_jump_a_row(self):
+        # Welch degrees of freedom are fractional, so the boundary is reachable in practice.
+        self.assertEqual(self.register.t_critical(30.0), self.register.t_critical(30.9))
+        self.assertGreater(self.register.t_critical(29.9), self.register.t_critical(30.0))
 
     def test_an_untabulated_df_rounds_down_not_up(self):
         # Rounding up returns a smaller critical value than the true df warrants, which is
