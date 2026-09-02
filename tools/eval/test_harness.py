@@ -8,12 +8,15 @@ API, so a failure is always a real defect and never a flake.
 
     python3 tools/eval/test_harness.py
 """
+import json
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
@@ -230,6 +233,10 @@ class MakeSandbox(unittest.TestCase):
         repo = self._make(skills=[self.skill])
         self.assertTrue((repo / ".claude" / "skills" / "demo" / "SKILL.md").is_file())
 
+    def test_skill_injection_into_codex_directory(self):
+        repo = self._make(skills=[self.skill], skill_directory=".agents/skills")
+        self.assertTrue((repo / ".agents" / "skills" / "demo" / "SKILL.md").is_file())
+
     def test_post_commit_edit_leaves_a_dirty_tree(self):
         def edit(repo):
             path = repo / "src" / "user.ts"
@@ -245,6 +252,15 @@ class MakeSandbox(unittest.TestCase):
         status = subprocess.run(["git", "status", "--short"],
                                 cwd=repo, capture_output=True, text=True)
         self.assertEqual(status.stdout.strip(), "")
+
+    def test_setup_failure_removes_the_allocated_root(self):
+        allocated = pathlib.Path(tempfile.mkdtemp(prefix="harness-test-parent-")) / "root"
+        self.addCleanup(lambda: allocated.parent.rmdir() if allocated.parent.exists() else None)
+        missing = self.source / "missing"
+        with mock.patch.object(harness.tempfile, "mkdtemp", return_value=str(allocated)):
+            with self.assertRaises(OSError):
+                harness.make_sandbox("ignored-", missing)
+        self.assertFalse(allocated.exists())
 
 
 class MigratedCallers(unittest.TestCase):
@@ -340,6 +356,13 @@ class RegisterStaging(unittest.TestCase):
             self.source, "file-pr-under-test", self.into)
         self.assertIn("# File PR\n\nBody.\n", (staged / "SKILL.md").read_text())
 
+    def test_codex_canary_is_staged_without_changing_the_source(self):
+        marker = "<!-- register-skill-loaded:file-pr-under-test -->"
+        staged = self.register.stage_under_unique_name(
+            self.source, "file-pr-under-test", self.into, canary=marker)
+        self.assertIn(marker, (staged / "SKILL.md").read_text())
+        self.assertNotIn(marker, (self.source / "SKILL.md").read_text())
+
     def test_a_skill_with_no_name_line_fails_loudly(self):
         (self.source / "SKILL.md").write_text("---\ndescription: no name here\n---\nBody\n")
         with self.assertRaises(ValueError):
@@ -355,8 +378,746 @@ class RegisterStaging(unittest.TestCase):
             self.assertTrue((self.register.SKILLS / case["skill"] / "SKILL.md").is_file(),
                             case["skill"])
 
+    def test_bounded_prompt_leaves_scoring_margin(self):
+        import json as json_module
+        spec = json_module.loads(self.register.CASES.read_text())
+        bounded = [case for case in spec["cases"] if "max_words" in case]
+        self.assertTrue(bounded)
+        for case in bounded:
+            match = self.register.re.search(
+                r"in (\d+) to (\d+) prose words total", case["prompt"])
+            self.assertIsNotNone(match, case["id"])
+            target_minimum, target_maximum = map(int, match.groups())
+            self.assertLess(target_minimum, target_maximum, case["id"])
+            self.assertGreaterEqual(
+                target_minimum - case["min_words"], 20, case["id"])
+            self.assertGreaterEqual(
+                case["max_words"] - target_maximum, 20, case["id"])
+
     def test_no_case_grants_bash(self):
         self.assertNotIn("Bash", self.register.CASE_TOOLS)
+
+
+class CodexRegisterTranscript(unittest.TestCase):
+    def setUp(self):
+        import run_register
+        self.register = run_register
+        self.marker = "<!-- register-skill-loaded:file-pr-under-test -->"
+
+    def test_complete_turn_returns_the_final_agent_message(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"item.completed","item":{"id":"item-1","type":"agent_message",'
+            '"text":"Draft"}}',
+            '{"type":"item.completed","item":{"id":"item-2","type":"agent_message",'
+            '"text":"Final\\n<!-- register-skill-loaded:file-pr-under-test -->"}}',
+            '{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}',
+        ])
+        text, error = self.register.parse_codex_transcript(transcript)
+        self.assertEqual(text, f"Final\n{self.marker}")
+        self.assertIsNone(error)
+
+    def test_missing_turn_completion_is_an_error(self):
+        text, error = self.register.parse_codex_transcript("\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Draft"}}',
+        ]))
+        self.assertEqual(text, "Draft")
+        self.assertIn("truncated", error)
+
+    def test_turn_failure_is_an_error(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"turn.failed","error":{"message":"rate limited"}}',
+        ])
+        _, error = self.register.parse_codex_transcript(transcript)
+        self.assertIn("rate limited", error)
+
+    def test_complete_turn_without_an_agent_message_is_an_error(self):
+        _, error = self.register.parse_codex_transcript("\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"turn.completed"}',
+        ]))
+        self.assertIn("agent message", error)
+
+    def test_malformed_json_line_rejects_an_otherwise_complete_turn(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"error","message":"broken"',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Final"}}',
+            '{"type":"turn.completed"}',
+        ])
+        _, error = self.register.parse_codex_transcript(transcript)
+        self.assertIn("malformed JSONL", error)
+
+    def test_agent_message_after_completion_is_rejected(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"turn.completed"}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Late"}}',
+        ])
+        _, error = self.register.parse_codex_transcript(transcript)
+        self.assertIn("after terminal", error)
+
+    def test_recovered_error_can_finish_cleanly(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"error","message":"Reconnecting... 2/5"}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Final"}}',
+            '{"type":"turn.completed"}',
+        ])
+        text, error = self.register.parse_codex_transcript(transcript)
+        self.assertEqual(text, "Final")
+        self.assertIsNone(error)
+
+    def test_model_reroute_rejects_an_otherwise_complete_turn(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"item.completed","item":{"type":"error",'
+            '"message":"model rerouted: gpt-a -> gpt-b (capacity)"}}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Final"}}',
+            '{"type":"turn.completed"}',
+        ])
+        _, error = self.register.parse_codex_transcript(transcript)
+        self.assertIn("model rerouted", error)
+
+    def test_non_reroute_error_item_rejects_an_otherwise_complete_turn(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"item.completed","item":{"type":"error",'
+            '"message":"generation partially failed"}}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Final"}}',
+            '{"type":"turn.completed"}',
+        ])
+        _, error = self.register.parse_codex_transcript(transcript)
+        self.assertIn("generation partially failed", error)
+
+    def test_tool_items_reject_an_otherwise_complete_turn(self):
+        for item_type in (
+                "command_execution", "file_change", "mcp_tool_call", "web_search", "todo_list"):
+            with self.subTest(item_type=item_type):
+                transcript = "\n".join([
+                    '{"type":"thread.started","thread_id":"thread-1"}',
+                    '{"type":"turn.started"}',
+                    json.dumps({"type": "item.completed", "item": {"type": item_type}}),
+                    '{"type":"item.completed","item":{"type":"agent_message",'
+                    '"text":"Final"}}',
+                    '{"type":"turn.completed"}',
+                ])
+                _, error = self.register.parse_codex_transcript(transcript)
+                self.assertIn(item_type, error)
+
+    def test_item_updates_reject_an_otherwise_complete_turn(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"item.updated","item":{"type":"todo_list"}}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Final"}}',
+            '{"type":"turn.completed"}',
+        ])
+        _, error = self.register.parse_codex_transcript(transcript)
+        self.assertIn("item.updated", error)
+
+    def test_command_start_rejects_an_otherwise_complete_turn(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"item.started","item":{"type":"command_execution"}}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Final"}}',
+            '{"type":"turn.completed"}',
+        ])
+        _, error = self.register.parse_codex_transcript(transcript)
+        self.assertIn("command_execution", error)
+
+    def test_unknown_events_fail_closed(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"future.telemetry"}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Final"}}',
+            '{"type":"turn.completed"}',
+        ])
+        _, error = self.register.parse_codex_transcript(transcript)
+        self.assertIn("future.telemetry", error)
+
+    def test_reasoning_items_are_allowed(self):
+        transcript = "\n".join([
+            '{"type":"thread.started","thread_id":"thread-1"}',
+            '{"type":"turn.started"}',
+            '{"type":"item.started","item":{"type":"reasoning"}}',
+            '{"type":"item.completed","item":{"type":"reasoning","text":"thinking"}}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"Final"}}',
+            '{"type":"turn.completed"}',
+        ])
+        text, error = self.register.parse_codex_transcript(transcript)
+        self.assertEqual(text, "Final")
+        self.assertIsNone(error)
+
+    def test_codex_command_pins_model_and_disables_installed_skill(self):
+        command = self.register.build_codex_command(
+            "prompt", "file-pr", "gpt-5.6-sol")
+        self.assertEqual(command[command.index("--model") + 1], "gpt-5.6-sol")
+        configs = [command[index + 1] for index, value in enumerate(command)
+                   if value == "--config"]
+        override = next(value for value in configs if value.startswith("skills.config="))
+        installed = pathlib.Path.home() / ".agents" / "skills" / "file-pr" / "SKILL.md"
+        self.assertIn(str(installed), override)
+        self.assertIn("enabled=false", override)
+        self.assertIn('model_reasoning_effort="high"', configs)
+        self.assertEqual(
+            command[command.index("--sandbox") + 1], self.register.CODEX_SANDBOX_MODE)
+        self.assertIn("--ignore-user-config", command)
+
+    def test_catalog_probe_uses_the_scored_commands_config_mode(self):
+        command = self.register.build_codex_command(
+            "prompt", "file-pr", "gpt-5.6-sol")
+        command_configs = [command[index + 1] for index, value in enumerate(command)
+                           if value == "--config"]
+        override = next(
+            value for value in command_configs if value.startswith("skills.config="))
+        catalog = json.dumps([{
+            "role": "developer",
+            "content": [{
+                "type": "input_text",
+                "text": ("<skills_instructions>\n### Available skills\n"
+                         "- file-pr-under-test: staged\n</skills_instructions>"),
+            }],
+        }])
+        completed = subprocess.CompletedProcess([], 0, stdout=catalog, stderr="")
+        with mock.patch.object(
+                    self.register.subprocess, "run", return_value=completed) as run:
+            _, error = self.register.validate_codex_skill_catalog(
+                pathlib.Path("sandbox"), "file-pr", "file-pr-under-test", override, 30,
+                {"CODEX_HOME": "isolated"}, "gpt-5.6-sol")
+        self.assertIsNone(error)
+        probe = run.call_args.args[0]
+        probe_configs = [probe[index + 1] for index, value in enumerate(probe)
+                         if value == "--config"]
+        self.assertEqual(
+            ['model="gpt-5.6-sol"', 'sandbox_mode="read-only"', *command_configs],
+            probe_configs,
+        )
+        self.assertEqual(run.call_args.kwargs["env"], {"CODEX_HOME": "isolated"})
+
+    def test_codex_environment_uses_auth_without_mutable_user_config(self):
+        source_home = pathlib.Path(tempfile.mkdtemp(prefix="codex-source-home-"))
+        sandbox = pathlib.Path(tempfile.mkdtemp(prefix="codex-sandbox-"))
+        self.addCleanup(shutil.rmtree, source_home, True)
+        self.addCleanup(shutil.rmtree, sandbox, True)
+        source_auth = source_home / "auth.json"
+        source_auth.write_text("credentials")
+        (source_home / "config.toml").write_text('model_reasoning_effort = "low"')
+        with mock.patch.dict(self.register.os.environ, {"CODEX_HOME": str(source_home)}):
+            environment = self.register.create_codex_environment(sandbox)
+        isolated_home = pathlib.Path(environment["CODEX_HOME"])
+        self.assertEqual((isolated_home / "auth.json").resolve(), source_auth.resolve())
+        self.assertFalse((isolated_home / "config.toml").exists())
+
+    def test_codex_catalog_requires_only_the_staged_skill(self):
+        original = "file-pr"
+        staged = "file-pr-under-test"
+        catalog = json.dumps([{
+            "role": "developer",
+            "content": [{
+                "type": "input_text",
+                "text": ("<skills_instructions>\n### Available skills\n"
+                         f"- {staged}: staged\n</skills_instructions>"),
+            }],
+        }])
+        completed = subprocess.CompletedProcess([], 0, stdout=catalog, stderr="")
+        with mock.patch.object(self.register.subprocess, "run", return_value=completed):
+            context_digest, error = self.register.validate_codex_skill_catalog(
+                pathlib.Path("sandbox"), original, staged, "skills.config=[]", 30)
+        self.assertIsNone(error)
+        self.assertIsNotNone(context_digest)
+
+    def test_codex_catalog_fails_if_the_installed_skill_is_visible(self):
+        catalog = json.dumps([{
+            "role": "developer",
+            "content": [{
+                "type": "input_text",
+                "text": ("<skills_instructions>\n### Available skills\n"
+                         "- file-pr: installed\n"
+                         "- file-pr-under-test: staged\n</skills_instructions>"),
+            }],
+        }])
+        completed = subprocess.CompletedProcess([], 0, stdout=catalog, stderr="")
+        with mock.patch.object(self.register.subprocess, "run", return_value=completed):
+            _, error = self.register.validate_codex_skill_catalog(
+                pathlib.Path("sandbox"), "file-pr", "file-pr-under-test",
+                "skills.config=[]", 30)
+        self.assertIn("file-pr", error)
+        self.assertIn("visible", error)
+
+    def test_codex_catalog_fails_if_the_staged_skill_is_missing(self):
+        catalog = json.dumps([{
+            "role": "developer",
+            "content": [{
+                "type": "input_text",
+                "text": "<skills_instructions>\n### Available skills\n</skills_instructions>",
+            }],
+        }])
+        completed = subprocess.CompletedProcess([], 0, stdout=catalog, stderr="")
+        with mock.patch.object(self.register.subprocess, "run", return_value=completed):
+            _, error = self.register.validate_codex_skill_catalog(
+                pathlib.Path("sandbox"), "file-pr", "file-pr-under-test",
+                "skills.config=[]", 30)
+        self.assertIn("file-pr-under-test", error)
+        self.assertIn("0 times", error)
+
+    def test_codex_catalog_fails_on_malformed_debug_output(self):
+        completed = subprocess.CompletedProcess([], 0, stdout="not json", stderr="")
+        with mock.patch.object(self.register.subprocess, "run", return_value=completed):
+            _, error = self.register.validate_codex_skill_catalog(
+                pathlib.Path("sandbox"), "file-pr", "file-pr-under-test",
+                "skills.config=[]", 30)
+        self.assertIn("malformed", error)
+
+    def test_codex_context_digest_ignores_sandbox_and_arm_details(self):
+        def catalog(repo, codex_home, description):
+            return json.dumps([{
+                "role": "developer",
+                "content": [{
+                    "type": "input_text",
+                    "text": (f"<skills_instructions>\n- file-pr-under-test: {description} "
+                             f"(file: {repo}/.agents/skills/file-pr-under-test/SKILL.md)\n"
+                             f"system skills: {codex_home}/skills/.system\n"
+                             f"</skills_instructions>\n<environment_context>{repo}"
+                             "</environment_context>"),
+                }],
+            }])
+
+        digests = []
+        for repo, description in ((pathlib.Path("/tmp/first/repo"), "baseline"),
+                                  (pathlib.Path("/tmp/second/repo"), "variant")):
+            environment = {"CODEX_HOME": str(repo.parent / "codex-home")}
+            completed = subprocess.CompletedProcess(
+                [], 0, stdout=catalog(repo, environment["CODEX_HOME"], description),
+                stderr="")
+            with mock.patch.object(self.register.subprocess, "run", return_value=completed):
+                digest, error = self.register.validate_codex_skill_catalog(
+                    repo, "file-pr", "file-pr-under-test", "skills.config=[]", 30,
+                    environment)
+            self.assertIsNone(error)
+            digests.append(digest)
+        self.assertEqual(digests[0], digests[1])
+
+    def test_codex_context_digest_ignores_transport_metadata_only(self):
+        def payload(identifier, created_at, suffix=""):
+            return json.dumps([{
+                "type": "message",
+                "id": identifier,
+                "role": "developer",
+                "content": [{
+                    "type": "input_text",
+                    "text": ("<skills_instructions>\n"
+                             "- file-pr-under-test: staged\n"
+                             f"</skills_instructions>{suffix}"),
+                }],
+                "internal_chat_message_metadata_passthrough": {
+                    "turn_id": identifier,
+                    "create_time": created_at,
+                },
+            }])
+
+        digests = []
+        for output in (payload("message-a", 1.0), payload("message-b", 2.0),
+                       payload("message-c", 3.0, "changed")):
+            completed = subprocess.CompletedProcess([], 0, stdout=output, stderr="")
+            with mock.patch.object(self.register.subprocess, "run", return_value=completed):
+                digest, error = self.register.validate_codex_skill_catalog(
+                    pathlib.Path("sandbox"), "file-pr", "file-pr-under-test",
+                    "skills.config=[]", 30)
+            self.assertIsNone(error)
+            digests.append(digest)
+        self.assertEqual(digests[0], digests[1])
+        self.assertNotEqual(digests[0], digests[2])
+
+    def test_catalog_failure_cleans_up_the_sandbox(self):
+        skills_root = pathlib.Path(tempfile.mkdtemp(prefix="catalog-skill-"))
+        sandbox_root = pathlib.Path(tempfile.mkdtemp(prefix="catalog-sandbox-"))
+        self.addCleanup(shutil.rmtree, skills_root, True)
+        self.addCleanup(shutil.rmtree, sandbox_root, True)
+        skill = skills_root / "file-pr"
+        skill.mkdir()
+        (skill / "SKILL.md").write_text("---\nname: file-pr\n---\nBody\n")
+        repo = sandbox_root / "repo"
+        repo.mkdir()
+        case = {"skill": "file-pr", "prompt": "$SKILL_UNDER_TEST"}
+        with mock.patch.object(
+                    self.register.harness, "make_sandbox",
+                    return_value=(sandbox_root, repo)), \
+                mock.patch.object(
+                    self.register, "create_codex_environment", return_value={}), \
+                mock.patch.object(
+                    self.register, "validate_codex_skill_catalog",
+                    return_value=(None, "catalog rejected")):
+            _, _, _, _, error = self.register.run_once(
+                case, skills_root, 1.0, 30, runner="codex", model="gpt-5.6-sol")
+        self.assertEqual(error, "catalog rejected")
+        self.assertFalse(sandbox_root.exists())
+
+    def test_catalog_failure_reports_a_sandbox_cleanup_failure(self):
+        skills_root = pathlib.Path(tempfile.mkdtemp(prefix="catalog-skill-"))
+        sandbox_root = pathlib.Path(tempfile.mkdtemp(prefix="catalog-sandbox-"))
+        self.addCleanup(shutil.rmtree, skills_root, True)
+        self.addCleanup(shutil.rmtree, sandbox_root, True)
+        skill = skills_root / "file-pr"
+        skill.mkdir()
+        (skill / "SKILL.md").write_text("---\nname: file-pr\n---\nBody\n")
+        repo = sandbox_root / "repo"
+        repo.mkdir()
+        case = {"skill": "file-pr", "prompt": "$SKILL_UNDER_TEST"}
+        remove_tree = shutil.rmtree
+
+        def fail_sandbox_cleanup(target, ignore_errors=False):
+            if pathlib.Path(target) == sandbox_root:
+                raise OSError("directory busy")
+            remove_tree(target, ignore_errors=ignore_errors)
+
+        with mock.patch.object(
+                    self.register.harness, "make_sandbox",
+                    return_value=(sandbox_root, repo)), \
+                mock.patch.object(
+                    self.register, "create_codex_environment", return_value={}), \
+                mock.patch.object(
+                    self.register, "validate_codex_skill_catalog",
+                    return_value=(None, "catalog rejected")), \
+                mock.patch.object(
+                    self.register.shutil, "rmtree", side_effect=fail_sandbox_cleanup):
+            with self.assertRaisesRegex(OSError, "directory busy"):
+                self.register.run_once(
+                    case, skills_root, 1.0, 30, runner="codex", model="gpt-5.6-sol")
+
+    def test_unexpected_catalog_failure_still_cleans_up_the_sandbox(self):
+        skills_root = pathlib.Path(tempfile.mkdtemp(prefix="catalog-skill-"))
+        sandbox_root = pathlib.Path(tempfile.mkdtemp(prefix="catalog-sandbox-"))
+        self.addCleanup(shutil.rmtree, skills_root, True)
+        self.addCleanup(shutil.rmtree, sandbox_root, True)
+        skill = skills_root / "file-pr"
+        skill.mkdir()
+        (skill / "SKILL.md").write_text("---\nname: file-pr\n---\nBody\n")
+        repo = sandbox_root / "repo"
+        repo.mkdir()
+        case = {"skill": "file-pr", "prompt": "$SKILL_UNDER_TEST"}
+        with mock.patch.object(
+                    self.register.harness, "make_sandbox",
+                    return_value=(sandbox_root, repo)), \
+                mock.patch.object(
+                    self.register, "create_codex_environment", return_value={}), \
+                mock.patch.object(
+                    self.register, "validate_codex_skill_catalog",
+                    side_effect=RuntimeError("unexpected parser failure")), \
+                self.assertRaisesRegex(RuntimeError, "unexpected parser failure"):
+            self.register.run_once(
+                case, skills_root, 1.0, 30, runner="codex", model="gpt-5.6-sol")
+        self.assertFalse(sandbox_root.exists())
+
+    def test_canary_is_required_and_removed_before_scoring(self):
+        cleaned, error = self.register.validate_codex_canary(
+            f"PR body\n\n{self.marker}\n", self.marker)
+        self.assertEqual(cleaned, "PR body")
+        self.assertIsNone(error)
+
+    def test_missing_canary_rejects_the_run(self):
+        text, error = self.register.validate_codex_canary("PR body", self.marker)
+        self.assertEqual(text, "PR body")
+        self.assertIn("canary", error)
+
+
+class RegisterProtocol(unittest.TestCase):
+    def setUp(self):
+        import run_register
+        self.register = run_register
+
+    def test_seeded_schedule_balances_each_pair(self):
+        arms = [("baseline", pathlib.Path("old")), ("variant", pathlib.Path("new"))]
+        schedule = self.register.build_arm_schedule(arms, repeat=5, seed=37)
+        self.assertEqual(len(schedule), 10)
+        for pair_index in range(5):
+            pair = schedule[pair_index * 2:(pair_index + 1) * 2]
+            self.assertEqual({entry[0] for entry in pair}, {"baseline", "variant"})
+            self.assertEqual({entry[2] for entry in pair}, {pair_index})
+
+    def test_seeded_schedule_is_reproducible(self):
+        arms = [("baseline", pathlib.Path("old")), ("variant", pathlib.Path("new"))]
+        first = self.register.build_arm_schedule(arms, repeat=8, seed=91)
+        second = self.register.build_arm_schedule(arms, repeat=8, seed=91)
+        self.assertEqual(first, second)
+
+    def test_skill_digest_is_independent_of_file_creation_order(self):
+        first = pathlib.Path(tempfile.mkdtemp(prefix="digest-first-"))
+        second = pathlib.Path(tempfile.mkdtemp(prefix="digest-second-"))
+        self.addCleanup(shutil.rmtree, first, True)
+        self.addCleanup(shutil.rmtree, second, True)
+        (first / "b.md").write_text("two")
+        (first / "a.md").write_text("one")
+        (second / "a.md").write_text("one")
+        (second / "b.md").write_text("two")
+        self.assertEqual(
+            self.register.skill_directory_digest(first),
+            self.register.skill_directory_digest(second),
+        )
+
+    def test_skill_digest_changes_with_content(self):
+        skill = pathlib.Path(tempfile.mkdtemp(prefix="digest-change-"))
+        self.addCleanup(shutil.rmtree, skill, True)
+        path = skill / "SKILL.md"
+        path.write_text("before")
+        before = self.register.skill_directory_digest(skill)
+        path.write_text("after")
+        self.assertNotEqual(before, self.register.skill_directory_digest(skill))
+
+    def test_protocol_digest_is_stable_and_covers_every_source(self):
+        root = pathlib.Path(tempfile.mkdtemp(prefix="protocol-digest-"))
+        self.addCleanup(shutil.rmtree, root, True)
+        sources = []
+        for index, name in enumerate(("runner.py", "harness.py", "cases.json", "score.py",
+                                      "rules.json")):
+            source = root / name
+            source.write_text(f"source {index}")
+            sources.append((name, source))
+        original = self.register.protocol_digest(sources)
+        self.assertEqual(original, self.register.protocol_digest(reversed(sources)))
+        for name, source in sources:
+            before = source.read_text()
+            source.write_text(f"{before} changed")
+            self.assertNotEqual(original, self.register.protocol_digest(sources), name)
+            source.write_text(before)
+
+    def test_frozen_protocol_bytes_do_not_change_with_source_files(self):
+        root = pathlib.Path(tempfile.mkdtemp(prefix="protocol-freeze-"))
+        self.addCleanup(shutil.rmtree, root, True)
+        source = root / "rules.json"
+        source.write_text("before")
+        frozen = [("rules.json", source.read_bytes())]
+        digest = self.register.protocol_digest(frozen)
+        source.write_text("after")
+        self.assertEqual(digest, self.register.protocol_digest(frozen))
+        self.assertNotEqual(digest, self.register.protocol_digest([("rules.json", source)]))
+
+    def test_protocol_manifest_names_every_acceptance_source(self):
+        self.assertEqual(
+            [name for name, _ in self.register.protocol_sources()],
+            [
+                "tools/eval/run_register.py",
+                "tools/eval/harness.py",
+                "tools/eval/slop_score.py",
+                "tools/eval/slop_rules.json",
+                "tools/eval/register_cases.json",
+                "tools/eval/fixture/README.md",
+                "tools/eval/fixture/package.json",
+                "tools/eval/fixture/src/user.ts",
+            ],
+        )
+
+    def test_protocol_digest_changes_with_fixture_content(self):
+        fixture = pathlib.Path(tempfile.mkdtemp(prefix="protocol-fixture-"))
+        self.addCleanup(shutil.rmtree, fixture, True)
+        source = fixture / "sample.txt"
+        source.write_text("before")
+        before = self.register.protocol_digest(
+            self.register.protocol_sources(fixture))
+        source.write_text("after")
+        self.assertNotEqual(
+            before,
+            self.register.protocol_digest(self.register.protocol_sources(fixture)),
+        )
+
+    def test_arm_snapshot_is_immutable_after_the_source_changes(self):
+        source_root = pathlib.Path(tempfile.mkdtemp(prefix="arm-source-"))
+        self.addCleanup(shutil.rmtree, source_root, True)
+        skill = source_root / "file-pr"
+        skill.mkdir()
+        source_file = skill / "SKILL.md"
+        source_file.write_text("before")
+        snapshot, arms, digests = self.register.snapshot_arm_roots(
+            [("baseline", source_root)], "file-pr")
+        self.addCleanup(snapshot.cleanup)
+        source_file.write_text("after")
+        snapshot_file = arms[0][1] / "file-pr" / "SKILL.md"
+        self.assertEqual(snapshot_file.read_text(), "before")
+        self.assertEqual(
+            digests["baseline"],
+            self.register.skill_directory_digest(arms[0][1] / "file-pr"),
+        )
+
+    def test_identical_variant_is_rejected_without_an_agent_call(self):
+        baseline_root = pathlib.Path(tempfile.mkdtemp(prefix="identical-baseline-"))
+        variant_root = pathlib.Path(tempfile.mkdtemp(prefix="identical-variant-"))
+        output = pathlib.Path(tempfile.mkdtemp(prefix="identical-output-"))
+        self.addCleanup(shutil.rmtree, baseline_root, True)
+        self.addCleanup(shutil.rmtree, variant_root, True)
+        self.addCleanup(shutil.rmtree, output, True)
+        for root in (baseline_root, variant_root):
+            skill = root / "file-pr"
+            skill.mkdir()
+            (skill / "SKILL.md").write_text("---\nname: file-pr\n---\nBody\n")
+        argv = [
+            "run_register.py", "--case", "pr-body", "--repeat", "1",
+            "--baseline", str(baseline_root), "--variant", str(variant_root),
+            "--output-dir", str(output),
+        ]
+        version = subprocess.CompletedProcess([], 0, stdout="Claude 1.0", stderr="")
+        with mock.patch.object(sys, "argv", argv), \
+                mock.patch.object(self.register.subprocess, "run", return_value=version), \
+                mock.patch.object(self.register, "run_once") as run_once:
+            exit_code = self.register.main()
+        self.assertEqual(exit_code, 1)
+        run_once.assert_not_called()
+        summary = json.loads((output / "pr-body.summary.json").read_text())
+        self.assertIn("identical", summary["decision"]["reading"])
+        self.assertEqual(summary["baseline"]["unattempted"], 1)
+        self.assertEqual(summary["variant"]["unattempted"], 1)
+        (variant_root / "file-pr" / "SKILL.md").write_text(
+            "---\nname: file-pr\n---\nBody changed\n")
+        snapshot, _, digests = self.register.snapshot_arm_roots(
+            [("baseline", baseline_root), ("variant", variant_root)], "file-pr")
+        self.addCleanup(snapshot.cleanup)
+        self.assertNotEqual(digests["baseline"], digests["variant"])
+
+    def test_snapshot_failure_does_not_suppress_the_next_case(self):
+        baseline = pathlib.Path(tempfile.mkdtemp(prefix="snapshot-baseline-"))
+        output = pathlib.Path(tempfile.mkdtemp(prefix="snapshot-output-"))
+        case_file = pathlib.Path(tempfile.mkstemp(prefix="snapshot-cases-", suffix=".json")[1])
+        self.addCleanup(shutil.rmtree, baseline, True)
+        self.addCleanup(shutil.rmtree, output, True)
+        self.addCleanup(case_file.unlink, missing_ok=True)
+        cases = {
+            "cases": [
+                {"id": "broken", "skill": "missing", "artifact": "body", "prompt": "x"},
+                {"id": "working", "skill": "present", "artifact": "body", "prompt": "x"},
+            ],
+        }
+        case_file.write_text(json.dumps(cases))
+        snapshot = mock.Mock()
+        frozen = [("baseline", baseline)]
+        scored = self.register.slop_score.score("Word. " * 100)
+        argv = [
+            "run_register.py", "--repeat", "1", "--baseline", str(baseline),
+            "--output-dir", str(output),
+        ]
+        version = subprocess.CompletedProcess([], 0, stdout="Claude 1.0", stderr="")
+        fixture_reads = []
+
+        def run_scored_once(*args, **kwargs):
+            fixture_reads.append((kwargs["fixture"] / "README.md").read_text())
+            return scored, "body", [], None, None
+
+        with mock.patch.object(sys, "argv", argv), \
+                mock.patch.object(self.register, "CASES", case_file), \
+                mock.patch.object(self.register.subprocess, "run", return_value=version), \
+                mock.patch.object(
+                    self.register, "snapshot_arm_roots",
+                    side_effect=[ValueError("missing skill"),
+                                 (snapshot, frozen, {"baseline": "digest"})]), \
+                mock.patch.object(
+                    self.register, "run_once",
+                    side_effect=run_scored_once) as run_once:
+            exit_code = self.register.main()
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(run_once.call_count, 1)
+        self.assertIsNotNone(run_once.call_args.kwargs["scoring_rules"])
+        self.assertIsNotNone(run_once.call_args.kwargs["scoring_measures"])
+        self.assertEqual(fixture_reads, [(self.register.FIXTURE / "README.md").read_text()])
+        self.assertTrue((output / "broken.summary.json").is_file())
+        self.assertTrue((output / "working.summary.json").is_file())
+
+    def test_context_drift_invalidates_the_changed_codex_sample(self):
+        baseline = pathlib.Path(tempfile.mkdtemp(prefix="context-baseline-"))
+        variant = pathlib.Path(tempfile.mkdtemp(prefix="context-variant-"))
+        output = pathlib.Path(tempfile.mkdtemp(prefix="context-output-"))
+        case_file = pathlib.Path(tempfile.mkstemp(prefix="context-cases-", suffix=".json")[1])
+        self.addCleanup(shutil.rmtree, baseline, True)
+        self.addCleanup(shutil.rmtree, variant, True)
+        self.addCleanup(shutil.rmtree, output, True)
+        self.addCleanup(case_file.unlink, missing_ok=True)
+        for root, body in ((baseline, "baseline"), (variant, "variant")):
+            skill = root / "file-pr"
+            skill.mkdir()
+            (skill / "SKILL.md").write_text(f"---\nname: file-pr\n---\n{body}\n")
+        case_file.write_text(json.dumps({"cases": [{
+            "id": "pr-body",
+            "skill": "file-pr",
+            "artifact": "body",
+            "prompt": "$SKILL_UNDER_TEST",
+        }]}))
+        scored = self.register.slop_score.score("Word. " * 100)
+        argv = [
+            "run_register.py", "--runner", "codex", "--model", "gpt-5.6-sol",
+            "--case", "pr-body", "--repeat", "1", "--baseline", str(baseline),
+            "--variant", str(variant), "--output-dir", str(output),
+        ]
+        version = subprocess.CompletedProcess(
+            [], 0, stdout=self.register.SUPPORTED_CODEX_VERSION, stderr="")
+        with mock.patch.object(sys, "argv", argv), \
+                mock.patch.object(self.register, "CASES", case_file), \
+                mock.patch.object(self.register.subprocess, "run", return_value=version), \
+                mock.patch.object(
+                    self.register, "run_once",
+                    side_effect=[(scored, "body", [], "context-a", None),
+                                 (scored, "body", [], "context-b", None)]):
+            exit_code = self.register.main()
+        self.assertEqual(exit_code, 1)
+        summary = json.loads((output / "pr-body.summary.json").read_text())
+        failures = summary["baseline"]["failures"] + summary["variant"]["failures"]
+        self.assertEqual(summary["experiment"]["codex_context_sha256"], "context-a")
+        self.assertEqual(failures, ["Codex effective context changed during the experiment"])
+
+    def test_unsupported_codex_version_stops_before_cases(self):
+        output = pathlib.Path(tempfile.mkdtemp(prefix="codex-version-output-"))
+        self.addCleanup(shutil.rmtree, output, True)
+        argv = [
+            "run_register.py", "--runner", "codex", "--model", "gpt-5.6-sol",
+            "--case", "pr-body", "--output-dir", str(output),
+        ]
+        version = subprocess.CompletedProcess([], 0, stdout="codex-cli 999.0.0", stderr="")
+        with mock.patch.object(sys, "argv", argv), \
+                mock.patch.object(self.register.subprocess, "run", return_value=version), \
+                self.assertRaises(SystemExit) as raised:
+            self.register.main()
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_runner_startup_failures_are_usage_errors(self):
+        argv = [
+            "run_register.py", "--runner", "codex", "--model", "gpt-5.6-sol",
+            "--case", "pr-body",
+        ]
+        failures = (
+            FileNotFoundError("runner missing"),
+            subprocess.TimeoutExpired("codex --version", 30),
+        )
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__), \
+                    mock.patch.object(sys, "argv", argv), \
+                    mock.patch.object(
+                        self.register.subprocess, "run", side_effect=failure) as run, \
+                    self.assertRaises(SystemExit) as raised:
+                self.register.main()
+            self.assertEqual(raised.exception.code, 2)
+            self.assertEqual(
+                run.call_args.kwargs["timeout"],
+                self.register.RUNNER_VERSION_TIMEOUT_SECONDS,
+            )
+
+    def test_claude_rejects_a_model_flag_it_cannot_apply(self):
+        done = subprocess.run([
+            sys.executable,
+            str(pathlib.Path(self.register.__file__)),
+            "--runner", "claude",
+            "--model", "ignored-model",
+        ], capture_output=True, text=True)
+        self.assertEqual(done.returncode, 2)
+        self.assertIn("only valid with --runner codex", done.stderr)
 
 
 class RegisterStatistics(unittest.TestCase):
