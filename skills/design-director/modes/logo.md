@@ -12,8 +12,8 @@
 
   Each explored or refined direction includes:
   - **Concept name** (e.g., "Folded Letter", "Constellation Mark")
-  - **Visual metaphor** (what shape/form/symbol it uses)
-  - **Symbolism / meaning** (why this metaphor maps to the brand)
-  - **Best application** (where it shines: wordmark, app icon, monogram)
+  - **Visual metaphor**, what shape, form, or symbol it uses
+  - **Symbolism / meaning**, why this metaphor maps to the brand
+  - **Best application**, where it shines, such as wordmark, app icon, or monogram
 - **File save**: optional
 - **Next step**: → re-run `design-director` in `finalize` mode when the approved direction is ready for export or packaging

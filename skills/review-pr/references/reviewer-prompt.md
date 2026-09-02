@@ -5,7 +5,8 @@ under `parallel-standard`, once per chunk under `parallel-chunked` /
 `parallel-chunked-confirm`, and run inline in main context under `solo-main`.
 
 Substitute `<SKILL_DIR>`, `<PROMPT_PREAMBLE>` and `<GROUND_TRUTH>` before the prompt is
-used. All three are defined in SKILL.md Phase 2 under "Subagent 1: Claude reviewer".
+used. All three are defined in `<SKILL_DIR>/references/dispatch-prompts.md`, pointed at from
+SKILL.md Phase 2 under "Subagent 1: Claude reviewer".
 The remaining `<placeholders>` take their Phase 1 values.
 
 ## Prompt
@@ -129,13 +130,13 @@ If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` f
 
 ## Anti-slop rules (MANDATORY)
 
-- Report semantic and codebase-wide defects; CodeRabbit owns style, formatting, and naming.
+- Report semantic and codebase-wide defects. CodeRabbit owns style, formatting and naming.
 - Prior findings stay closed. **Exception**: if you believe a prior finding was wrong, report it with `Category: Prior-finding-correction` + concrete explanation.
 - Findings in `PRIOR_STATE.findings` with `status in {resolved, dismissed, wontfix}` stay closed too. Re-raise one only when the diff shows the resolving code was reverted, and mark the new finding's `status` as `regression`.
-- Raise a conditional issue ("this COULD become a problem if X") only when X is visible as a codebase signal in the diff.
+- Raise a conditional issue, like "this COULD become a problem if X", only when X shows as a codebase signal in the diff.
 - Point every finding at a `File: <path>`. Give the line when you can name it on the post-image side; leave it off for module-scope findings, which route to file-level review comments.
 - Raise missing tests only where this PR was expected to add them. Advice that would fit any PR belongs to no PR.
-- If a question (Q1-Q9, except Q6) has nothing to report, write "No issues". That is a complete answer.
+- If a question has nothing to report, write "No issues", except Q6. That is a complete answer.
 - **Permission to abstain**: if answering needs code you haven't seen, fetch it via `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>` or write `Cannot assess: would need <file>`. Both are complete answers.
 - Low-confidence findings at Moderate or Minor WILL be dropped by the critic. Only flag if a human should still take a second look.
 - Steps 4, 5 and 6 each require an audit field: `reusability_searches:`, `class_completeness:` and `Inverse risk:`. Write all three exactly as those steps specify, with real tool calls or the step's own N/A sentinel. What a missing one costs: an empty or missing `reusability_searches:` makes the Q6 claims INVALID, and a missing `class_completeness:` has the finding treated as UNSWEPT so the critic runs the sweep itself.

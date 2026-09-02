@@ -22,9 +22,9 @@ Loaded by the triage subagent at STEP 4 of `triage-prompt.md`. Main never reads 
 
   R6. Real bug / security / perf / correctness / REUSABILITY issue → FIX
 
-      Reusability is correctness-adjacent. Duplicated or reimplemented
-      code is a correctness risk (divergent fixes, missed updates, skill
-      drift). Default to FIX when ANY of these hold:
+      Reuse problems are correctness problems. A duplicated helper drifts.
+      One copy gets the fix and the other misses it. Default to FIX when ANY
+      of these hold:
 
         (a) A concrete existing target is known (STEP 2.5 found a match
             in `repo_map_exports` or via direct grep). The FIX is just
@@ -59,8 +59,8 @@ Loaded by the triage subagent at STEP 4 of `triage-prompt.md`. Main never reads 
                       LOC across untouched files) needing a tracking
                       ticket reference before this can be either FIXed
                       or DEFERred"
-      This surfaces to the user at the end of the run for manual
-      decision.
+      The user sees this at the end of the run
+      and makes the call by hand.
 
       **Delete-new-import-existing carve-out**: if the fix action is
       "delete the new duplicate + add an `import` to the existing
@@ -172,9 +172,7 @@ hardening and logic-change is `logic-change`.
   components scheduled; stored value should still render in the cell
   (was blank before)."
 
-This split is rendered verbatim in the Phase 8 final report so the user
-can triage testing effort: smoke-test the hardening bucket, deliberately
-exercise the logic-change bucket.
+This split lands word for word in the Phase 8 final report. The user smoke-tests the hardening bucket and deliberately exercises the logic-change bucket.
 
 ## Anti-slop reply format
 

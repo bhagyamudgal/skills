@@ -22,7 +22,7 @@ Render reply and resolution independently. For `confirmed-absent` plus
 `already-resolved`, report that the thread is resolved, the frozen reply is absent, and no
 automatic retry is authorized. Reserve "thread is still open" for `confirmed-open` or an
 authoritative open-thread read-back. For `reconcile-required`, name the indeterminate operation
-and its exact settling query; authorize no retry until that query settles the state.
+and its exact settling query. Hold every retry until that query settles.
 
 ## Main body
 

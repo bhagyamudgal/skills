@@ -2,7 +2,7 @@
 
 Loaded by Subagent 1 only when `INCLUDE_SCHEMA_CHECKS = true` (PR adds new database tables, detected in Phase 1 by grepping the diff for `pgTable\(`, `createTable\(`, `CREATE TABLE`, `knex.schema.createTable`, etc.).
 
-The main SKILL.md keeps a 5-line conditional that loads this file. Inline-loading every run wastes context on non-schema PRs.
+The main SKILL.md keeps a 5-line conditional that loads this file. Loading it inline on every run wastes context on non-schema PRs.
 
 `SCHEMA_DIR` is set in Phase 1, typically `db/schema/`, `drizzle/schema/`, `src/schema/`, or `migrations/`. If unset, defaults to `.` (repo root) and limits searches to files matching the detected table-definition pattern.
 
@@ -10,7 +10,7 @@ The main SKILL.md keeps a 5-line conditional that loads this file. Inline-loadin
 
 ## Q7. Schema Overlap
 
-**Question**: Does a new table duplicate an existing table's domain?
+**Question**. Does a new table duplicate an existing table's domain?
 
 For each new `pgTable()` (or equivalent) definition in the diff:
 
@@ -21,7 +21,7 @@ c. Search `$SCHEMA_DIR` for tables with matching keywords:
    Grep("<keyword>", "$SCHEMA_DIR", type: "ts")
    ```
 d. For each hit, read the file and compare FK targets and field names.
-e. **Flag ONLY** if an existing table has **3+ matching FK targets** AND a similar domain purpose (both tables serve the same feature area, e.g., both handle ordering, both handle inventory).
+e. **Flag ONLY** if an existing table has **3+ matching FK targets** AND a similar domain purpose. Both tables serve the same feature area, like ordering or inventory.
 
 Substring matches alone (e.g., `item` matching many unrelated tables) are NOT sufficient. Verify by FK comparison AND domain overlap.
 
@@ -34,7 +34,7 @@ Substring matches alone (e.g., `item` matching many unrelated tables) are NOT su
 
 ## Q8. Table Consolidation
 
-**Question**: Could a simple 1:1 table be a column on an existing table?
+**Question**. Could a simple 1:1 table be a column on an existing table?
 
 For each new table definition in the diff, detect where:
 
@@ -58,14 +58,14 @@ d. **Flag ONLY** if a candidate settings/config table EXISTS. Do NOT suggest "cr
 
 ## Q9. Cross-Table Field Consistency
 
-**Question**: Are entity reference columns complete?
+**Question**. Are entity reference columns complete?
 
 When a new table has entity reference FKs (to `orderTable`, `productTable`, `invoiceTable`, `customerTable`, etc.):
 
-a. Identify the "entity reference set": which entity types does it reference?
-b. Search for related tables in the same domain (tables sharing the same parent FK or domain name keywords).
+a. Identify the "entity reference set" and list which entity types it references.
+b. Search for related tables in the same domain that share the same parent FK or domain name keywords.
 c. Compare entity reference sets between the new table and related tables.
-d. **Flag ONLY** when a related table in the SAME domain has MORE entity types. Do NOT flag cross-domain differences (e.g., billing items vs inventory items may intentionally support different entity types).
+d. **Flag ONLY** when a related table in the SAME domain has MORE entity types. Do NOT flag cross-domain differences. Billing and inventory items may support different entity types by design.
 
 **Severity**: Moderate. **Category**: Architecture.
 
@@ -78,4 +78,4 @@ d. **Flag ONLY** when a related table in the SAME domain has MORE entity types. 
 
 - The new table is in a **migrations file** rather than the schema source. Schema-checks operate on the canonical schema definition (`pgTable()`-style), not migration DDL. If the schema file isn't touched, treat the migration as opaque.
 - `SCHEMA_DIR` is empty AND no schema file is detectable from the diff or repo tree. Write `Q7-Q9: SKIPPED, schema directory not found` and continue.
-- The PR is a refactor of existing schema (renaming, splitting, FK adjustments) without genuinely-new table domains. Q7 is unlikely to apply.
+- The PR refactors existing schema, like renaming, splitting or FK adjustments, without genuinely-new table domains. Q7 rarely applies here.

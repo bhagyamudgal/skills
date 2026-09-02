@@ -1,6 +1,6 @@
 # Shared-package repo map: `repo_map_files` / `repo_map_exports`
 
-The one copy of the repo-map shell. Three skills run it, each in its own Phase 1, each
+This file holds the one copy of the repo-map shell. Three skills run it, each in its own Phase 1, each
 feeding a different consumer:
 
 - **`/review-pr`**: main, when `packages/` or `apps/` exists. Both outputs go into
@@ -17,7 +17,7 @@ feeding a different consumer:
 ## Local mode
 
 The default, and the only mode `/fix-pr-review` and `/harden-plan` ever run. Both operate
-on the clone they are standing in.
+on the clone where they run.
 
 ```bash
 # Repo map files: inventory of TS/TSX in shared roots (capped 500 lines, truncation marked)
@@ -49,7 +49,7 @@ fi
 
 `/review-pr` reviews the PR URL it was given, which may live in a repo that is not the cwd.
 When Phase 1 set `CROSS_REPO_MODE=true` there is no local tree to scan, so the file list
-comes from the API and the export scan is deferred to on-demand fetches:
+comes from the API and on-demand fetches cover the export scan:
 
 ```bash
 if [ "$CROSS_REPO_MODE" = "true" ]; then
@@ -66,4 +66,4 @@ fi
 
 Stash the two outputs as `repo_map_files` and `repo_map_exports`. What to set when neither
 `packages/` nor `apps/` exists, and which subagent reroutes its searches in that case, is
-stated at each caller. The fallback differs by skill.
+stated at each caller. Each skill uses its own fallback.

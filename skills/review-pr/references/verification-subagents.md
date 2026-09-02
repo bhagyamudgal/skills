@@ -65,13 +65,12 @@ Default to still-closed when you cannot find evidence of a regression.
 ## V3: Deep gap check (step 6)
 
 Dispatch when `additions + deletions >= 500` **AND** main lacks the full diff, the same
-pair of conditions SKILL.md step 6 states. Size alone is not the trigger: when main still
+pair of conditions SKILL.md step 6 states. Size alone never triggers it. When main still
 holds the whole diff it runs the gap check inline. A subagent has the context budget to run
-the check against the diff itself where main would be guessing from a file list.
+the check against the diff itself instead of guessing from a file list.
 
 Pass `INCLUDE_SCHEMA_CHECKS` and `SCHEMA_DIR` through from Phase 1. V3 is dispatched
-precisely on the large PRs where schema changes live, so a dropped flag drops Q7-Q9 exactly
-where they were most likely to fire.
+on the large PRs where schema changes live. A dropped flag loses Q7-Q9 where they matter most.
 
 ```
 Fetch the diff yourself. The reviewers reported findings in these categories: <list>.

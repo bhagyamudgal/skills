@@ -1,6 +1,6 @@
 # Durable report format
 
-Read this only when the user asks for a saved write-up. The funnel otherwise
+Read this only when the user asks for a saved write-up. Otherwise the funnel
 returns its recommendation in the conversation and writes no file.
 
 ## Resolve the path
@@ -17,10 +17,10 @@ Resolve `docs/<slug>_domain_discovery.md` against the repository's resolved
 
 ## Contents
 
-Include the brief, entry route, supplied or generated candidate set, rejected
-domains, finalists or survivors, evidence timestamps, a winner when one exists,
-and a runner-up only when at least two names survive. Include the artifacts the
-route actually produced:
+Include the brief, the entry route, the supplied or generated candidates,
+rejected domains, finalists or survivors, and evidence timestamps. Name a winner
+when one exists, and a runner-up only when at least two names survive. Include
+the artifacts the route actually produced:
 
 - **Greenfield:** atom bank, first 12, user or autonomous reaction, and remixes.
 - **Shortlist plus alternatives:** supplied shortlist, atom bank, its reaction,

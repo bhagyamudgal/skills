@@ -1,10 +1,10 @@
 # Ticket Evidence Preservation
 
-Use this contract whenever a ticket is rewritten, split, superseded, or used to create follow-up issues. The calling skill owns ticket decisions, mutation preflight, and writes; this reference owns provenance and closeout evidence.
+Use this contract whenever you rewrite a ticket, split it, supersede it, or spin out follow-up issues. The calling skill owns ticket decisions, mutation preflight, and writes. This reference owns provenance and closeout evidence.
 
 ## Build the source map
 
-Walk the issue body, comments, and attachments in chronological order. Keep every item that bears on a requirement or finding; leave unrelated discussion out.
+Walk the issue body, comments, and attachments oldest first. Keep every item that bears on a requirement or finding. Leave unrelated discussion out.
 
 Assign each retained item a stable `E<n>` ID and record:
 
@@ -13,11 +13,11 @@ Assign each retained item a stable `E<n>` ID and record:
 - for an image, the exact Markdown attachment line and scoped surrounding excerpt, original attachment URL, source body or comment URL, and SHA-256 of the downloaded bytes;
 - supersession or dependency links to other evidence IDs.
 
-A summary may interpret this record but never replaces it. An image description may aid search but never substitutes for the image bytes.
+A summary can interpret this record. It never replaces it. An image description can aid search. It never stands in for the image bytes.
 
 ## Preserve images
 
-Open every downloaded image during intake. Before reusing its original attachment URL, verify that the intended successor readers can render it with their expected repository access.
+Open every downloaded image during intake. Before you reuse its original attachment URL, check that the intended successor readers can render it with their expected repository access.
 
 When they cannot, upload the unchanged downloaded bytes to the successor and record the original URL, new URL, and both SHA-256 values. The checksums must match before the successor is considered complete.
 

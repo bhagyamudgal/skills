@@ -56,7 +56,7 @@ query($owner:String!, $repo:String!, $num:Int!, $after:String) {
 
 Accumulate across pages. Filter to `isResolved == false` after pagination completes.
 
-**Also** fetch the latest CodeRabbit review's body to extract the "Prompt for AI agents" block (contains nitpicks that don't appear as threads):
+**Also** fetch the latest CodeRabbit review body and pull the Prompt for AI agents block. That block holds nitpicks that never show up as threads:
 
 ```bash
 gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate

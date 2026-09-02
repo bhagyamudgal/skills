@@ -2,10 +2,10 @@
 
 Loaded by **main** at the Phase 2 dispatch when `SIZE_MODE` is `parallel-chunked` or
 `parallel-chunked-confirm`. In the unchunked modes Subagent 3 is never dispatched and this
-file is never read.
+file stays unread.
 
 Substitute `<SKILL_DIR>` and `<PROMPT_PREAMBLE>` before dispatching. Both are defined in
-SKILL.md Phase 2 under "Subagent 1: Claude reviewer".
+`<SKILL_DIR>/references/dispatch-prompts.md`, pointed at from SKILL.md Phase 2 under "Subagent 1: Claude reviewer".
 
 ```
 You are reviewing a GitHub PR at <url> for CROSS-FILE patterns ONLY. Other reviewers cover

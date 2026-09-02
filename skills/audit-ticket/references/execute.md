@@ -1,6 +1,6 @@
 # Phase 5: Execute the chosen fate
 
-Multi-line bodies always go through the frozen `--body-file` paths recorded by the caller. Recheck every payload digest and the current step's protected issue fields immediately before its write; approved content changes only through the caller's re-render and approval-currency gates.
+Multi-line bodies always go through the frozen `--body-file` paths recorded by the caller. Re-read every payload digest and the current step's protected issue fields right before you write. Approved content changes only through the caller's re-render and approval-currency gates.
 
 Use the already-rendered `Investigation and successors` section and evidence maps frozen by the caller from `${CLAUDE_SKILL_DIR}/references/ticket-evidence.md`. The caller has already preflighted each non-split fate or the split create card; keep every write inside its current card.
 
