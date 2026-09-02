@@ -178,13 +178,13 @@ process that is up is not the same as a gateway that works.
 
 Obtain the final deletion card's explicit confirmation. Re-read the persisted reservation root
 and move-aside children, prove the root is mode `0700`, the state aside child is present,
-and every entry is a known aside path, and continue only on a current `ready` verdict.
+and every entry equals a persisted aside path, and continue only on a current `ready` verdict.
 
 ```
 test "$BROKEN_STATE_DIR" = "$RESTORE_RESERVATION_DIR/original-state"
 test -d "$BROKEN_STATE_DIR"
 test "$(find "$RESTORE_RESERVATION_DIR" -prune -type d -perm 0700 -print)" = "$RESTORE_RESERVATION_DIR"
-test -z "$(find "$RESTORE_RESERVATION_DIR" -mindepth 1 -maxdepth 1 ! -name 'original-*' -print)"
+test -z "$(find "$RESTORE_RESERVATION_DIR" -mindepth 1 -maxdepth 1 ! -path "$BROKEN_STATE_DIR" ! -path "$WORKSPACE_ASIDE" -print)"
 rm -rf -- "$RESTORE_RESERVATION_DIR"
 ```
 
