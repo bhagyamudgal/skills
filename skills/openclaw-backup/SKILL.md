@@ -4,18 +4,14 @@ description: Verified, restorable backup of an OpenClaw install, with a restore 
 disable-model-invocation: true
 ---
 
-Every step ends on a **gate**, a check that produces evidence. A gate you did not run is a
-gate that failed. The failure this skill is built against is **silent**: an archive that
-writes cleanly, verifies cleanly, and turns out to be missing the thing you needed.
+Every step ends on a gate. A gate is a check that produces evidence. A gate you did not run is a gate that failed. The failure this skill is built against is silent: an archive that writes cleanly, verifies cleanly, and turns out to be missing the thing you needed.
 
 ## Input
 
-- **Nothing**: the OpenClaw install on the current machine.
-- **A host**: `user@host`. Prefix every command with your SSH invocation; the steps are
-  otherwise identical.
+- Nothing. Back up the OpenClaw install on the current machine.
+- A host. Pass `user@host` and prefix every command with your SSH invocation. The steps are otherwise identical.
 
-Detect what you can. Ask only for the backup destination (default
-`~/backups/<date>-preflight`) and whether to pull a copy off-box.
+Detect what you can. Ask only for the backup destination, which defaults to `~/backups/<date>-preflight`, and whether to pull a copy off-box.
 
 ## Step 0: Preflight
 
@@ -30,20 +26,13 @@ df -h "$STATE_DIR"
 find "$STATE_DIR" -name '*.sqlite' -not -path '*/node_modules/*' | sort
 ```
 
-Discover the databases with `find` on every run. OpenClaw relocates them
-between versions. 2026.7 moved the memory database from `memory/main.sqlite` to
-`agents/<id>/agent/openclaw-agent.sqlite`, so a hardcoded path silently finds nothing.
+Discover the databases with `find` on every run. OpenClaw relocates them between versions. 2026.7 moved the memory database from `memory/main.sqlite` to `agents/<id>/agent/openclaw-agent.sqlite`, so a hardcoded path silently finds nothing.
 
-Locate the workspace, which may sit outside the state dir: check `OPENCLAW_WORKSPACE_DIR`
-and `agents.defaults.workspace` in the config. A workspace outside the state dir is a
-separate archive source.
+Locate the workspace, which may sit outside the state dir. Check `OPENCLAW_WORKSPACE_DIR` and `agents.defaults.workspace` in the config. A workspace outside the state dir is a separate archive source.
 
-Identify how the gateway runs: systemd user unit (`openclaw-gateway.service`), system unit,
-pm2, Docker, or launchd, by inspecting the host. A **user** unit needs `systemctl --user`
-on every command; plain `systemctl` reports "unit not found", which reads as stopped while
-the service is still writing.
+Identify how the gateway runs by inspecting the host. It is a systemd user unit such as `openclaw-gateway.service`, a system unit, pm2, Docker, or launchd. A user unit needs `systemctl --user` on every command. Plain `systemctl` reports "unit not found", which reads as stopped while the service is still writing.
 
-**Gate:** free space is at least 2x the state dir, and the database list is non-empty.
+Pass this step only when free space is at least 2x the state dir and the database list is non-empty.
 
 ## Step 1: Read capabilities from `--help`
 
@@ -52,39 +41,28 @@ openclaw backup --help
 openclaw backup create --help
 ```
 
-`--help` is the source of truth for this install. `docs.openclaw.ai` documents a
-`backup sqlite` subcommand that shipped builds may lack, so the docs site describes a
-capability the binary may not have.
+`--help` is the source of truth for this install. `docs.openclaw.ai` documents a `backup sqlite` subcommand that shipped builds may lack, so the docs site describes a capability the binary may not have.
 
-**Gate:** the subcommand list is recorded. If `sqlite` is present, prefer it over Step 3 and
-say so in the report.
+Pass this step only when you recorded the subcommand list. If `sqlite` is present, prefer it over Step 3 and say so in the report.
 
 ## Step 2: Choose the downtime mode
 
-Ask the user. Default to zero-downtime: Step 3 snapshots the databases transactionally, and
-the databases are the only part that cannot tolerate a live copy.
+Ask the user. Default to zero-downtime. Step 3 snapshots the databases transactionally, and the databases are the only part that cannot tolerate a live copy.
 
 | Mode | Cost |
 |---|---|
-| Zero-downtime (default) | Files rewritten mid-tar may be torn in the raw archive. Databases are covered separately. |
+| Zero-downtime, the default | Files rewritten mid-tar may be torn in the raw archive. Databases are covered separately. |
 | Brief stop | Minutes of downtime, messages in that window missed. Every artifact quiescent. |
 
-Immediately before stopping a live gateway, invoke `preflight-mutations` with the exact
-host, service manager and name, stop/restart actions, expected downtime, current process
-and health state, recovery command, and the user's brief-stop approval. Apply its result
-contract before stopping the service. Zero-downtime runs do not use this gate.
+Immediately before stopping a live gateway, invoke `preflight-mutations` with the exact host, service manager and name, stop and restart actions, expected downtime, current process and health state, recovery command, and the user's brief-stop approval. Apply its result contract before stopping the service. Zero-downtime runs do not use this gate.
 
-If stopping: confirm the process is gone with `pgrep -af openclaw` before archiving, and
-confirm it returned healthy afterwards.
+When you stop the service, confirm the process is gone with `pgrep -af openclaw` before archiving, and confirm it returned healthy afterwards.
 
 ## Step 3: Snapshot every SQLite database
 
-Load `${CLAUDE_SKILL_DIR}/references/sqlite-snapshot.md` and follow it: the `VACUUM INTO`
-script, and why a live WAL database needs it.
+Load `${CLAUDE_SKILL_DIR}/references/sqlite-snapshot.md` and follow it. It holds the `VACUUM INTO` script and explains why a live WAL database needs it.
 
-**Gate:** every database reports `integrity_check` = `ok` on **both** source and snapshot,
-and the count reads `N/N`. A database failing either check stops the run; report which one
-and what it said.
+Pass this step only when every database reports `integrity_check` = `ok` on both source and snapshot, and the count reads `N/N`. A database failing either check stops the run. Report which one and what it said.
 
 ## Step 4: Official archive
 
@@ -94,13 +72,9 @@ cd "$HOME" && openclaw backup create --verify --output "$BACKUP_DIR/official"
 
 Large installs take minutes. Run it in the background and poll.
 
-This archive omits live-mutation files: `.jsonl`, `.log`, `.json`, `.tmp`, `.sock`, `.pid`
-under sessions, logs and delivery queues. Session transcripts are `.jsonl`, which is why
-Step 5 follows.
+This archive omits live-mutation files: `.jsonl`, `.log`, `.json`, `.tmp`, `.sock`, `.pid` under sessions, logs and delivery queues. Session transcripts are `.jsonl`, which is why Step 5 follows.
 
-**Gate:** the run ends with `Archive verification: passed`, and the `Skipped N volatile
-files` count is recorded for the report. Without that verification line the archive counts
-as unverified.
+Pass this step only when the run ends with `Archive verification: passed` and you recorded the `Skipped N volatile files` count for the report. Without that verification line the archive counts as unverified.
 
 ## Step 5: Raw archive, the one holding the transcripts
 
@@ -113,8 +87,7 @@ tar --use-compress-program="zstd -3 -T0" \
 echo "EXIT=$?"
 ```
 
-`node_modules` is excluded as reinstallable and often a third of the total. Everything else
-stays: the volatile files Step 4 dropped are the point of this step.
+`node_modules` is excluded as reinstallable and often a third of the total. Everything else stays. The volatile files Step 4 dropped are the point of this step.
 
 Then produce the evidence:
 
@@ -126,23 +99,19 @@ grep -c 'sessions/.*\.jsonl' /tmp/rawlist.txt
 grep -c 'node_modules' /tmp/rawlist.txt
 ```
 
-**Gate:** `zstd -t` passes and the session `.jsonl` count is greater than zero on an install
-with conversation history. A zero count means the exclude pattern is wrong. Fix it and
-re-run. `tar` exits non-zero when a file changes mid-read; on a hot backup record that as a
-warning in the report.
+Pass this step only when `zstd -t` passes and the session `.jsonl` count is greater than zero on an install with conversation history. A zero count means the exclude pattern is wrong. Fix it and re-run. `tar` exits non-zero when a file changes mid-read. On a hot backup record that as a warning in the report.
 
 ## Step 6: Metadata
 
 Capture each of these into `meta/`:
 
-- Service unit file **and its drop-in directory**: overrides live in the drop-ins
-- Environment files the unit references
-- `openclaw --version`, `node --version`, global npm packages
-- Listening ports, running OpenClaw processes, crontab
-- `du -sh` of each state subdirectory, for size-checking a later restore
+- Service unit file and its drop-in directory. Overrides live in the drop-ins.
+- Environment files the unit references.
+- `openclaw --version`, `node --version`, global npm packages.
+- Listening ports, running OpenClaw processes, crontab.
+- `du -sh` of each state subdirectory, for size-checking a later restore.
 
-**Gate:** every item above is present in `meta/` or named in the report as unavailable, with
-the reason.
+Pass this step only when every item above is present in `meta/` or named in the report as unavailable, with the reason.
 
 ## Step 7: Manifest and RESTORE.md
 
@@ -152,28 +121,19 @@ cd "$BACKUP_DIR" && find . -type f ! -name MANIFEST.sha256 -print0 \
 chmod -R go-rwx "$BACKUP_DIR"
 ```
 
-Apply the permission change: these archives carry API tokens, messaging pairing data and
-OAuth refresh tokens.
+Apply the permission change. These archives carry API tokens, messaging pairing data, and OAuth refresh tokens.
 
-Render `${CLAUDE_SKILL_DIR}/references/restore-template.md` into `$BACKUP_DIR/RESTORE.md`,
-substituting the real paths, service name and database list from Step 0.
+Render `${CLAUDE_SKILL_DIR}/references/restore-template.md` into `$BACKUP_DIR/RESTORE.md`, substituting the real paths, service name and database list from Step 0.
 
-**Gate:** `MANIFEST.sha256` lists every artifact, the backup directory is mode `0700`, and
-the rendered `RESTORE.md` contains no remaining `<PLACEHOLDER>` tokens.
+Pass this step only when `MANIFEST.sha256` lists every artifact, the backup directory is mode `0700`, and the rendered `RESTORE.md` contains no remaining `<PLACEHOLDER>` tokens.
 
 ## Step 8: Off-box copy
 
-A backup on the same disk as the thing it protects survives config mistakes, not disk loss.
-If the user wants a copy elsewhere:
+A backup on the same disk as the thing it protects survives config mistakes, not disk loss. If the user wants a copy elsewhere, work through this step.
 
-Before `rsync`, verify from the receiving system that the destination is encrypted at rest,
-accessible only to the intended recipient accounts, and governed by a known retention period
-and tested deletion path. A destination missing any of those controls is blocked.
+Before `rsync`, verify from the receiving system that the destination is encrypted at rest, accessible only to the intended recipient accounts, and governed by a known retention period and tested deletion path. A destination missing any of those controls is blocked.
 
-Immediately before `rsync`, invoke `preflight-mutations` with that evidence, the exact source
-and destination host/path, included artifact inventory and credential sensitivity, recipient,
-retention/deletion path, current destination state, checksum and access-control read-back, and
-the user's off-box-copy approval. Apply its result contract before copying.
+Immediately before `rsync`, invoke `preflight-mutations` with that evidence, the exact source and destination host and path, included artifact inventory and credential sensitivity, recipient, retention and deletion path, current destination state, checksum and access-control read-back, and the user's off-box-copy approval. Apply its result contract before copying.
 
 ```bash
 rsync -avh --partial -e ssh <source> <destination>
@@ -186,32 +146,15 @@ grep -v ' \./official/' MANIFEST.sha256 > /tmp/check.sha256   # if official/ was
 sha256sum -c /tmp/check.sha256    # macOS: shasum -a 256 -c
 ```
 
-Confirm the checksum output covers a non-empty file list before reading it as a pass; a
-verifier fed an empty list reports success having checked nothing.
+Confirm the checksum output covers a non-empty file list before reading it as a pass. A verifier fed an empty list reports success having checked nothing.
 
-A checksum mismatch retires that transfer card. Preserve its `failed` result and the observed
-destination partial state as immutable history; if the transfer or read-back is ambiguous, mark
-it `reconcile-required` and resolve that exact file before planning another write. Before each
-retry, re-read the exact source file and destination partial file plus the receiving system's
-encryption, effective access, retention, and tested deletion controls. Create a new card scoped
-to that one mismatched file and one resumable `rsync --partial` transfer, with the current guards
-and expected checksum read-back. Retry only on a current `ready` verdict, then retire that card
-with its authoritative result before any later attempt.
+A checksum mismatch retires that transfer card. Preserve its `failed` result and the observed destination partial state as immutable history. When the transfer or read-back is ambiguous, mark it `reconcile-required` and resolve that exact file before planning another write. Before each retry, re-read the exact source file and destination partial file plus the receiving system's encryption, effective access, retention, and tested deletion controls. Create a new card scoped to that one mismatched file and one resumable `rsync --partial` transfer, with the current guards and expected checksum read-back. Retry only on a current `ready` verdict, then retire that card with its authoritative result before any later attempt.
 
-Re-read the receiving system's encryption and effective access controls after the copy. If
-either differs from the preflight evidence, preserve and report the copy as sensitive partial
-state. The copy approval does not authorize deletion. Render a separate compensating deletion
-card with the exact destination, observed failure, deletion action, and absence read-back;
-delete only after fresh explicit confirmation and a current `ready` preflight result.
+Re-read the receiving system's encryption and effective access controls after the copy. When either differs from the preflight evidence, preserve and report the copy as sensitive partial state. The copy approval does not authorize deletion. Render a separate compensating deletion card with the exact destination, observed failure, deletion action, and absence read-back. Delete only after fresh explicit confirmation and a current `ready` preflight result.
 
-**Gate:** every checked file reports `OK`, encryption at rest remains enabled, effective access
-is restricted to the approved recipient accounts, and the retention/deletion path remains
-available. A mismatched file clears the gate only through the fresh-card retry contract above;
-a failed security control blocks completion while the sensitive partial state is preserved or
-separately deleted. `--partial` makes the new transfer resume.
+Pass this step only when every checked file reports `OK`, encryption at rest remains enabled, effective access stays restricted to the approved recipient accounts, and the retention and deletion path remains available. A mismatched file clears the gate only through the fresh-card retry contract above. A failed security control blocks completion while the sensitive partial state is preserved or separately deleted. `--partial` makes the new transfer resume.
 
-Omitting the official archive from the pull is reasonable. Its contents are a subset of the
-raw archive. State that omission in the report.
+Omitting the official archive from the pull is reasonable. Its contents are a subset of the raw archive. State that omission in the report.
 
 ## Step 9: Report
 
@@ -238,11 +181,9 @@ NOT DONE:  restore has not been rehearsed against this backup
 VERDICT: <BACKUP COMPLETE | INCOMPLETE, reason>
 ```
 
-**Gate:** every gate from Steps 0-8 appears under `VERIFIED` with its evidence, or under
-`ASSUMED` with the reason it was not run. `BACKUP COMPLETE` requires all of them verified.
+Pass this step only when every gate from Steps 0-8 appears under `VERIFIED` with its evidence, or under `ASSUMED` with the reason it was not run. `BACKUP COMPLETE` requires all of them verified.
 
 Two claims to keep accurate:
 
 - A backup with unverified checksums reads `INCOMPLETE`.
-- The restore stays under `NOT DONE` until it has actually been performed against a
-  throwaway target. Running the backup proves the archives exist, not that they restore.
+- The restore stays under `NOT DONE` until it has actually been performed against a throwaway target. Running the backup proves the archives exist, not that they restore.

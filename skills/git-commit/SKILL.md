@@ -1,21 +1,20 @@
 ---
 name: git-commit
 description: Write a conventional commit. Use when the user asks to commit, or asks for a commit message to run themselves.
-license: MIT
 allowed-tools: Bash
 ---
 
-# Git Commit with Conventional Commits
+# Git commit with conventional commits
 
-Analyze the actual diff to determine type, scope, and message. Never write the message from memory of the task.
+I read the actual diff to find the type, scope, and message. I never write the message from memory of the task.
 
-## Message-Only Mode
+## Message-only mode
 
-When the user asks FOR a commit message ("give me a commit message", "commit message suggestion") rather than asking TO commit: analyze the diff as usual and print two variants for them to run, a one-liner and a detailed one.
+When I get asked for a message, phrases like "give me a commit message" or "commit message suggestion", instead of getting asked to commit, I analyze the diff as usual and print two variants to run, a one-liner and a detailed one.
 
 ## Workflow
 
-### 1. Analyze Diff
+### 1. Analyze diff
 
 ```bash
 git diff --staged        # if files are staged
@@ -23,23 +22,23 @@ git diff                 # if nothing staged
 git status --porcelain
 ```
 
-**Every file in `git status --porcelain` is classified into exactly one commit** before you write a message. A mixed diff becomes several commits, not one vague message.
+I classify every file in `git status --porcelain` into exactly one commit before I write a message. A mixed diff becomes several commits, not one vague message.
 
-### 2. Stage Files
+### 2. Stage files
 
-Stage only files you have read in the diff. `.env`, `credentials.json`, and key files stay unstaged.
+I stage only files I have read in the diff. I leave `.env`, `credentials.json`, and key files unstaged.
 
-When the caller supplies a **Verified content snapshot**, record the branch, old head, and original index tree, then build the candidate commit in a disposable detached worktree at that head. Load the verified tree into that worktree's index and files, require `git write-tree` to equal the snapshot, and run the ordinary commit there so every hook still runs. Require the candidate commit's `HEAD^{tree}` to equal the snapshot; a hook failure or mismatch leaves the real branch untouched.
+When the caller supplies a Verified content snapshot, I record the branch, old head, and original index tree, then build the candidate commit in a disposable detached worktree at that head. I load the verified tree into that worktree index and files, require `git write-tree` to equal the snapshot, and run the ordinary commit there so every hook still runs. I require the candidate commit `HEAD^{tree}` to equal the snapshot. A hook failure or mismatch leaves the real branch untouched.
 
-Before changing the real branch, prepare an isolated replacement index from the candidate commit and require its tree to equal the snapshot. Only after the candidate commit and replacement index are complete, acquire the real index lock exclusively. While holding it, copy the real index to an isolated path and require its tree to equal the recorded original index tree; a mismatch releases the lock and leaves the branch untouched. Atomically advance the recorded branch from the recorded old head to the candidate commit, write the prepared index bytes into the held lock, require that locked index's tree to equal the snapshot, and atomically install it as the real index without changing the worktree. Release the lock on every path and remove the disposable worktree. If index installation or read-back fails after the branch advances, report `branch advanced / index not refreshed` with the branch, candidate commit, recorded index tree, and recovery command; never retry the branch transition or hide the partial state. Never acquire the real index lock while hooks or another Git command still needs it, create the candidate commit on the real branch, or restage its live worktree.
+Before I touch the real branch, I prepare an isolated replacement index from the candidate commit and require its tree to equal the snapshot. Only after the candidate commit and replacement index are complete do I acquire the real index lock exclusively. While I hold it, I copy the real index to an isolated path and require its tree to equal the recorded original index tree. A mismatch releases the lock and leaves the branch untouched. I atomically advance the recorded branch from the recorded old head to the candidate commit, write the prepared index bytes into the held lock, require that locked index tree to equal the snapshot, and atomically install it as the real index without changing the worktree. I release the lock on every path and remove the disposable worktree. If index installation or read-back fails after the branch advances, I report `branch advanced / index not refreshed` with the branch, candidate commit, recorded index tree, and recovery command. I never retry the branch transition or hide the partial state. I never acquire the real index lock while hooks or another Git command still need it, create the candidate commit on the real branch, or restage its live worktree.
 
-### 3. Generate Commit Message
+### 3. Generate commit message
 
-From the diff, determine the **type**, the **scope** (the area or module affected), and the **description**.
+I read the type, the scope, meaning the area or module affected, and the description from the diff.
 
-Subject: imperative, under 72 chars, explaining WHY rather than WHAT. The diff already shows what. Body uses `-` bullets for key changes, 3-5 max.
+I keep the subject imperative, under 72 chars, and about WHY instead of WHAT. The diff already shows what. The body uses `-` bullets for key changes, 3-5 max.
 
-The message is read by whoever runs `git log` a year from now. Write it with no em or en dashes. `unslop` carries the rest of the rules where it is installed.
+I write the message for whoever runs `git log` a year from now. I use no em or en dashes in it. `unslop` carries the rest of the rules where it is installed.
 
 ### 4. Commit
 
@@ -55,8 +54,8 @@ git commit -m "<type>[scope]: <description>
 <optional footer>"
 ```
 
-One atomic change per commit.
+I land one atomic change per commit.
 
-Every git operation here is **append-only**. Stage, commit, and if a hook fails, fix it and land a new commit on top rather than amending.
+Every git operation here stays append-only. I stage, commit, and when a hook fails I fix it and land a new commit on top instead of amending.
 
-Four things sit outside that word and need saying: leave `git config` alone, let hooks run (no `--no-verify`), keep `--force` and hard resets behind an explicit request, and never force-push `main`.
+Four things sit outside that word and I say them plainly. I leave `git config` alone, I let hooks run with no `--no-verify`, I keep `--force` and hard resets behind an explicit request, and I never force-push `main`.

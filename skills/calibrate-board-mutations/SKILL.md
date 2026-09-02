@@ -4,9 +4,9 @@ description: Calibrate and reconcile a batch of estimates on a shared project bo
 disable-model-invocation: true
 ---
 
-# Calibrate Board Mutations
+# Calibrate board mutations
 
-Prepare an evidence-backed estimate ledger, then delegate shared-state authorization to `preflight-mutations`. This skill reads and calculates; the workflow that owns the board performs the writes.
+Prepare an evidence-backed estimate ledger, then delegate shared-state authorization to `preflight-mutations`. This skill reads and calculates. The workflow that owns the board performs the writes.
 
 ## 1. Fix the eligible scope
 
@@ -29,9 +29,9 @@ Create one ledger in the existing authorized artifact that owns the batch:
 | <stable ID> | <owner> | leaf / umbrella | <value> | <value> | <evidence> | candidate / excluded / pending / landed / failed / skipped / reconcile-required |
 ```
 
-Record every candidate or its exclusion; totals may not silently drop items.
+Record every candidate or its exclusion. Totals may not silently drop items.
 
-**Gate:** the board, field, owner boundary, and complete candidate set are exact.
+Pass this section only when the board, field, owner boundary, and complete candidate set are exact.
 
 ## 2. Establish the calibration
 
@@ -44,33 +44,33 @@ Reuse a durable policy only when it defines all four facts:
 
 Otherwise ask the user for the unit and 3-5 anchors spanning the expected range. Record whether time means agent-assisted elapsed effort, person-hours, or another unit. Prepare no estimates until the calibration is complete.
 
-**Gate:** another agent could apply the recorded calibration without inventing its unit or scale.
+Pass this section only when another agent could apply the recorded calibration without inventing its unit or scale.
 
 ## 3. Build and preview a representative sample
 
-Estimate 3-5 varied items before filling the batch, or every eligible item when the scope contains fewer than three. Cover the smallest, typical, and largest work; include an uncertainty edge and an umbrella when either exists. Ground each estimate in current ticket and implementation evidence.
+Estimate 3-5 varied items before filling the batch, or every eligible item when the scope contains fewer than three. Cover the smallest, typical, and largest work. Include an uncertainty edge and an umbrella when either exists. Ground each estimate in current ticket and implementation evidence.
 
 Classify every umbrella exactly once:
 
-- `direct`: estimate the umbrella itself and exclude its children from the same aggregate;
-- `derived`: sum its eligible children and exclude the umbrella from the aggregate; or
-- `excluded`: leave it outside the estimated scope with a reason.
+- `direct` means you estimate the umbrella itself and exclude its children from the same aggregate;
+- `derived` means you sum its eligible children and exclude the umbrella from the aggregate; or
+- `excluded` means you leave it outside the estimated scope with a reason.
 
 Show the unit, anchors, sample estimates, reasoning, umbrella treatment, and sample total. Obtain the user's approval before converting ledger items from `candidate` to `pending`. A changed unit, anchor, sample decision, owner boundary, or umbrella rule invalidates all unexecuted estimates.
 
-**Gate:** the user approved a representative sample and every umbrella has a non-duplicating treatment.
+Pass this section only when the user approved a representative sample and every umbrella has a non-duplicating treatment.
 
 ## 4. Prepare the exact batch
 
-Fill the remaining eligible rows using the approved calibration. Calculate intended counts and totals mechanically from `pending` rows; keep excluded and umbrella-derived values out of the write total.
+Fill the remaining eligible rows using the approved calibration. Calculate intended counts and totals mechanically from `pending` rows. Keep excluded and umbrella-derived values out of the write total.
 
 Invoke `preflight-mutations` with the exact board and field IDs, item IDs, current and proposed values, owner policy, sample approval, umbrella rule, invalidators, and authoritative read-back plan. Apply its result contract. The board-owning workflow may write only the exact batch that returns `ready` with matching guards.
 
-**Gate:** every intended write is a `pending` ledger row covered by a current `ready` mutation card.
+Pass this section only when every intended write is a `pending` ledger row covered by a current `ready` mutation card.
 
 ## 5. Reconcile authoritative results
 
-After execution, re-fetch every attempted item from the board. Mark each row `landed`, `failed`, or `skipped` from observed final state, not command output. When read-back cannot establish whether an attempted write landed, mark it `reconcile-required`; exclude it from retries and totals until an authoritative query resolves it. Preserve partial state and re-preflight only the safe `pending` rows.
+After execution, re-fetch every attempted item from the board. Mark each row `landed`, `failed`, or `skipped` from observed final state, not command output. When read-back cannot establish whether an attempted write landed, mark it `reconcile-required`. Exclude it from retries and totals until an authoritative query resolves it. Preserve partial state and re-preflight only the safe `pending` rows.
 
 Report separately:
 
@@ -78,6 +78,6 @@ Report separately:
 - the confirmed batch total calculated only from `landed` final values; and
 - any wider scope total, with its exact inclusion rule.
 
-If authoritative read-back is unavailable, report the intended values and `reconcile-required` items; do not claim a confirmed total or completed batch.
+When authoritative read-back is unavailable, report the intended values and `reconcile-required` items. Do not claim a confirmed total or completed batch.
 
-**Done:** the approved calibration and complete ledger are preserved, every attempted item has authoritative final state or `reconcile-required`, and every reported total is reproducible from `landed` rows.
+The run is done when the approved calibration and complete ledger are preserved, every attempted item has authoritative final state or `reconcile-required`, and every reported total is reproducible from `landed` rows.
