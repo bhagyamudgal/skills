@@ -1,0 +1,33 @@
+{
+  "note": "Each case asks a skill to produce a text artifact a human reads, then scores that text with slop_score.py. Bash is withheld from every case on purpose: the artifacts here are drafts, and a run that cannot shell out cannot open a PR, file an issue or push anything. The diff each case needs is pasted into its prompt instead.",
+  "cases": [
+    {
+      "id": "pr-body",
+      "skill": "file-pr",
+      "artifact": "pull request body",
+      "why": "The longest prose artifact any of these skills emits, so its per-100-word rates are the least noisy.",
+      "prompt": "Use $SKILL_UNDER_TEST. Do NOT open the pull request and do not run any commands; I only want the text. Here is the complete diff on branch bhagya/fix-lock-contention against main:\n\n```diff\n--- a/src/scheduler.ts\n+++ b/src/scheduler.ts\n@@ -12,9 +12,14 @@ export class Scheduler {\n   enqueue(job: Job): void {\n     this.lock.acquire();\n-    this.queue.push(job);\n-    this.persist();\n+    this.queue.push(job);\n     this.lock.release();\n+    this.persist();\n   }\n \n+  private nextSequence(): number {\n+    return ++this.sequence;\n+  }\n+\n   private persist(): void {\n-    writeFileSync(this.path, JSON.stringify(this.queue));\n+    const record = { seq: this.nextSequence(), queue: this.queue };\n+    appendFileSync(this.path, JSON.stringify(record) + \"\\n\");\n   }\n }\n```\n\nThe lock used to be held across the fsync, which serialized every writer behind one slow disk write. p99 went from 340ms to 12ms on the staging load test. Because two writers can now interleave, each record carries a sequence number so the file stays reconstructable. Write the PR title and body."
+    },
+    {
+      "id": "issue-body",
+      "skill": "file-issue",
+      "artifact": "issue body",
+      "why": "file-issue and file-pr have similar jobs and different prose, so a rewrite that moves one and not the other is visible.",
+      "prompt": "Use $SKILL_UNDER_TEST. Do NOT create the issue and do not run any commands; I only want the text. Report this: the retry helper in src/retry.ts treats any thrown value as retryable, so a TypeError from a bug in the callback is retried three times with backoff before surfacing. That turns a 2ms crash into a 7 second one and buries the original stack under the last attempt's. It should retry only on network errors and rethrow everything else immediately. Write the issue title and body."
+    },
+    {
+      "id": "commit-message",
+      "skill": "git-commit",
+      "artifact": "commit message",
+      "why": "Short artifact, so its rates are noisier, but it is the skill that fires most often in a day.",
+      "prompt": "Use $SKILL_UNDER_TEST. Do NOT run any commands; I only want the message text. The staged diff removes a 40ms sleep that was masking a race in the websocket reconnect path, and replaces it with a promise that resolves when the socket reports open. Write the commit message."
+    },
+    {
+      "id": "completion-report",
+      "skill": "done",
+      "artifact": "completion report",
+      "why": "done is a compliance gate rather than an advisory skill, and the issue warns that punchy prose costs precision there. Worth measuring separately.",
+      "prompt": "Use $SKILL_UNDER_TEST. Do NOT run any commands; I only want the report text. I changed src/retry.ts so it rethrows non-network errors instead of retrying them, added two unit tests covering a TypeError and a fetch timeout, and ran the type-check which exits 0. I did not run the full integration suite. Write the completion report."
+    }
+  ]
+}

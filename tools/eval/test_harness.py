@@ -259,5 +259,62 @@ class MigratedCallers(unittest.TestCase):
         self.assertIn("unslop", self.triggers.AMBIENT_SKILLS)
 
 
+class RegisterStaging(unittest.TestCase):
+    """The rename that keeps a sandbox-injected skill from colliding with the copy the user
+    already has installed. If it silently stopped working, both arms of an A/B run would
+    load the same prose and every delta would be zero for the wrong reason."""
+
+    def setUp(self):
+        import run_register
+        self.register = run_register
+        self.source = pathlib.Path(tempfile.mkdtemp(prefix="stage-test-src-")) / "file-pr"
+        (self.source / "references").mkdir(parents=True)
+        (self.source / "SKILL.md").write_text(
+            "---\nname: file-pr\ndescription: opens a PR\n---\n\n# File PR\n\nBody.\n")
+        (self.source / "references" / "checks.md").write_text("reference body\n")
+        self.into = pathlib.Path(tempfile.mkdtemp(prefix="stage-test-dest-"))
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.source.parent, ignore_errors=True)
+        shutil.rmtree(self.into, ignore_errors=True)
+
+    def test_slug_is_rewritten_in_directory_and_frontmatter(self):
+        staged = self.register.stage_under_unique_name(
+            self.source, "file-pr-under-test", self.into)
+        self.assertEqual(staged.name, "file-pr-under-test")
+        self.assertIn("name: file-pr-under-test", (staged / "SKILL.md").read_text())
+        self.assertNotIn("name: file-pr\n", (staged / "SKILL.md").read_text())
+
+    def test_reference_files_come_along(self):
+        staged = self.register.stage_under_unique_name(
+            self.source, "file-pr-under-test", self.into)
+        self.assertTrue((staged / "references" / "checks.md").is_file())
+
+    def test_body_prose_is_untouched(self):
+        staged = self.register.stage_under_unique_name(
+            self.source, "file-pr-under-test", self.into)
+        self.assertIn("# File PR\n\nBody.\n", (staged / "SKILL.md").read_text())
+
+    def test_a_skill_with_no_name_line_fails_loudly(self):
+        (self.source / "SKILL.md").write_text("---\ndescription: no name here\n---\nBody\n")
+        with self.assertRaises(ValueError):
+            self.register.stage_under_unique_name(
+                self.source, "file-pr-under-test", self.into)
+
+    def test_every_case_prompt_carries_the_placeholder(self):
+        import json as json_module
+        spec = json_module.loads(self.register.CASES.read_text())
+        self.assertTrue(spec["cases"])
+        for case in spec["cases"]:
+            self.assertIn("$SKILL_UNDER_TEST", case["prompt"], case["id"])
+            self.assertTrue((self.register.SKILLS / case["skill"] / "SKILL.md").is_file(),
+                            case["skill"])
+
+    def test_no_case_grants_bash(self):
+        # A case with Bash could open the PR it was asked to draft.
+        self.assertNotIn("Bash", self.register.CASE_TOOLS)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

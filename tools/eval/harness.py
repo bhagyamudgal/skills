@@ -79,6 +79,52 @@ def parse_skill_names(event):
             if content.get("type") == "tool_use" and content.get("name") == "Skill"]
 
 
+def parse_transcript(output):
+    """Read a buffered stream-json transcript. Returns (final_text, tool_calls, error).
+
+    Each tool call carries the result that came back for it, matched by tool_use_id, so a
+    caller can assert on what a tool actually returned and not just that it was called.
+    """
+    final_text = ""
+    last_assistant_message = ""
+    tool_calls = []
+    tool_calls_by_id = {}
+    result_error = None
+    for event in iter_events(output):
+        if event.get("type") == "assistant":
+            message_text = []
+            for content in event.get("message", {}).get("content", []):
+                if content.get("type") == "text":
+                    message_text.append(content.get("text", ""))
+                elif content.get("type") == "tool_use":
+                    tool_call = {
+                        "id": content.get("id", ""),
+                        "name": content.get("name", ""),
+                        "input": content.get("input") or {},
+                        "result": "",
+                    }
+                    tool_calls.append(tool_call)
+                    tool_calls_by_id[tool_call["id"]] = tool_call
+            if any(text.strip() for text in message_text):
+                last_assistant_message = "\n".join(message_text)
+        elif event.get("type") == "user":
+            for content in event.get("message", {}).get("content", []):
+                if content.get("type") != "tool_result":
+                    continue
+                tool_call = tool_calls_by_id.get(content.get("tool_use_id", ""))
+                if tool_call:
+                    result = content.get("content", "")
+                    tool_call["result"] = (result if isinstance(result, str)
+                                           else json.dumps(result))
+        elif event.get("type") == "result":
+            result = event.get("result", "")
+            final_text = result if isinstance(result, str) else json.dumps(result)
+            result_error = format_result_error(event, final_text)
+    # The `result` event carries the final assistant message; earlier messages are drafts,
+    # and joining them lets a card be assembled field-wise across drafts the model retracted.
+    return final_text or last_assistant_message, tool_calls, result_error
+
+
 def kill_process_group(proc, partial_stdout=""):
     """SIGKILL the whole group and drain the pipes. Returns (stdout, stderr).
 
