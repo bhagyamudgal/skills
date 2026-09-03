@@ -236,12 +236,14 @@ In cross-repo mode, use `gh api git/trees/<head-sha>?recursive=1` for file listi
 
 ### Load project-level review suppressions
 
-Check for `.claude/review-suppressions.yml` in the project root.
+Read it at the base revision, never the worktree: a checked-out PR must not suppress its own review.
 
 ```bash
 SUPPRESSIONS_FILE=".claude/review-suppressions.yml"
-[ -f "$SUPPRESSIONS_FILE" ] && SUPPRESSIONS=$(cat "$SUPPRESSIONS_FILE")
+SUPPRESSIONS=$(git show "origin/<baseRefName>:$SUPPRESSIONS_FILE" 2>/dev/null || git show "<baseRefName>:$SUPPRESSIONS_FILE" 2>/dev/null || true)
 ```
+
+When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added suppressions file was ignored. A PR may propose suppressions for future reviews after merge, never for its own.
 
 Schema:
 

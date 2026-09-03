@@ -101,7 +101,7 @@ grep -c 'node_modules' "$LISTDIR/rawlist.txt"
 rm -rf -- "$LISTDIR"
 ```
 
-Pass this step only when `zstd -t` passes and the session `.jsonl` count is greater than zero on an install with conversation history. A zero count means the exclude pattern is wrong. Fix it and re-run. `tar` exits non-zero when a file changes mid-read. On a hot backup record that as a warning in the report.
+Pass this step only when `zstd -t` passes and the session `.jsonl` count is greater than zero on an install with conversation history. A zero count means the exclude pattern is wrong. Fix it and re-run. Capture the tar exit status: 0 passes clean, 1 records a hot-read warning in the report, 2 or higher fails the step.
 
 ## Step 5.5: Workspace archive
 

@@ -79,8 +79,9 @@ CURRENT_ROUND=$(( $(echo "$PRIOR_STATE" | yq '.last_round') + 1 ))
 CACHE_DIR="$HOME/.claude/skills/review-pr/cache"
 mkdir -p "$CACHE_DIR"
 CACHE_FILE="$CACHE_DIR/<owner>_<repo>_<pr-number>.json"
-CURRENT_HEAD=$(gh pr view <url> --json headRefOid -q .headRefOid)
 ```
+
+Use the `CURRENT_HEAD` pinned in Phase 1. Do not re-read it here: a fresh read can move past the stashed diff and select a cache branch for a different revision.
 
 Use `REVIEW_CACHE_CONTRACT_VERSION` from `references/finding-state-schema.md`, already loaded for the review-state read. Validate `contract_version` before reading any cache field. A missing or mismatched version invalidates the complete cache and starts a full fresh review. For a current cache, comparing `last_run_sha` to `CURRENT_HEAD` selects one of three branches: replay the cached run unchanged, re-review only the new commits, or invalidate and start fresh. The cache schema and the full body of each branch live in that reference under "Run-over-run cache".
 
