@@ -96,13 +96,14 @@ Then produce the evidence:
 LISTDIR=$(mktemp -d "$BACKUP_DIR/.listings-XXXXXXXX") || exit 1
 zstd -t "$BACKUP_DIR/raw/openclaw-state-raw.tar.zst"
 tar --use-compress-program="zstd -d" -tf "$BACKUP_DIR/raw/openclaw-state-raw.tar.zst" > "$LISTDIR/rawlist.txt"
+LISTING_EXIT=$?
 wc -l < "$LISTDIR/rawlist.txt"
 grep -c 'sessions/.*\.jsonl' "$LISTDIR/rawlist.txt"
 grep -c 'node_modules' "$LISTDIR/rawlist.txt"
 rm -rf -- "$LISTDIR"
 ```
 
-Pass this step only when `zstd -t` passes, the session `.jsonl` count is greater than zero on an install with conversation history, and the `node_modules` count is zero. A zero `.jsonl` count or a nonzero `node_modules` count means an exclude pattern is wrong. Fix it and re-run. Capture the tar exit status: 0 passes clean, 1 records a hot-read warning in the report, 2 or higher fails the step.
+Pass this step only when `zstd -t` passes, the listing exit is 0, the session `.jsonl` count is greater than zero on an install with conversation history, and the `node_modules` count is zero. A zero `.jsonl` count or a nonzero `node_modules` count means an exclude pattern is wrong. Fix it and re-run. Capture the tar exit status: 0 passes clean, 1 records a hot-read warning in the report, 2 or higher fails the step.
 
 ## Step 5.5: Workspace archive
 
@@ -123,17 +124,18 @@ Then produce the evidence:
 LISTDIR=$(mktemp -d "$BACKUP_DIR/.listings-XXXXXXXX") || exit 1
 zstd -t "$BACKUP_DIR/workspace/openclaw-workspace.tar.zst"
 tar --use-compress-program="zstd -d" -tf "$BACKUP_DIR/workspace/openclaw-workspace.tar.zst" > "$LISTDIR/workspacelist.txt"
+LISTING_EXIT=$?
 wc -l < "$LISTDIR/workspacelist.txt"
 rm -rf -- "$LISTDIR"
 ```
 
-Pass this step only when `zstd -t` passes and the listing is non-empty. Capture the tar exit status: 0 passes clean, 1 records a hot-read warning in the report, 2 or higher fails the step.
+Pass this step only when `zstd -t` passes, the listing exit is 0, and the listing is non-empty. Capture the tar exit status: 0 passes clean, 1 records a hot-read warning in the report, 2 or higher fails the step.
 
 ## Step 6: Metadata
 
 Capture each of these into `meta/`:
 
-- Service unit file and its drop-in directory. Overrides live in the drop-ins.
+- Service unit file and its drop-in directory. Overrides live in the drop-ins. Record the directory as `UNIT_DIR`.
 - Environment files the unit references.
 - `openclaw --version`, `node --version`, global npm packages.
 - Listening ports, running OpenClaw processes, crontab.
@@ -151,7 +153,7 @@ chmod -R go-rwx "$BACKUP_DIR"
 
 Apply the permission change. These archives carry API tokens, messaging pairing data, and OAuth refresh tokens.
 
-Render `${CLAUDE_SKILL_DIR}/references/restore-template.md` into `$BACKUP_DIR/RESTORE.md`, substituting the real paths, service name and database list from Step 0.
+Render `${CLAUDE_SKILL_DIR}/references/restore-template.md` into `$BACKUP_DIR/RESTORE.md`, substituting the real paths, service name, unit directory, and database list from Step 0.
 
 Pass this step only when `MANIFEST.sha256` lists every artifact, the backup directory is mode `0700`, and the rendered `RESTORE.md` contains no remaining `<PLACEHOLDER>` tokens.
 

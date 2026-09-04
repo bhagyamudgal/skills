@@ -166,7 +166,7 @@ One-liner:
 ## Stashed work
 
 Stashed: <yes | no>
-Restored: <yes | no | conflict | foreign-top>
+Restored: <yes | no | conflict | foreign-top | failed>
 
 <If conflict:>
   Your working tree now contains:
@@ -179,9 +179,14 @@ Restored: <yes | no | conflict | foreign-top>
   `fix-pr-review auto-stash <timestamp>`.
 
 <If foreign-top:>
-  The stash stack changed mid-run, so nothing was popped. Your fixes are
-  applied and uncommitted; your original work is still stashed as
-  `fix-pr-review auto-stash <timestamp>` under a foreign top entry.
-  Reconcile the stash stack before any commit or push; it is the only
-  dependency-ready next action.
+  The stash stack changed mid-run. Either nothing was applied and nothing
+  was dropped, or the content applied but the recorded entry is still
+  stashed. Reconcile the stash stack before any commit or push; it is the
+  only dependency-ready next action.
+
+<If failed:>
+  The restore step errored outside the conflict and foreign-top cases, so
+  the worktree state is unknown and the stash entry is retained. Recover
+  by hand before any commit or push; it is the only dependency-ready
+  next action.
 ```

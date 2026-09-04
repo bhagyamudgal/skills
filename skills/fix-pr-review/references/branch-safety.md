@@ -18,7 +18,7 @@
          - label: "Abort"
            description: "Stop here. I'll sort out my branch state manually"
 
-     On "Checkout PR branch", run `gh pr checkout <num>`. On failure from conflicts or missing refs, surface the error and abort. On "Abort", exit.
+     On "Checkout PR branch", run `gh pr checkout <num>`, then verify `git rev-parse HEAD` equals the recorded head SHA and abort on mismatch. On failure from conflicts or missing refs, surface the error and abort. On "Abort", exit.
 
    - **Different branch in the same repo**: Use AskUserQuestion:
 
@@ -31,7 +31,7 @@
          - label: "Abort"
            description: "Stop. I'll checkout the right branch manually"
 
-     On "Switch branch", run `gh pr checkout <num>`. On gh failure from conflicts or missing refs, surface the error and abort. On "Abort", exit.
+     On "Switch branch", run `gh pr checkout <num>`, then verify `git rev-parse HEAD` equals the recorded head SHA and abort on mismatch. On gh failure from conflicts or missing refs, surface the error and abort. On "Abort", exit.
 
    - **On the PR branch.** Verify `git rev-parse HEAD` equals the recorded head SHA. On match, continue. On mismatch, the branch name matches but the commit does not, so this is another fork's branch or a stale tracking branch. Use AskUserQuestion:
 

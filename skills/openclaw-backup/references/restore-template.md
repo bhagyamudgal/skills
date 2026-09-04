@@ -12,6 +12,7 @@ opens it during an incident.
 | `<BACKUP_DIR>` | Where the artifacts were written |
 | `<SERVICE_CTL>` | Real control command, e.g. `systemctl --user`, `systemctl`, `pm2`, `docker compose` |
 | `<SERVICE_NAME>` | Unit or process name |
+| `<UNIT_DIR>` | Directory holding the service unit and drop-ins |
 | `<RAW_ARCHIVE>` | Filename of the raw archive |
 | `<WORKSPACE_ARCHIVE>` | Filename of the workspace archive, if the workspace sits outside the state dir |
 | `<WORKSPACE_DIR>` | Restored workspace path |
@@ -144,7 +145,7 @@ a moment earlier.
 ### 5. Restore the service definition only if it changed
 
 ```
-cp -a '<BACKUP_DIR>/meta/systemd/.' '<unit directory>/'
+cp -a '<BACKUP_DIR>/meta/systemd/.' '<UNIT_DIR>/'
 <SERVICE_CTL> daemon-reload
 ```
 

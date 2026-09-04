@@ -524,13 +524,17 @@ Only after every NEEDS-INPUT item has settled, if `STASH_PUSHED=true`:
 if [ "$(git rev-parse -q --verify refs/stash)" = "$STASH_OID" ]; then
   if git stash apply "$STASH_OID"; then
     [ "$(git rev-parse -q --verify refs/stash)" = "$STASH_OID" ] && git stash drop || echo "STASH_CHANGED_MID_RESTORE"
+  elif [ -n "$(git diff --name-only --diff-filter=U)" ]; then
+    echo "STASH_CONFLICT"
+  else
+    echo "STASH_APPLY_FAILED"
   fi
 else
   echo "STASH_TOP_MISMATCH"
 fi
 ```
 
-On `STASH_TOP_MISMATCH`, record `stash_restored: foreign-top` and continue to the final report: another stash now sits on top of ours, so nothing was applied and nothing was dropped. When the apply reports a conflict, leave every conflict marker exactly as the apply left it and skip the drop: the entry stays stashed as the recovery source. Record `stash_restored: conflict` for the final report; resolving the user's WIP is the user's call. When the drop reports `STASH_CHANGED_MID_RESTORE`, the content applied cleanly but the stack moved first: record `stash_restored: foreign-top`, leave the recorded entry for the user to drop by hand, and continue to the report. After a `conflict` restoration, no edit, type-check, convergence check, Phase 6 check, commit, or push may run. Expose conflict resolution as the only dependency-ready next action.
+On `STASH_TOP_MISMATCH`, record `stash_restored: foreign-top` and continue to the final report: another stash now sits on top of ours, so nothing was applied and nothing was dropped. On `STASH_CONFLICT`, leave every conflict marker exactly as the apply left it and skip the drop: the entry stays stashed as the recovery source. Record `stash_restored: conflict` for the final report; resolving the user's WIP is the user's call. On `STASH_APPLY_FAILED`, the apply errored without conflict markers, so the worktree state is unknown: record `stash_restored: failed`, leave the worktree and every entry untouched, and continue to the report. When the drop reports `STASH_CHANGED_MID_RESTORE`, the content applied cleanly but the stack moved first: record `stash_restored: foreign-top`, leave the recorded entry for the user to drop by hand, and continue to the report. After a `conflict` or `failed` restoration, no edit, type-check, convergence check, Phase 6 check, commit, or push may run. Expose stash recovery as the only dependency-ready next action.
 
 ### 3. Print the final report once
 
@@ -569,10 +573,11 @@ Skip this step entirely if:
 - There are no DISMISS or DISAGREE items
 - The input was a local file from outside a git repo (no project root to write suppressions into)
 - `stash_restored=conflict` (the conflicted worktree remains read-only)
+- `stash_restored=failed` (the worktree state is unknown)
 
 ### 5. Post-completion next actions
 
-After printing the final report and completing the suppression step when applicable, compute `inverse_risk_blockers` from every item whose current `fix_status` is `inverse_risk_applied`, independent of final classification or `needs_input_status`. When `stash_restored=conflict`, suppress the prompt and report `Resolve stash conflicts` as the sole dependency-ready next action; Commit and Push remain unavailable. When `stash_restored=foreign-top`, suppress the prompt and report `Reconcile the stash stack: the recorded auto-stash entry is still stashed` as the sole dependency-ready next action; Commit and Push remain unavailable. Otherwise, if `inverse_risk_blockers` is non-empty, suppress the prompt and report the dependency-ready removal/replacement action from Step 3; Commit and Push remain unavailable even when `done_verified_snapshot` exists. Skip the prompt if all fixes were aborted (nothing was applied); otherwise use AskUserQuestion.
+After printing the final report and completing the suppression step when applicable, compute `inverse_risk_blockers` from every item whose current `fix_status` is `inverse_risk_applied`, independent of final classification or `needs_input_status`. When `stash_restored=conflict`, suppress the prompt and report `Resolve stash conflicts` as the sole dependency-ready next action; Commit and Push remain unavailable. When `stash_restored=foreign-top`, suppress the prompt and report `Reconcile the stash stack: the recorded auto-stash entry is still stashed` as the sole dependency-ready next action; Commit and Push remain unavailable. When `stash_restored=failed`, suppress the prompt and report `Recover the worktree and stash by hand` as the sole dependency-ready next action; Commit and Push remain unavailable. Otherwise, if `inverse_risk_blockers` is non-empty, suppress the prompt and report the dependency-ready removal/replacement action from Step 3; Commit and Push remain unavailable even when `done_verified_snapshot` exists. Skip the prompt if all fixes were aborted (nothing was applied); otherwise use AskUserQuestion.
 
    Question:
      header: "Next"
@@ -587,7 +592,7 @@ After printing the final report and completing the suppression step when applica
        - label: "Done"
          description: "Exit. I'll handle the rest manually"
 
-On "Commit changes" or "Push to remote", require `inverse_risk_blockers` to be empty, `stash_restored` to be neither `conflict` nor `foreign-top`, and a valid `done_verified_snapshot`. Recompute the blocker set instead of trusting the rendered report; a non-empty set stops the action. Invoke `git-commit` in Verified content snapshot sealed-index mode with that snapshot; never stage or restage the live worktree. Require the created commit tree to equal the snapshot tree. Ordinary restored WIP remains in the worktree and outside the candidate commit.
+On "Commit changes" or "Push to remote", require `inverse_risk_blockers` to be empty, `stash_restored` to be none of `conflict`, `foreign-top`, or `failed`, and a valid `done_verified_snapshot`. Recompute the blocker set instead of trusting the rendered report; a non-empty set stops the action. Invoke `git-commit` in Verified content snapshot sealed-index mode with that snapshot; never stage or restage the live worktree. Require the created commit tree to equal the snapshot tree. Ordinary restored WIP remains in the worktree and outside the candidate commit.
 
 On "Push to remote", commit first, then require the commit tree to still equal the snapshot before freezing the publication branch and push-attempt SHA. For GitHub PR input, re-read the current PR's `headRefName` plus `headRepository.id` and `nameWithOwner`; freeze those authoritative values, require the Phase 1 expected PR branch and active branch to equal the frozen head name, and set `<exact-ref>` to `refs/heads/<frozen-headRefName>`. That head repository identity is the intended publication target and remains independent of the input/base repository. For local-file or other no-current-PR input, freeze the active branch and derive `<exact-ref>` as `refs/heads/<active-branch>`. Freeze the push-attempt SHA only when the active symbolic ref equals `<exact-ref>` and that branch ref and `HEAD` resolve to the same SHA. Resolve the intended publication target before binding `<preflighted-remote>`. For GitHub PR input, enumerate configured remotes and validate every endpoint in each ordered complete fetch/push set. Auto-select the only remote whose every endpoint matches the PR head identity; when multiple match, immediately use AskUserQuestion with concrete `<remote>: <nameWithOwner> (<id>)` options and pagination when needed; when none match, stop with `Configure a remote whose complete endpoint sets resolve to the current PR head repository, then choose Push to remote again.` The selected match becomes `<preflighted-remote>`.
 

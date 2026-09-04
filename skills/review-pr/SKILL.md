@@ -64,7 +64,7 @@ gh pr view <url> --json number,title,body,author,baseRefName,headRefName,headRef
 gh pr diff <url>
 ```
 
-Record `CURRENT_HEAD` from `headRefOid` and `PINNED_BASE_OID` from `baseRefOid`. A push landing between the two calls mixes revisions, so after the diff lands, re-read both OIDs and require equality with the recorded pair. On either mismatch, discard both results and restart Phase 1 once. A second mismatch proceeds with a note that the PR moved mid-review.
+Record `CURRENT_HEAD` from `headRefOid`, `PINNED_BASE_OID` from `baseRefOid`, and `BASE_REF_NAME` from `baseRefName`. A push landing between the two calls mixes revisions, so after the diff lands, re-read both OIDs and require equality with the recorded pair. On either mismatch, discard both results and restart Phase 1 once. A second mismatch proceeds with a note that the PR moved mid-review.
 
 Phase 1 fetches the **full diff**. Stash it in main context. The error-handling content scan and the Phase 3 critic reference check both need it.
 
@@ -240,7 +240,7 @@ Read it at the base revision, never the worktree: a checked-out PR must not supp
 
 ```bash
 SUPPRESSIONS_FILE=".claude/review-suppressions.yml"
-SUPPRESSIONS=$(git show "$PINNED_BASE_OID:$SUPPRESSIONS_FILE" 2>/dev/null || { git fetch --no-tags origin <baseRefName> 2>/dev/null; git show "$PINNED_BASE_OID:$SUPPRESSIONS_FILE" 2>/dev/null; } || true)
+SUPPRESSIONS=$(git show "$PINNED_BASE_OID:$SUPPRESSIONS_FILE" 2>/dev/null || { git fetch --no-tags origin "$BASE_REF_NAME" 2>/dev/null; git show "$PINNED_BASE_OID:$SUPPRESSIONS_FILE" 2>/dev/null; } || true)
 ```
 
 When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added suppressions file was ignored. A PR may propose suppressions for future reviews after merge, never for its own.
