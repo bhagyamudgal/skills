@@ -146,21 +146,24 @@ Copy the drop-in directory too, not just the unit file. Overrides live there.
 
 If this backup has no workspace archive, delete this step when rendering: the workspace sat inside the state dir and step 3 already restored it.
 
-Move the current workspace aside first, mirroring step 2. Extracting over live files leaves mixed-era state with no rollback source on failure:
+Quote every path below. The renderer substitutes real paths that may contain spaces or shell metacharacters:
 
 ```
+WORKSPACE_PARENT="$(dirname -- "<WORKSPACE_DIR>")"
+WORKSPACE_BASE="$(basename -- "<WORKSPACE_DIR>")"
 WORKSPACE_ASIDE="$RESTORE_RESERVATION_DIR/original-workspace"
-if [ -e <WORKSPACE_DIR> ]; then mv <WORKSPACE_DIR> "$WORKSPACE_ASIDE"; fi
+if [ -e "<WORKSPACE_DIR>" ]; then mv "<WORKSPACE_DIR>" "$WORKSPACE_ASIDE"; fi
 ```
 
 ```
-tar --use-compress-program="zstd -d" -xf <BACKUP_DIR>/workspace/<WORKSPACE_ARCHIVE> -C $(dirname <WORKSPACE_DIR>)
+tar --use-compress-program="zstd -d" -xf "<BACKUP_DIR>/workspace/<WORKSPACE_ARCHIVE>" -C "$WORKSPACE_PARENT" "$WORKSPACE_BASE"
 ```
 
-Confirm `<WORKSPACE_DIR>` exists and is non-empty, and compare the extracted file count against the archive listing count. A large gap means the wrong target path. On any failure here, move the aside copy back before stopping:
+Confirm `"<WORKSPACE_DIR>"` exists and is non-empty, and compare the extracted file count against the archive listing count. A large gap means the wrong target path. On any failure here, remove the partial target, move the aside copy back, and stop before starting the service:
 
 ```
-[ -e "$WORKSPACE_ASIDE" ] && mv "$WORKSPACE_ASIDE" <WORKSPACE_DIR>
+rm -rf -- "<WORKSPACE_DIR>"
+[ -e "$WORKSPACE_ASIDE" ] && mv "$WORKSPACE_ASIDE" "<WORKSPACE_DIR>"
 ```
 
 ### 7. Start and verify
@@ -199,8 +202,9 @@ and use the persisted reservation root and child values.
 ```
 rm -rf <STATE_DIR>
 mv "$BROKEN_STATE_DIR" <STATE_DIR>
-# Only when this render includes step 6 (workspace archive present). Delete this line otherwise.
-[ -e "$WORKSPACE_ASIDE" ] && mv "$WORKSPACE_ASIDE" <WORKSPACE_DIR>
+# Only when this render includes step 6 (workspace archive present). Delete the next two lines otherwise.
+rm -rf -- "<WORKSPACE_DIR>"
+[ -e "$WORKSPACE_ASIDE" ] && mv "$WORKSPACE_ASIDE" "<WORKSPACE_DIR>"
 rmdir "$RESTORE_RESERVATION_DIR"
 <SERVICE_CTL> start <SERVICE_NAME>
 ```

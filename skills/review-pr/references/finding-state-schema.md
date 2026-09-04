@@ -213,16 +213,17 @@ The subagent prompt MUST emit `rule_class` for every finding. Use a slug from th
 
 ## Run-over-run cache
 
-Phase 1 computes `$CACHE_FILE` and `CURRENT_HEAD`; everything below describes what that file contains and which of three replay branches the comparison selects.
+Phase 1 computes `$CACHE_FILE`, `CURRENT_HEAD`, and the pinned base OID; everything below describes what that file contains and which of three replay branches the comparison selects.
 
 ```bash
-REVIEW_CACHE_CONTRACT_VERSION=2
+REVIEW_CACHE_CONTRACT_VERSION=3
 ```
 
 ```json
 {
-  "contract_version": 2,
+  "contract_version": 3,
   "last_run_sha": "abc123...",
+  "base_sha": "def456...",
   "last_run_timestamp": "2026-04-11T13:29:50Z",
   "last_run_verdict": "request-changes",
   "findings": [...],
@@ -251,7 +252,7 @@ REVIEW_CACHE_CONTRACT_VERSION=2
 
 These branches apply only after the contract-version check succeeds.
 
-1. **`last_run_sha == CURRENT_HEAD`**: no new commits. Reuse the cached review result. If authoritative cache evidence confirms the same review body, head SHA, required GitHub state, and threaded publication ownership are already posted, print the cached result and exit. Otherwise continue directly to Phase 4 and post the cached complete finding set; do not ask whether to replay or post.
+1. **`last_run_sha == CURRENT_HEAD` with stored `base_sha` equal to the pinned base OID**: no new commits on either side. Reuse the cached review result. If authoritative cache evidence confirms the same review body, head SHA, required GitHub state, and threaded publication ownership are already posted, print the cached result and exit. Otherwise continue directly to Phase 4 and post the cached complete finding set; do not ask whether to replay or post.
 
 2. **New commits since last run**, when cached SHA is an ancestor of HEAD, means PARTIAL re-review:
    - `git diff <last_run_sha>..<CURRENT_HEAD>` (or `gh api compare` cross-repo) for new-commits diff.
@@ -259,7 +260,7 @@ These branches apply only after the contract-version check succeeds.
    - Phase 3 merges new findings with cached findings still applicable (re-verify each cached finding against current HEAD; drop with `stale after new commits` if changed).
    - Phase 4 header: `Mode: partial re-review (N new commits since cached run at <sha>)`.
 
-3. **Cache exists but `last_run_sha` is NOT an ancestor** (force-push, branch reset): invalidate cache, full fresh run.
+3. **Cache exists but `last_run_sha` is NOT an ancestor** (force-push, branch reset), **or stored `base_sha` differs from the pinned base OID** (base moved): invalidate cache, full fresh run.
 
 ---
 

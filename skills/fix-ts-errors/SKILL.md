@@ -40,11 +40,11 @@ A file whose squiggles cleared is not green. A type change breaks its importers,
 Once green, I grep the changed lines for all four escape hatches, `as` assertions excluding `as const`, `@ts-ignore`, `@ts-expect-error`, and non-null assertions.
 
 ```bash
-git diff -U0 HEAD -- '*.ts' '*.tsx' | grep '^+' | grep -E '\bas\b|@ts-ignore|@ts-expect-error|[]A-Za-z0-9_$)][!]([^=]|$)' | grep -v 'as const'
-git ls-files --others --exclude-standard -- '*.ts' '*.tsx' | tr '\n' '\0' | xargs -0 grep -nE '\bas\b|@ts-ignore|@ts-expect-error|[]A-Za-z0-9_$)][!]([^=]|$)' | grep -v 'as const'
+git diff -U0 HEAD -- '*.ts' '*.tsx' | grep '^+' | grep -E '\bas\b|@ts-ignore|@ts-expect-error|[]A-Za-z0-9_$)][!]([^=]|$)' | sed 's/as const/__AS_CONST__/g'
+git ls-files --others --exclude-standard -- '*.ts' '*.tsx' | tr '\n' '\0' | xargs -0 grep -nE '\bas\b|@ts-ignore|@ts-expect-error|[]A-Za-z0-9_$)][!]([^=]|$)' | sed 's/as const/__AS_CONST__/g'
 ```
 
-The `[...][!]([^=]|$)` shape matches a postfix assertion, a value character before the bang and no equals after it, so `value!`, `value!.x`, `value![0]`, and `value!()` all hit while `!=`, `!==`, and prefix negation like `!ready` stay out.
+The `[...][!]([^=]|$)` shape matches a postfix assertion, a value character before the bang and no equals after it, so `value!`, `value!.x`, `value![0]`, and `value!()` all hit while `!=`, `!==`, and prefix negation like `!ready` stay out. The trailing `sed` neutralizes only the `as const` idiom into a marker instead of dropping whole lines, so co-occurring hatches on the same line survive. A line whose only match is the `__AS_CONST__` marker needs no action.
 
 I skip import aliases like `import { x as y }`. For every remaining hit I attempt removal with proper typing, meaning inference, narrowing, type guards, generics, or schema-derived types with `z.infer`. I re-run the check after each removal, and when errors appear I go back to Step 3. A hatch survives only when genuinely unavoidable, for example a third-party library type gap, and it must carry a comment that explains why.
 

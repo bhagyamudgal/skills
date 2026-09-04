@@ -205,7 +205,7 @@ Every input path ends here. The `Comment` schema, the exact field names Phases 3
 
 ### Load review suppressions (main agent, before dispatch)
 
-Before dispatching the subagent, load `.claude/review-suppressions.yml` at the base revision, never the worktree: a checked-out PR must not suppress its own triage. Locally, read it with `git show "origin/<baseRefName>:.claude/review-suppressions.yml"` (local `<baseRefName>` when origin is absent). In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<baseRefName>`. When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added file was ignored.
+Before dispatching the subagent, load `.claude/review-suppressions.yml` at the base revision, never the worktree: a checked-out PR must not suppress its own triage. For GitHub inputs, read it at the pinned base OID: `git show "$PINNED_BASE_OID:.claude/review-suppressions.yml"` locally (fetch origin once when the objects are absent), or `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=$PINNED_BASE_OID` in cross-repo mode. For local-file inputs without a PR, read the reviewer's own base with `git show "origin/<baseRefName>:.claude/review-suppressions.yml"` (local `<baseRefName>` when origin is absent). When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added file was ignored.
 
 Pass loaded suppressions into the subagent prompt as a `## Review suppressions` section (same approach as CLAUDE.md content, PR diff, and repo maps; main agent fetches, subagent receives as context).
 

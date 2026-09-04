@@ -64,7 +64,7 @@ gh pr view <url> --json number,title,body,author,baseRefName,headRefName,headRef
 gh pr diff <url>
 ```
 
-Record `CURRENT_HEAD` from `headRefOid` plus the base OID. A push landing between the two calls mixes revisions, so after the diff lands, re-read `headRefOid` and require equality. On mismatch, discard both results and restart Phase 1 once. A second mismatch proceeds with a note that the PR moved mid-review.
+Record `CURRENT_HEAD` from `headRefOid` and `PINNED_BASE_OID` from `baseRefOid`. A push landing between the two calls mixes revisions, so after the diff lands, re-read both OIDs and require equality with the recorded pair. On either mismatch, discard both results and restart Phase 1 once. A second mismatch proceeds with a note that the PR moved mid-review.
 
 Phase 1 fetches the **full diff**. Stash it in main context. The error-handling content scan and the Phase 3 critic reference check both need it.
 
@@ -240,7 +240,7 @@ Read it at the base revision, never the worktree: a checked-out PR must not supp
 
 ```bash
 SUPPRESSIONS_FILE=".claude/review-suppressions.yml"
-SUPPRESSIONS=$(git show "origin/<baseRefName>:$SUPPRESSIONS_FILE" 2>/dev/null || git show "<baseRefName>:$SUPPRESSIONS_FILE" 2>/dev/null || true)
+SUPPRESSIONS=$(git show "$PINNED_BASE_OID:$SUPPRESSIONS_FILE" 2>/dev/null || { git fetch --no-tags origin <baseRefName> 2>/dev/null; git show "$PINNED_BASE_OID:$SUPPRESSIONS_FILE" 2>/dev/null; } || true)
 ```
 
 When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added suppressions file was ignored. A PR may propose suppressions for future reviews after merge, never for its own.
@@ -262,7 +262,7 @@ suppressions:
 
 If file exists, pass into Subagent 1 prompt as "Review suppressions: patterns this project has already accepted; skip them". Phase 3 step 5.5 also applies as safety net.
 
-In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<baseRefName>`. Skip on 404. The base revision is trusted; the PR head is not, so a PR can never suppress its own review.
+In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=$PINNED_BASE_OID`. Skip on 404. The pinned base OID is trusted; the PR head is not, so a PR can never suppress its own review.
 
 ---
 
