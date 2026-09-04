@@ -21,6 +21,12 @@ opens it during an incident.
 Keep the explanatory sentences. They are what stops someone skipping the sidecar deletion
 in step 4 and corrupting a database they just restored.
 
+Render every substituted path below as a shell literal: keep the single quotes around each
+placeholder and replace every `'` inside the value with `'\''`. Never use double quotes for
+substituted paths: `$(...)`, backticks, and `\"` inside them still execute or break out.
+`<SERVICE_CTL>` is the one exception: it names a command from the closed set in the table,
+not a path, so it stays unquoted.
+
 ---
 
 ## Template body
@@ -64,7 +70,7 @@ exact paths plus the creation read-back in the mutation ledger.
 
 ```
 umask 077
-RESTORE_RESERVATION_DIR="$(mktemp -d "<STATE_DIR>.restore-XXXXXXXX")"
+RESTORE_RESERVATION_DIR="$(mktemp -d '<STATE_DIR>.restore-XXXXXXXX')"
 chmod 0700 "$RESTORE_RESERVATION_DIR"
 BROKEN_STATE_DIR="$RESTORE_RESERVATION_DIR/original-state"
 test -d "$RESTORE_RESERVATION_DIR"
@@ -94,7 +100,7 @@ final deletion follow this contract item by item; they are not single unchecked 
 ### 1. Stop the service
 
 ```
-<SERVICE_CTL> stop <SERVICE_NAME>
+<SERVICE_CTL> stop '<SERVICE_NAME>'
 pgrep -af "openclaw" || echo "clear"
 ```
 
@@ -105,7 +111,7 @@ still running and writing.
 ### 2. Move the current state aside: do not delete it
 
 ```
-mv <STATE_DIR> "$BROKEN_STATE_DIR"
+mv '<STATE_DIR>' "$BROKEN_STATE_DIR"
 ```
 
 A failed restore is recoverable only if the thing you replaced still exists.
@@ -113,15 +119,15 @@ A failed restore is recoverable only if the thing you replaced still exists.
 ### 3. Extract the raw archive
 
 ```
-tar --use-compress-program="zstd -d" -xf <BACKUP_DIR>/raw/<RAW_ARCHIVE> -C $(dirname <STATE_DIR>)
+tar --use-compress-program="zstd -d" -xf '<BACKUP_DIR>/raw/<RAW_ARCHIVE>' -C "$(dirname -- '<STATE_DIR>')"
 ```
 
 ### 4. Overwrite the databases with the consistent snapshots
 
 ```
-cd <BACKUP_DIR>/sqlite
+cd '<BACKUP_DIR>/sqlite'
 find . -name '*.sqlite' | while read -r db; do
-  target="<STATE_DIR>/${db#./}"
+  target='<STATE_DIR>/'"${db#./}"
   cp -f "$db" "$target"
   rm -f "${target}-wal" "${target}-shm"
   echo "restored $target"
@@ -136,7 +142,7 @@ a moment earlier.
 ### 5. Restore the service definition only if it changed
 
 ```
-cp -a <BACKUP_DIR>/meta/systemd/. <unit directory>/
+cp -a '<BACKUP_DIR>/meta/systemd/.' '<unit directory>/'
 <SERVICE_CTL> daemon-reload
 ```
 
@@ -146,31 +152,31 @@ Copy the drop-in directory too, not just the unit file. Overrides live there.
 
 If this backup has no workspace archive, delete this step when rendering: the workspace sat inside the state dir and step 3 already restored it.
 
-Quote every path below. The renderer substitutes real paths that may contain spaces or shell metacharacters:
+Render every path below as a shell literal per the quoting rule above:
 
 ```
-WORKSPACE_PARENT="$(dirname -- "<WORKSPACE_DIR>")"
-WORKSPACE_BASE="$(basename -- "<WORKSPACE_DIR>")"
+WORKSPACE_PARENT="$(dirname -- '<WORKSPACE_DIR>')"
+WORKSPACE_BASE="$(basename -- '<WORKSPACE_DIR>')"
 WORKSPACE_ASIDE="$RESTORE_RESERVATION_DIR/original-workspace"
-if [ -e "<WORKSPACE_DIR>" ]; then mv "<WORKSPACE_DIR>" "$WORKSPACE_ASIDE"; fi
+if [ -e '<WORKSPACE_DIR>' ]; then mv '<WORKSPACE_DIR>' "$WORKSPACE_ASIDE"; fi
 ```
 
 ```
-tar --use-compress-program="zstd -d" -xf "<BACKUP_DIR>/workspace/<WORKSPACE_ARCHIVE>" -C "$WORKSPACE_PARENT" "$WORKSPACE_BASE"
+tar --use-compress-program="zstd -d" -xf '<BACKUP_DIR>/workspace/<WORKSPACE_ARCHIVE>' -C "$WORKSPACE_PARENT" "$WORKSPACE_BASE"
 ```
 
-Confirm `"<WORKSPACE_DIR>"` exists and is non-empty, and compare the extracted file count against the archive listing count. A large gap means the wrong target path. On any failure here, remove the partial target, move the aside copy back, and stop before starting the service:
+Confirm `<WORKSPACE_DIR>` exists and is non-empty, and compare the extracted file count against the archive listing count. A large gap means the wrong target path. On any failure here, remove the partial target, move the aside copy back, and stop before starting the service:
 
 ```
-rm -rf -- "<WORKSPACE_DIR>"
-[ -e "$WORKSPACE_ASIDE" ] && mv "$WORKSPACE_ASIDE" "<WORKSPACE_DIR>"
+rm -rf -- '<WORKSPACE_DIR>'
+[ -e "$WORKSPACE_ASIDE" ] && mv "$WORKSPACE_ASIDE" '<WORKSPACE_DIR>'
 ```
 
 ### 7. Start and verify
 
 ```
-<SERVICE_CTL> start <SERVICE_NAME>
-<SERVICE_CTL> status <SERVICE_NAME>
+<SERVICE_CTL> start '<SERVICE_NAME>'
+<SERVICE_CTL> status '<SERVICE_NAME>'
 openclaw doctor
 ```
 
@@ -200,13 +206,13 @@ Activate the recorded rollback items, apply the same preflight and per-write led
 and use the persisted reservation root and child values.
 
 ```
-rm -rf <STATE_DIR>
-mv "$BROKEN_STATE_DIR" <STATE_DIR>
+rm -rf '<STATE_DIR>'
+mv "$BROKEN_STATE_DIR" '<STATE_DIR>'
 # Only when this render includes step 6 (workspace archive present). Delete the next two lines otherwise.
-rm -rf -- "<WORKSPACE_DIR>"
-[ -e "$WORKSPACE_ASIDE" ] && mv "$WORKSPACE_ASIDE" "<WORKSPACE_DIR>"
+rm -rf -- '<WORKSPACE_DIR>'
+[ -e "$WORKSPACE_ASIDE" ] && mv "$WORKSPACE_ASIDE" '<WORKSPACE_DIR>'
 rmdir "$RESTORE_RESERVATION_DIR"
-<SERVICE_CTL> start <SERVICE_NAME>
+<SERVICE_CTL> start '<SERVICE_NAME>'
 ```
 
 ## Falling back to the official archive
