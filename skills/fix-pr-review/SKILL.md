@@ -137,7 +137,7 @@ If non-empty, use AskUserQuestion:
 On "Auto-stash", run `git stash push -u -m "fix-pr-review auto-stash $(date +%s)"`. Only on success, record `STASH_OID=$(git rev-parse -q --verify refs/stash)` and set `STASH_PUSHED=true`, then confirm `git status --porcelain` is empty. A failed push records nothing and aborts the run instead of marking a stash that was never created. If the run aborts, the user can find the work in `git stash list` as `fix-pr-review auto-stash <timestamp>`.
 On "Abort", print "Commit or stash your uncommitted work first." and exit.
 
-**Stash-restore guard.** Every restore in this run, here and at every early exit, runs only when `STASH_PUSHED=true`, and pops only when `git rev-parse -q --verify refs/stash` equals the recorded `STASH_OID`. On mismatch, leave every entry untouched, record `stash_restored: foreign-top`, print `stash_restored: foreign-top, stash left untouched`, and continue without popping.
+**Stash-restore guard.** Every restore in this run, here and at every early exit, runs only when `STASH_PUSHED=true`: apply the recorded OID by OID only when the top of stack equals it (`git stash apply "$STASH_OID"`, never a bare pop), drop only after a clean apply with the top still equal, and on any mismatch leave every entry untouched, record `stash_restored: foreign-top`, print `stash_restored: foreign-top, stash left untouched`, and continue without applying or dropping.
 
 
 ### Compute the merge base (for already-fixed detection later)
@@ -521,10 +521,16 @@ Keep the run-level stash untouched throughout this step. Build `needs_input_item
 Only after every NEEDS-INPUT item has settled, if `STASH_PUSHED=true`:
 
 ```bash
-[ "$(git rev-parse -q --verify refs/stash)" = "$STASH_OID" ] && git stash pop || echo "STASH_TOP_MISMATCH"
+if [ "$(git rev-parse -q --verify refs/stash)" = "$STASH_OID" ]; then
+  if git stash apply "$STASH_OID"; then
+    [ "$(git rev-parse -q --verify refs/stash)" = "$STASH_OID" ] && git stash drop || echo "STASH_CHANGED_MID_RESTORE"
+  fi
+else
+  echo "STASH_TOP_MISMATCH"
+fi
 ```
 
-On a top-mismatch, record `stash_restored: foreign-top` and continue to the final report without popping: another stash now sits on top of ours, and popping would restore the wrong work. On stash pop conflict, leave every conflict marker exactly as `git stash pop` left it. Resolving the user's WIP is the user's call. Record `stash_restored: conflict` for the final report. No edit, type-check, convergence check, Phase 6 check, commit, or push may run after this restoration. Expose conflict resolution as the only dependency-ready next action.
+On `STASH_TOP_MISMATCH`, record `stash_restored: foreign-top` and continue to the final report: another stash now sits on top of ours, so nothing was applied and nothing was dropped. When the apply reports a conflict, leave every conflict marker exactly as the apply left it and skip the drop: the entry stays stashed as the recovery source. Record `stash_restored: conflict` for the final report. When the drop reports `STASH_CHANGED_MID_RESTORE`, the content applied cleanly but the stack moved first: record `stash_restored: foreign-top`, leave the recorded entry for the user to drop by hand, and continue to the report. Resolving the user's WIP is the user's call. Record `stash_restored: conflict` for the final report. No edit, type-check, convergence check, Phase 6 check, commit, or push may run after this restoration. Expose conflict resolution as the only dependency-ready next action.
 
 ### 3. Print the final report once
 
