@@ -15,7 +15,7 @@ Deletion of orphaned drift and promotion of downstream content into Claude are s
 
 **Gate.** every attempted item has a read-back state, and untouched classifications remain byte- and link-identical to their preflight state.
 
-## 6. Verify each target
+## Verify each target
 
 Verify targets independently:
 

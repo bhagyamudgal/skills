@@ -137,6 +137,8 @@ If non-empty, use AskUserQuestion:
 On "Auto-stash", run `git stash push -u -m "fix-pr-review auto-stash $(date +%s)"`. Only on success, record `STASH_OID=$(git rev-parse -q --verify refs/stash)` and set `STASH_PUSHED=true`, then confirm `git status --porcelain` is empty. A failed push records nothing and aborts the run instead of marking a stash that was never created. If the run aborts, the user can find the work in `git stash list` as `fix-pr-review auto-stash <timestamp>`.
 On "Abort", print "Commit or stash your uncommitted work first." and exit.
 
+**Stash-restore guard.** Every restore in this run, here and at every early exit, runs only when `STASH_PUSHED=true`, and pops only when `git rev-parse -q --verify refs/stash` equals the recorded `STASH_OID`. On mismatch, leave every entry untouched, record `stash_restored: foreign-top`, print `stash_restored: foreign-top, stash left untouched`, and continue without popping.
+
 
 ### Compute the merge base (for already-fixed detection later)
 
@@ -194,8 +196,8 @@ Every input path ends here. The `Comment` schema, the exact field names Phases 3
 
 ### Short-circuit cases
 
-- **Empty list** (all threads resolved, local file has no findings): print `Nothing to triage. No unresolved comments found.` → restore stash → exit 0.
-- **Only nitpicks remain AND `--all-nitpicks` not set**: print `Only nitpicks found (N). Pass --all-nitpicks to triage them, or ignore.` → restore stash → exit 0.
+- **Empty list** (all threads resolved, local file has no findings): print `Nothing to triage. No unresolved comments found.` → restore the stash under the guard → exit 0.
+- **Only nitpicks remain AND `--all-nitpicks` not set**: print `Only nitpicks found (N). Pass --all-nitpicks to triage them, or ignore.` → restore the stash under the guard → exit 0.
 
 ---
 
@@ -203,7 +205,7 @@ Every input path ends here. The `Comment` schema, the exact field names Phases 3
 
 ### Load review suppressions (main agent, before dispatch)
 
-Before dispatching the subagent, load `.claude/review-suppressions.yml` from the project root if it exists. In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<head-sha>`. If not found, set `SUPPRESSIONS = ""`.
+Before dispatching the subagent, load `.claude/review-suppressions.yml` at the base revision, never the worktree: a checked-out PR must not suppress its own triage. Locally, read it with `git show "origin/<baseRefName>:.claude/review-suppressions.yml"` (local `<baseRefName>` when origin is absent). In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<baseRefName>`. When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added file was ignored.
 
 Pass loaded suppressions into the subagent prompt as a `## Review suppressions` section (same approach as CLAUDE.md content, PR diff, and repo maps; main agent fetches, subagent receives as context).
 
@@ -298,7 +300,7 @@ Nothing is posted or resolved during this step. Phase 7 remains the only place G
 
 ### Execution
 
-If `--dry-run`: print the plan, print `dry run, not executing`, restore stash, exit 0.
+If `--dry-run`: print the plan, print `dry run, not executing`, restore the stash under the guard, exit 0.
 
 If `EXECUTION_AUTHORIZED=true`, proceed directly to Phase 5. The invocation already authorizes execution of every validated FIX item. If `--interactive` was set, ask for per-item confirmation in Phase 5. It does not add a plan-level confirmation.
 
@@ -313,7 +315,7 @@ Otherwise, use AskUserQuestion:
        - label: "Cancel"
          description: "Leave the worktree unchanged and restore any stash"
 
-On "Execute plan": set `EXECUTION_AUTHORIZED=true`, record the choice as `execution_authorization_evidence`, and proceed to Phase 5. On "Cancel": restore the stash if present, print `cancelled`, and exit 0.
+On "Execute plan": set `EXECUTION_AUTHORIZED=true`, record the choice as `execution_authorization_evidence`, and proceed to Phase 5. On "Cancel": restore the stash under the guard if pushed, print `cancelled`, and exit 0.
 
 ---
 
@@ -323,7 +325,7 @@ On "Execute plan": set `EXECUTION_AUTHORIZED=true`, record the choice as `execut
 
 ### Dependency resolution
 
-Build an execution order from `dependencies:` fields with a simple topological sort. On a **cycle** (A→B→A): abort with `Cyclic fix dependencies detected. Correct the dependency fields and rerun /fix-pr-review <original-input>.` Restore stash. Exit non-zero.
+Build an execution order from `dependencies:` fields with a simple topological sort. On a **cycle** (A→B→A): abort with `Cyclic fix dependencies detected. Correct the dependency fields and rerun /fix-pr-review <original-input>.` Restore the stash under the guard. Exit non-zero.
 
 ### Pre-edit snapshots (revert mechanism; Edit tool has no undo)
 
@@ -519,11 +521,10 @@ Keep the run-level stash untouched throughout this step. Build `needs_input_item
 Only after every NEEDS-INPUT item has settled, if `STASH_PUSHED=true`:
 
 ```bash
-[ "$(git rev-parse -q --verify refs/stash)" = "$STASH_OID" ] || { echo "Top stash is not the auto-stash; leaving every entry untouched"; exit 1; }
-git stash pop
+[ "$(git rev-parse -q --verify refs/stash)" = "$STASH_OID" ] && git stash pop || echo "STASH_TOP_MISMATCH"
 ```
 
-On a top-mismatch, record `stash_restored: foreign-top` for the final report and stop: another stash now sits on top of ours, and popping would restore the wrong work. On stash pop conflict, leave every conflict marker exactly as `git stash pop` left it. Resolving the user's WIP is the user's call. Record `stash_restored: conflict` for the final report. No edit, type-check, convergence check, Phase 6 check, commit, or push may run after this restoration. Expose conflict resolution as the only dependency-ready next action.
+On a top-mismatch, record `stash_restored: foreign-top` and continue to the final report without popping: another stash now sits on top of ours, and popping would restore the wrong work. On stash pop conflict, leave every conflict marker exactly as `git stash pop` left it. Resolving the user's WIP is the user's call. Record `stash_restored: conflict` for the final report. No edit, type-check, convergence check, Phase 6 check, commit, or push may run after this restoration. Expose conflict resolution as the only dependency-ready next action.
 
 ### 3. Print the final report once
 
@@ -565,7 +566,7 @@ Skip this step entirely if:
 
 ### 5. Post-completion next actions
 
-After printing the final report and completing the suppression step when applicable, compute `inverse_risk_blockers` from every item whose current `fix_status` is `inverse_risk_applied`, independent of final classification or `needs_input_status`. When `stash_restored=conflict`, suppress the prompt and report `Resolve stash conflicts` as the sole dependency-ready next action; Commit and Push remain unavailable. Otherwise, if `inverse_risk_blockers` is non-empty, suppress the prompt and report the dependency-ready removal/replacement action from Step 3; Commit and Push remain unavailable even when `done_verified_snapshot` exists. Skip the prompt if all fixes were aborted (nothing was applied); otherwise use AskUserQuestion.
+After printing the final report and completing the suppression step when applicable, compute `inverse_risk_blockers` from every item whose current `fix_status` is `inverse_risk_applied`, independent of final classification or `needs_input_status`. When `stash_restored=conflict`, suppress the prompt and report `Resolve stash conflicts` as the sole dependency-ready next action; Commit and Push remain unavailable. When `stash_restored=foreign-top`, suppress the prompt and report `Reconcile the stash stack: the recorded auto-stash entry is still stashed` as the sole dependency-ready next action; Commit and Push remain unavailable. Otherwise, if `inverse_risk_blockers` is non-empty, suppress the prompt and report the dependency-ready removal/replacement action from Step 3; Commit and Push remain unavailable even when `done_verified_snapshot` exists. Skip the prompt if all fixes were aborted (nothing was applied); otherwise use AskUserQuestion.
 
    Question:
      header: "Next"
@@ -580,7 +581,7 @@ After printing the final report and completing the suppression step when applica
        - label: "Done"
          description: "Exit. I'll handle the rest manually"
 
-On "Commit changes" or "Push to remote", require `inverse_risk_blockers` to be empty, `stash_restored != conflict`, and a valid `done_verified_snapshot`. Recompute the blocker set instead of trusting the rendered report; a non-empty set stops the action. Invoke `git-commit` in Verified content snapshot sealed-index mode with that snapshot; never stage or restage the live worktree. Require the created commit tree to equal the snapshot tree. Ordinary restored WIP remains in the worktree and outside the candidate commit.
+On "Commit changes" or "Push to remote", require `inverse_risk_blockers` to be empty, `stash_restored` to be neither `conflict` nor `foreign-top`, and a valid `done_verified_snapshot`. Recompute the blocker set instead of trusting the rendered report; a non-empty set stops the action. Invoke `git-commit` in Verified content snapshot sealed-index mode with that snapshot; never stage or restage the live worktree. Require the created commit tree to equal the snapshot tree. Ordinary restored WIP remains in the worktree and outside the candidate commit.
 
 On "Push to remote", commit first, then require the commit tree to still equal the snapshot before freezing the publication branch and push-attempt SHA. For GitHub PR input, re-read the current PR's `headRefName` plus `headRepository.id` and `nameWithOwner`; freeze those authoritative values, require the Phase 1 expected PR branch and active branch to equal the frozen head name, and set `<exact-ref>` to `refs/heads/<frozen-headRefName>`. That head repository identity is the intended publication target and remains independent of the input/base repository. For local-file or other no-current-PR input, freeze the active branch and derive `<exact-ref>` as `refs/heads/<active-branch>`. Freeze the push-attempt SHA only when the active symbolic ref equals `<exact-ref>` and that branch ref and `HEAD` resolve to the same SHA. Resolve the intended publication target before binding `<preflighted-remote>`. For GitHub PR input, enumerate configured remotes and validate every endpoint in each ordered complete fetch/push set. Auto-select the only remote whose every endpoint matches the PR head identity; when multiple match, immediately use AskUserQuestion with concrete `<remote>: <nameWithOwner> (<id>)` options and pagination when needed; when none match, stop with `Configure a remote whose complete endpoint sets resolve to the current PR head repository, then choose Push to remote again.` The selected match becomes `<preflighted-remote>`.
 

@@ -102,7 +102,7 @@ proposes a code change passes through this step; every finding carrying a `Sugge
 passes through 4.56.
 
 Batch every finding needing verification into **V1: Class-sweep verifier** and dispatch it
-alongside V2/V3, within the 4-subagent cap and V1 batching in `<SKILL_DIR>/references/verification-subagents.md`. Main applies the rules below to what V1 returns.
+alongside V2/V3, within the 4-subagent cap and V1 batching in `${CLAUDE_SKILL_DIR}/references/verification-subagents.md`. Main applies the rules below to what V1 returns.
 
 1. **Field missing entirely**: the sweep was not run. Keep the finding and let V1 run the
    sweep. Derive the signature from `Rule-class`, and append V1's result to the finding. Log

@@ -166,7 +166,7 @@ One-liner:
 ## Stashed work
 
 Stashed: <yes | no>
-Restored: <yes | no | conflict>
+Restored: <yes | no | conflict | foreign-top>
 
 <If conflict:>
   Your working tree now contains:
@@ -177,4 +177,11 @@ Restored: <yes | no | conflict>
   dependency-ready next action.
   Your original stash is still available as `git stash list` entry
   `fix-pr-review auto-stash <timestamp>`.
+
+<If foreign-top:>
+  The stash stack changed mid-run, so nothing was popped. Your fixes are
+  applied and uncommitted; your original work is still stashed as
+  `fix-pr-review auto-stash <timestamp>` under a foreign top entry.
+  Reconcile the stash stack before any commit or push; it is the only
+  dependency-ready next action.
 ```

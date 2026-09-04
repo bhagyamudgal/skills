@@ -79,6 +79,7 @@ Pass this step only when the run ends with `Archive verification: passed` and yo
 ## Step 5: Raw archive, the one holding the transcripts
 
 ```bash
+mkdir -p "$BACKUP_DIR/raw"
 tar --use-compress-program="zstd -3 -T0" \
     --exclude='*/node_modules' \
     --warning=no-file-changed \
@@ -108,6 +109,7 @@ Pass this step only when `zstd -t` passes and the session `.jsonl` count is grea
 When `WORKSPACE_DIR` is empty, skip this step: the raw archive already holds the workspace.
 
 ```bash
+mkdir -p "$BACKUP_DIR/workspace"
 tar --use-compress-program="zstd -3 -T0" \
     --warning=no-file-changed \
     -cf "$BACKUP_DIR/workspace/openclaw-workspace.tar.zst" \

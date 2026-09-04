@@ -199,6 +199,7 @@ and use the persisted reservation root and child values.
 ```
 rm -rf <STATE_DIR>
 mv "$BROKEN_STATE_DIR" <STATE_DIR>
+# Only when this render includes step 6 (workspace archive present). Delete this line otherwise.
 [ -e "$WORKSPACE_ASIDE" ] && mv "$WORKSPACE_ASIDE" <WORKSPACE_DIR>
 rmdir "$RESTORE_RESERVATION_DIR"
 <SERVICE_CTL> start <SERVICE_NAME>

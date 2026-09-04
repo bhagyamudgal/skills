@@ -33,7 +33,7 @@ I render a simple card inline. For a multi-step or multi-batch run, I persist it
 - **Next action:** <one action permitted by the verdict>
 ```
 
-I keep the action, targets, environment, and batch-item IDs exact enough that another agent cannot select a broader resource by inference. A multi-step or multi-batch card needs an authorized durable home, and I state that as the gate.
+I keep the action, targets, environment, and batch-item IDs exact enough that another agent cannot select a broader resource by inference. A multi-step or multi-batch card needs an authorized durable home, and I state that as the gate. **Gate.** both: nothing selectable by inference, every multi-step card homed.
 
 I name every target and guarded dependency by stable ID in **Read-back plan**. I never collapse them into "all targets" or "consumers" or another referential phrase.
 

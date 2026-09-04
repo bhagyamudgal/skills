@@ -33,5 +33,16 @@
 
      On "Switch branch", run `gh pr checkout <num>`. On gh failure from conflicts or missing refs, surface the error and abort. On "Abort", exit.
 
-   - **On the PR branch.** Continue.
+   - **On the PR branch.** Verify `git rev-parse HEAD` equals the recorded head SHA. On match, continue. On mismatch, the branch name matches but the commit does not, so this is another fork's branch or a stale tracking branch. Use AskUserQuestion:
+
+     Question:
+       header: "Branch"
+       text: "You're on '<pr-branch>' but HEAD is not the PR head commit. Switch to the PR branch?"
+       options:
+         - label: "Checkout PR branch"
+           description: "Run 'gh pr checkout <num>' to move to the PR's head commit"
+         - label: "Abort"
+           description: "Stop. I'll sort out my branch state manually"
+
+     On "Checkout PR branch", run `gh pr checkout <num>`, then re-verify the SHA and abort on a second mismatch. On "Abort", exit.
 

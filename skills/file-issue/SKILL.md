@@ -24,7 +24,7 @@ gh issue list --repo "$repository" --search "<the symptom in the reporter's word
 
 Search twice with different vocabulary, because the existing ticket was filed by someone who described it differently. `--state all` matters. A closed near-match is either the thing to reopen or the context the new issue needs.
 
-Resolve every near match before filing as duplicate, related, or genuinely new. Link a related one with `Refs #N` and one line saying what is different about this one.
+Resolve every near match before filing. Each one ends duplicate, related, or genuinely new. Link a related one with `Refs #N` and one line saying what is different about this one.
 
 The gate is that both searches ran and every near match has a resolution.
 
