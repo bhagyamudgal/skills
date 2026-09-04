@@ -205,7 +205,17 @@ Every input path ends here. The `Comment` schema, the exact field names Phases 3
 
 ### Load review suppressions (main agent, before dispatch)
 
-Before dispatching the subagent, load `.claude/review-suppressions.yml` at the base revision, never the worktree: a checked-out PR must not suppress its own triage. For GitHub inputs, read it at the pinned base OID: `git show "$PINNED_BASE_OID:.claude/review-suppressions.yml"` locally (fetch origin once when the objects are absent), or `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=$PINNED_BASE_OID` in cross-repo mode. For local-file inputs without a PR, HEAD itself may be the change under triage. Resolve the trusted base as the first existing ref among `origin/main`, `origin/master`, `origin/develop`, `main`, `master`, read the file at that commit, and log the source. When none exists, set `SUPPRESSIONS = ""`: triaging without a policy adds noise, trusting the reviewed change hides findings. When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added file was ignored.
+Before dispatching the subagent, load `.claude/review-suppressions.yml` at the base revision, never the worktree: a checked-out PR must not suppress its own triage. For GitHub inputs, read it at the pinned base OID: `git show "$PINNED_BASE_OID:.claude/review-suppressions.yml"` locally (fetch origin once when the objects are absent), or `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=$PINNED_BASE_OID` in cross-repo mode. For local-file inputs without a PR, HEAD itself may be the change under triage. Resolve the trusted base as the mainline ref sharing the newest merge-base with HEAD, so a `develop`-based change reads `develop` policy even when `origin/main` exists:
+
+```bash
+for ref in origin/main origin/master origin/develop main master; do
+  git rev-parse --verify -q "$ref" >/dev/null 2>&1 || continue
+  base=$(git merge-base HEAD "$ref" 2>/dev/null) || continue
+  echo "$(git log -1 --format=%ct "$base") $ref"
+done | sort -rn | head -1
+```
+
+Read the file at the winning commit and log the source. When nothing resolves, set `SUPPRESSIONS = ""`: triaging without a policy adds noise, trusting the reviewed change hides findings. When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added file was ignored.
 
 Pass loaded suppressions into the subagent prompt as a `## Review suppressions` section (same approach as CLAUDE.md content, PR diff, and repo maps; main agent fetches, subagent receives as context).
 
