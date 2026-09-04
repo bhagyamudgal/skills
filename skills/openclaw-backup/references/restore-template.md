@@ -53,6 +53,8 @@ Taken with the gateway `<running | stopped>`. Restores the install to its state 
 | `meta/` | Service unit and drop-ins, environment files, version and port inventory. |
 | `MANIFEST.sha256` | SHA256 of every artifact. |
 
+Delete the `workspace/` row above when the backup has no workspace archive.
+
 ### Why three overlapping artifacts
 
 The database files inside both archives were read while the service was writing, so they
