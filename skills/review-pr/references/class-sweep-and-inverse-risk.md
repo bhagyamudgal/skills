@@ -32,4 +32,4 @@ Answer in concrete terms and name the failure mode, not vague warnings. Examples
 Write it into the finding's `Inverse risk:` field. If the fix is a pure addition
 with no behavior traded away, say `none, pure addition`.
 
-A fix with worse inverse risk than the original finding adds harm. Rewrite the suggestion or downgrade the finding to an observation.
+A fix with worse inverse risk than the original finding adds harm. Either rewrite the suggestion into one that doesn't trade the defect for a bigger one, or keep the finding and replace the suggestion with `no safe one-line fix, needs design`. The Phase 3 critic owns this remedy (`references/critic-verify.md` step 4.56); a finding is never downgraded to an observation here.

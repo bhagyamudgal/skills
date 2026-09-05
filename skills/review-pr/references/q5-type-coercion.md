@@ -11,7 +11,10 @@ in a numeric column.
 
 Coercion methods to scan: `.toFixed`, `.toString`, `.toLocaleString`, `String(...)`,
 template-literal `` `${...}` `` containing those.
-Flag when NOT wrapped in `Number(...)` / `parseFloat(...)` / `parseInt(...)` / unary `+(...)`.
+Flag when NOT wrapped in `Number(...)` / `parseFloat(...)` / unary `+(...)`.
+`parseInt(...)` counts as a safe wrap ONLY for a verified-integer field
+(DB `integer`/`bigint`, Zod `z.number().int()` per the rules below):
+elsewhere it truncates fractions and IS the bug.
 
 How to tell a field is numeric:
 

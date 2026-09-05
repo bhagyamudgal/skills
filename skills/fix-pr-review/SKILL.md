@@ -267,7 +267,7 @@ Before anything is shown to the user, mechanically validate the classifier's out
 - Every FIX MUST have non-empty `inverse_risk` that either names a specific failure mode or is exactly `none, pure addition`. Hedges fail validation: an empty value, or anything of the shape "could have issues" / "minor risk" / "some risk" / "possible regression" / "none" on its own. A named failure mode says what breaks, where. Phase 5.5 consumes this field; an unnamed risk is unverifiable there.
 - Every FIX MUST have a `class_completeness` block with a non-empty `verdict` starting with either `COMPLETE` or `INCOMPLETE`. `INCOMPLETE` MUST name the excluded sites and give a reason for each. An `INCOMPLETE` verdict with no per-site reason fails validation.
 - Every item MUST have non-empty `grounding_a` and `grounding_b`.
-- Every item MUST carry a `reusability_context` field, even when it is just `{ flagged: false }`. That holds for FIX, DISMISS, DEFER and DISAGREE alike. Phase 7's reply validator branches on it, so a missing field silently disables the reusability gate on that reply.
+- Every item MUST carry a `reusability_context` field, even when it is just `{ flagged: false }`. That holds for every classification, NEEDS-INPUT included. Phase 7's reply validator branches on it, so a missing field silently disables the reusability gate on that reply.
 
 On validation failure: re-dispatch the classifier with the specific missing fields listed. Max 1 retry. Second failure → abort with the validation errors printed.
 
@@ -321,7 +321,7 @@ For each selected item, use a follow-up AskUserQuestion:
        - label: "Keep as-is"
          description: "Keep the original classification, since this was selected by mistake"
 
-On "FIX": re-dispatch the classifier scoped to just this item to produce the full FIX field set: `fix_plan`, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (class sweep included; a reclassified item has never been swept), and `reusability_context` (carry the contested item's own value through unless the sweep changed it). Then re-run plan validation on the changed item. Producing a partial field set here fails validation and burns the single retry. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
+On "FIX": re-dispatch the classifier scoped to just this item to produce the full FIX field set: `fix_plan`, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (class sweep included; a reclassified item has never been swept), and `reusability_context` (carry the contested item's own value through unless the sweep changed it). Then re-run plan validation on the changed item. Producing a partial field set here fails validation and burns the single retry. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`, carrying the item's `reusability_context` through unchanged. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
 
 Nothing is posted or resolved during this step. Phase 7 remains the only place GitHub is touched, and it acts **only** on items that survived this confirmation. Resolving a thread is irreversible noise in the reviewer's conversation: a DISMISS, DEFER, or DISAGREE that skipped this gate stays open and unanswered until it has been through it.
 

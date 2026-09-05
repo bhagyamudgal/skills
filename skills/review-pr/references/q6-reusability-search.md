@@ -1,6 +1,6 @@
 # Q6a Reusability: search algorithm and audit format
 
-**Subagent 1** loads this when the diff has 1+ new definitions, top-level or methods added to existing classes, for STEP A onward. The main SKILL.md keeps only the Q6a header and reporting format. This reference explains HOW to search.
+**Subagent 1** loads this when the diff has 1+ new definitions of any STEP A kind below, for STEP A onward. The main SKILL.md keeps only the Q6a header and reporting format. This reference explains HOW to search.
 
 STEP B searches against `repo_map_files` / `repo_map_exports`, which main computes in Phase 1. That shell is in `${CLAUDE_SKILL_DIR}/references/repo-map.md`, the copy `/fix-pr-review` and `/harden-plan` share.
 
@@ -105,6 +105,26 @@ reusability_searches:
 - For each search where `N > 0`, `verified:` is MANDATORY. Critic rejects audits that claim "0 matches" for all searches as shallow / suspicious. If `N == 0`, write `verified: n/a`.
 - If STEP A was empty, write EXACTLY:
   `reusability_searches: N/A (no new definitions in diff)`
+
+---
+
+## Cross-repo mode
+
+If `repo_map_exports` is the cross-repo `N/A` marker, there is no local tree:
+`Grep`/`Glob` against `packages/` or `apps/` prove nothing. Run the same three
+searches by fetching candidate files on demand:
+
+```
+gh api "repos/<owner>/<repo>/contents/<path>?ref=<head-sha>"
+```
+
+Pick candidates from `repo_map_files` (populated cross-repo; only the export
+scan is unavailable): same-name or name-similar paths first for the exact-name
+search, then paths under shared roots for the semantic-root tokens, then the
+components directories for UI components. Verify by reading the fetched
+content, and record each fetch as the audit entry's tool call. When a fetch
+fails or no candidate path exists, write `Cannot assess: would need <file>`
+rather than a zero-hit claim.
 
 ---
 

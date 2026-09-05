@@ -324,6 +324,8 @@ Return the plan in this EXACT format. Missing required fields cause rejection.
      grounding_a: <what code>
      grounding_b: <what ask>
      why_unclear: <1 sentence>
+     reusability_context: { flagged: <bool>, matches: [...], verified: <yes|no> }
+                                   # from STEP 2.5; { flagged: false } when nothing found
 
 ## Nitpicks auto-dismissed (<count>)
 [n1] <file:line>: <comment ask>

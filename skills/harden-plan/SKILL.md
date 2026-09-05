@@ -105,13 +105,13 @@ Run these in parallel with the repo map above. Both P11 inventories are the same
 bash -c '
 find apps packages 2>/dev/null -type f <MATCH> \
   -not -path "*/node_modules/*" -not -path "*/dist/*" \
-  -not -name "*.spec.*" 2>/dev/null | head -<CAP>
+  -not -name "*.spec.*" -not -name "*.test.*" 2>/dev/null | head -<CAP>
 '
 ```
 
 | Stash as | `<MATCH>` | `<CAP>` |
 |---|---|---|
-| `existing_services_inventory`, for P11 Pattern Consistency | `-name "*.service.ts" -not -name "*.test.*"` | 100 |
+| `existing_services_inventory`, for P11 Pattern Consistency | `-name "*.service.ts"` | 100 |
 | `existing_history_tables`, for P11 | `\( -iname "*history*.ts" -o -iname "*audit*.ts" \)` | 50 |
 
 ---

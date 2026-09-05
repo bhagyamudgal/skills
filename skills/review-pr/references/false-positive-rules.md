@@ -13,7 +13,10 @@ rules:
       (?i)\.toFixed\(|\.toString\(|\.toLocaleString\(|String\(
     evidence_check: |
       Verify cited line in stashed diff. Drop if the call is structurally enclosed by
-      Number(...) / parseFloat(...) / parseInt(...) / unary +(...) on the SAME line.
+      Number(...) / parseFloat(...) / unary +(...) on the SAME line.
+      parseInt(...) counts ONLY for a verified-integer field
+      (DB integer/bigint, Zod z.number().int(); definition owned by
+      <SKILL_DIR>/references/q5-type-coercion.md, not restated here).
       Anchored patterns:
         =\s*(Number|parseFloat|parseInt|\+)\s*\(\s*<call>
         :\s*(Number|parseFloat|parseInt|\+)\s*\(\s*<call>
