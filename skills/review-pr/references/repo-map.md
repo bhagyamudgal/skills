@@ -53,12 +53,11 @@ comes from the API and on-demand fetches cover the export scan:
 
 ```bash
 if [ "$CROSS_REPO_MODE" = "true" ]; then
-  HEAD_BRANCH=$(gh pr view <url> --json headRefName -q .headRefName)
-  gh api "repos/<owner>/<repo>/git/trees/${HEAD_BRANCH}?recursive=1" \
+  gh api "repos/<owner>/<repo>/git/trees/${CURRENT_HEAD}?recursive=1" \
     --jq '.tree[] | select(.type == "blob" and (.path | test("^(packages|apps)/.*\\.(ts|tsx)$")) and (.path | test("node_modules|dist|build|\\.test\\.|\\.spec\\.") | not)) | .path' \
     | awk 'NR<=500{print} END{if(NR>500)print "[truncated at 500 of " NR " lines]"}'
   repo_map_files="<output>"
-  repo_map_exports="N/A (cross-repo mode, fetch via 'gh api repos/<owner>/<repo>/contents/<path>?ref=<sha>' on-demand)"
+  repo_map_exports="N/A (cross-repo mode, fetch via 'gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>' on-demand)"
 fi
 ```
 
