@@ -97,7 +97,7 @@ def check_nested_prompt(path, lines):
             if inner and open_len <= 3:
                 fail(rel(path),
                      f"fence at {open_at} uses {open_len} backticks and contains "
-                     f"{inner} inner fence(s) — the first inner fence CLOSES it. "
+                     f"{inner} inner fence(s). The first inner fence CLOSES it. "
                      f"Use {'`' * (open_len + 1)} for the outer fence.")
             open_at = None
         else:
@@ -148,15 +148,15 @@ def check_frontmatter():
             fail(skill.name, "frontmatter has no `name:`")
         elif name != skill.name:
             fail(skill.name, f"frontmatter `name: {name}` does not match its "
-                             f"directory `{skill.name}` — the harness routes on "
+                             f"directory `{skill.name}`. The harness routes on "
                              f"the name, so this skill is unreachable")
         if not values.get("description", "").strip().strip("\"'"):
-            fail(skill.name, "frontmatter has no non-empty `description:` — the "
+            fail(skill.name, "frontmatter has no non-empty `description:`. The "
                              "harness decides when to fire the skill from it")
         for key in keys:
             if key not in KNOWN_FRONTMATTER_KEYS:
                 warn(skill.name, f"frontmatter key `{key}` is not one of "
-                                 f"{sorted(KNOWN_FRONTMATTER_KEYS)} — the harness "
+                                 f"{sorted(KNOWN_FRONTMATTER_KEYS)}. The harness "
                                  f"ignores it")
 
 
@@ -212,7 +212,7 @@ def check_description_budget():
             continue
         warn(skill.name,
              f"description is {size} chars, {size - MAX_DESCRIPTION_CHARS} over the "
-             f"{MAX_DESCRIPTION_CHARS}-char budget — every session pays for it on "
+             f"{MAX_DESCRIPTION_CHARS}-char budget. Every session pays for it on "
              f"every turn, fired or not. Cut it back to the trigger, or set "
              f"`disable-model-invocation: true` and make it user-invoked")
 
@@ -268,7 +268,7 @@ def check_orphan_model_invocation():
             continue
         warn(skill.name,
              f"model-invoked with no inbound reference from {ROOT.name}/ or "
-             f"{REFERENCE_DIR.name}/ — no other skill routes to it, so the "
+             f"{REFERENCE_DIR.name}/. No other skill routes to it, so the "
              f"always-loaded description is buying autonomous recognition and "
              f"nothing else. Keep it if the agent must fire this off a situation "
              f"the user will not name; if it only ever fires when the user asks "
@@ -284,7 +284,7 @@ def check_progressive_disclosure():
         if size <= MAX_SKILL_MD_BYTES or (skill / "references").is_dir():
             continue
         warn(skill.name,
-             f"SKILL.md is {size:,} bytes with no references/ — every invocation "
+             f"SKILL.md is {size:,} bytes with no references/. Every invocation "
              f"loads all of it. Move the depth behind "
              f"${{CLAUDE_SKILL_DIR}}/references/ and point at it from SKILL.md")
 
@@ -329,7 +329,7 @@ def check_severity_ladder_consistency():
                             rf"|\b{rung}\b{_LADDER_SEP}\b(?:{_CANON_ALT})\b")
                 if re.search(adjacent, l):
                     fail(rel(path), f"line {i}: `{rung}` used as a severity rung "
-                                    f"next to the canonical ladder — the repo "
+                                    f"next to the canonical ladder. The repo "
                                     f"ladder is {' > '.join(CANONICAL_LADDER)}; a "
                                     f"caller emitting a rung this skill never "
                                     f"names is silently ignored")
@@ -342,7 +342,7 @@ def check_severity_ladder_consistency():
             if named != prefix:
                 missing = [r for r in prefix if r not in named]
                 fail(rel(path), f"line {i}: gate names {named} but skips "
-                                f"{missing} — a finding on the skipped rung "
+                                f"{missing}. A finding on the skipped rung "
                                 f"passes the gate silently")
 
 
@@ -385,7 +385,7 @@ def check_pointer_form():
                 if not _is_load_instruction(l[:m.start()]):
                     continue
                 fail(rel(path), f"line {i}: load instruction with a bare "
-                                f"`{m.group(0)}` — resolves against the user's "
+                                f"`{m.group(0)}`. It resolves against the user's "
                                 f"repo, not the skill dir, and fails silently. "
                                 f"Use ${{CLAUDE_SKILL_DIR}}/{m.group(0)}")
 
@@ -413,9 +413,9 @@ def check_orphan_reference_files():
                 named |= {f"{s}.md" for s in slugs}
             for f in sorted(directory.glob("*.md")):
                 if f.name not in named:
-                    warn(f"{skill.name}/{bundle}",
-                         f"{f.name} is not pointed at by SKILL.md — dead file, "
-                         f"or a disclosure that was never wired up")
+                     warn(f"{skill.name}/{bundle}",
+                         f"{f.name} is not pointed at by SKILL.md. It is a dead "
+                         f"file or a disclosure that was never wired up")
 
 
 # --- cross-skill duplication (repo-wide, WARN) -----------------------------
@@ -491,7 +491,7 @@ def check_cross_skill_duplication():
         warn("duplication",
              f"{entry['lines']}-line {entry['kind']} block [{digest}] is "
              f"byte-identical across {len(entry['skills'])} skills: "
-             f"{', '.join(entry['sites'])} — allowlist it with a reason if the "
+             f"{', '.join(entry['sites'])}. Allowlist it with a reason if the "
              f"copy is deliberate")
 
 
@@ -577,7 +577,7 @@ def check_near_duplicate_code_blocks():
         warn("duplication",
              f"{len(longest[2])}-line code block [{digest}] is near-identical "
              f"across {len(skills)} skills once comments and indentation are "
-             f"normalized: {sites} — the hash check above cannot see this one; "
+             f"normalized: {sites}. The hash check above cannot see this one; "
              f"allowlist it with a reason if the copy is deliberate")
 
 
@@ -625,7 +625,7 @@ def check_global_rules_mirror_drift():
     live = read(LIVE_GLOBAL_RULES)
     if live is None:
         note("reference/CLAUDE.md",
-             f"mirror drift check skipped — {LIVE_GLOBAL_RULES} is not on this "
+             f"mirror drift check skipped. {LIVE_GLOBAL_RULES} is not on this "
              f"machine. The live file is user-local, so this check only runs "
              f"where it exists")
         return
@@ -648,7 +648,7 @@ def check_global_rules_mirror_drift():
     warn("reference/CLAUDE.md",
          f"has drifted from {LIVE_GLOBAL_RULES}: {mirror_only} line(s) only in "
          f"the mirror, {live_only} only in the live file, across "
-         f"{len(sections)} section(s) — {shown}"
+         f"{len(sections)} section(s), {shown}"
          f"{f' (+{hidden} more)' if hidden > 0 else ''}. Line 1 claims the file "
          f"is a copy and other skills cite it as one")
 
@@ -711,7 +711,7 @@ def check_cross_skill_fields():
             warn("cross-skill", f"`{field}` in review-pr but absent from fix-pr-review")
     if "class_sweep:" in fp_t:
         fail("cross-skill",
-             "fix-pr-review still uses `class_sweep:` — review-pr emits "
+             "fix-pr-review still uses `class_sweep:`. Review-pr emits "
              "`class_completeness:`; the receiver cannot parse the sender")
     if "blast_radius" in fp_t:
         fail("cross-skill", "`blast_radius` should be retired (written once, read nowhere)")
@@ -768,8 +768,8 @@ def check_subagent_relative_paths():
                 depth ^= 1
                 continue
             if depth and re.search(r"(?<!SKILL_DIR>/)(?<!/)\breferences/[a-z0-9-]+\.md", l):
-                fail(rel(path), f"line {i}: bare `references/...` inside a prompt block "
-                                f"— subagents cannot resolve it; use <SKILL_DIR>/references/")
+                fail(rel(path), f"line {i}: bare `references/...` inside a prompt block. "
+                                f"Subagents cannot resolve it; use <SKILL_DIR>/references/")
 
 
 def check_forbidden_prefix_sync():
@@ -791,7 +791,7 @@ def check_forbidden_prefix_sync():
     b = re.search(r"`{3}\s*\n(\s*Thanks[^`]*?)`{3}", rt, re.S)
     if not b:
         fail("fix-pr-review",
-             "triage-rubric.md no longer carries the forbidden-prefix list — the "
+             "triage-rubric.md no longer carries the forbidden-prefix list. The "
              "subagent writes replies it cannot see the spec for")
         return
     mirrored = words(b.group(1))
@@ -842,7 +842,7 @@ def check_review_pr_ratio_naming():
     n = len(re.findall(r"regression_share|cascade_share|`caused_by` share", t))
     names = set(re.findall(r"(regression_share|cascade_share)", t))
     if len(names) > 1:
-        fail("review-pr", f"two names for one ratio: {sorted(names)} — collapse to cascade_share")
+        fail("review-pr", f"two names for one ratio: {sorted(names)}. Collapse to cascade_share")
 
 
 def check_review_pr_severity_line():
@@ -851,7 +851,7 @@ def check_review_pr_severity_line():
         return
     for i, l in enumerate(ls, 1):
         if "Severity wins" in l and "Critical" not in l:
-            fail("review-pr", f"line {i}: severity ladder omits Critical — {l.strip()[:70]}")
+            fail("review-pr", f"line {i}: severity ladder omits Critical. {l.strip()[:70]}")
 
 
 MARKERS = {"FAIL": "x", "WARN": "!", "INFO": "-"}
@@ -977,7 +977,7 @@ def check_field_chains():
         req, emit = _required(field), _emitted(field)
         if req and not emit:
             fail("chain", f"`{field}` is required at {req[0]} but no template "
-                          f"anywhere emits it — validation can never pass")
+                          f"anywhere emits it. Validation can never pass")
 
 
 def check_required_field_in_all_item_blocks():
@@ -1008,7 +1008,7 @@ def check_required_field_in_all_item_blocks():
             if field not in body:
                 fail("chain", f"`{field}` is required of every item but is absent "
                               f"from the `{block}` block of triage-prompt.md "
-                              f"(lines {s}-{e}) — the plan fails validation and aborts")
+                              f"(lines {s}-{e}). The plan fails validation and aborts")
 
 
 def check_compute_before_read():
@@ -1030,7 +1030,7 @@ def check_compute_before_read():
                 if target > cur:
                     fail(rel(path),
                          f"line {i}: Phase {cur} defers to a value \"computed in "
-                         f"Phase {target}\" — Phase {cur} runs first, so it does not "
+                         f"Phase {target}\". Phase {cur} runs first, so it does not "
                          f"exist yet: {l.strip()[:70]}")
 
 
