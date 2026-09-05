@@ -113,26 +113,35 @@ reusability_searches:
 If `repo_map_exports` is the cross-repo `N/A` marker, there is no local tree:
 `Grep`/`Glob` against `packages/` or `apps/` prove nothing. Phase 1 sets this
 marker on every cross-repo run regardless of the local cwd layout, so its
-presence is the whole trigger. Run the same three searches by fetching
-candidate files on demand. Paths come from the target repository, so never
-interpolate one into shell source: build the endpoint from variables with the
-path URL-encoded, and pass it as one quoted argument:
+presence is the whole trigger. Run the same three searches against the reviewed
+head, never the default branch: re-fetch the recursive tree WITHOUT the
+500-line cap Phase 1 applies, and check its `truncated` flag:
 
 ```bash
-encoded=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "<path>")
-gh api "repos/<owner>/<repo>/contents/${encoded}?ref=<head-sha>"
+gh api "repos/<owner>/<repo>/git/trees/<head-sha>?recursive=1" --jq '.tree[] | select(.type == "blob") | .path' > /tmp/q6_tree.txt
 ```
 
-Pick candidates from `repo_map_files` (populated cross-repo; only the export
-scan is unavailable): same-name or name-similar paths first for the exact-name
-search, then paths under shared roots for the semantic-root tokens, then the
-components directories for UI components. When that list carries the truncation
-marker it is a subset, not coverage: run the token searches against the target
-repository through `gh api search/code` (`q=<token>+repo:<owner>/<repo>`) and
-fetch what it returns. Verify by reading the fetched content, and record each
-fetch as the audit entry's tool call. When a fetch fails, no candidate path
-exists, or the complete search cannot run, write
-`Cannot assess: would need <file>` rather than `No issues`.
+Paths in that file come from the target repository, so their bytes must never
+appear in shell source: a filename containing `$(...)` would execute on paste.
+Select candidates by trusted line number only, pipe the bytes to the encoder
+over stdin, and pass the encoded endpoint as one quoted argument:
+
+```bash
+sed -n '<N>p' /tmp/q6_tree.txt | python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.stdin.read().strip(), safe=""))' > /tmp/q6_encoded.txt
+gh api "repos/<owner>/<repo>/contents/$(cat /tmp/q6_encoded.txt)?ref=<head-sha>"
+```
+
+The encoded output carries only URL-safe bytes, so the substitution on it is
+inert; the raw path never crosses the shell-code boundary.
+
+Coverage contract: exact-name matching against the full untruncated tree is
+complete for names. Semantic-root content is covered only for the blobs
+actually fetched and read. Do NOT use `search/code` as coverage: it indexes the
+default branch rather than the reviewed head, skips files over 384 KB, caps at
+1,000 results, and can return `incomplete_results`. When the tree reports
+`truncated: true`, when a fetch fails, or when the candidate set cannot all be
+read, write `Cannot assess: would need <file>` rather than `No issues`, and
+record each fetch as the audit entry's tool call.
 
 ---
 
