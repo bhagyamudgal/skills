@@ -27,7 +27,8 @@ this round. V2 gathers the evidence; main applies the rules below to its verdict
    dismissal is void. Reopen with `status: active` and note which commit voided it.
 
 4. **Attribute the lineage: bounded to one hop.** Blame the finding's cited line:
-   `git blame -L <line>,<line>` locally, or this GraphQL blame in cross-repo mode.
+   `git blame -L <line>,<line>` locally, or this GraphQL blame in cross-repo mode
+   with `$sha` set to `CURRENT_HEAD`.
    The REST commit list cannot blame a line, only a file, so it never supplies
    the commit here.
 
