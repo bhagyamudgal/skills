@@ -205,11 +205,15 @@ Every input path ends here. The `Comment` schema, the exact field names Phases 3
 
 ### Load review suppressions (main agent, before dispatch)
 
-Before dispatching the subagent, load `.claude/review-suppressions.yml` at the base revision, never the worktree: a checked-out PR must not suppress its own triage. For GitHub inputs, read it at the pinned base OID: `git show "$PINNED_BASE_OID:.claude/review-suppressions.yml"` locally (fetch origin once when the objects are absent), or `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=$PINNED_BASE_OID` in cross-repo mode. For local-file inputs without a PR, HEAD itself may be the change under triage. Resolve the trusted base as the one candidate merge-base that contains every other candidate's: collect one base per ref, dedupe identical bases so local and remote aliases count once, and take the base only when it is the unique one containing all the rest. Ties, incomparable pairs, and empty sets disable suppressions.
+Before dispatching the subagent, load `.claude/review-suppressions.yml` at the base revision, never the worktree: a checked-out PR must not suppress its own triage. For GitHub inputs, read it at the pinned base OID: `git show "$PINNED_BASE_OID:.claude/review-suppressions.yml"` locally (fetch origin once when the objects are absent), or `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=$PINNED_BASE_OID` in cross-repo mode. For local-file inputs without a PR, HEAD itself may be the change under triage. Resolve the trusted base as the one candidate merge-base that contains every other candidate's: collect one base per mainline, preferring each remote alias over its local counterpart since a local mainline may itself be the change under triage, and take the base only when it is the unique one containing all the rest. Ties, incomparable pairs, and empty sets disable suppressions.
 
 ```bash
-BASES=$(for ref in origin/main origin/master origin/develop main master; do
-  git rev-parse --verify -q "$ref" >/dev/null 2>&1 || continue
+BASES=$(for remote in origin/main origin/master origin/develop; do
+  bare=${remote#origin/}
+  if git rev-parse --verify -q "$remote" >/dev/null 2>&1; then ref=$remote
+  elif git rev-parse --verify -q "$bare" >/dev/null 2>&1; then ref=$bare
+  else continue
+  fi
   git merge-base HEAD "$ref" 2>/dev/null || continue
 done | sort -u)
 RESULT=""
@@ -222,7 +226,7 @@ RESULT=""
 done)
 ```
 
-Read the file at the winning commit and log the source. Take it only when the result names exactly one winner (`grep -c WINNER` equals 1); otherwise set `SUPPRESSIONS = ""`: triaging without a policy adds noise, trusting the reviewed change hides findings. An empty candidate set emits no winner lines at all. When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added file was ignored.
+Read the file at the winning commit and log the source. Take it only when the result names exactly one winner (`grep -c WINNER` equals 1) and the winner is not `HEAD` itself: a winner equal to `HEAD` means no older base exists to trust. Otherwise set `SUPPRESSIONS = ""`: triaging without a policy adds noise, trusting the reviewed change hides findings. An empty candidate set emits no winner lines at all. When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added file was ignored.
 
 Pass loaded suppressions into the subagent prompt as a `## Review suppressions` section (same approach as CLAUDE.md content, PR diff, and repo maps; main agent fetches, subagent receives as context).
 

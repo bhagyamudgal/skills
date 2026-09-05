@@ -26,7 +26,7 @@ in step 4 and corrupting a database they just restored.
 Render every substituted path below as a shell literal: keep the single quotes around each
 placeholder and replace every `'` inside the value with `'\''`. Never use double quotes for
 substituted paths: `$(...)`, backticks, and `\"` inside them still execute or break out.
-`<SERVICE_CTL>` and the fixed activation words (`daemon-reload`, `resurrect`, `up -d`, `load -w`) are the exceptions: they name commands from a closed set, not paths, so they stay unquoted.
+`<SERVICE_CTL>` and the fixed command words (`daemon-reload`, `resurrect`, `up -d`, `load -w`, `unload -w`, `stop`, `start`, `status`) are the exceptions: they name commands from a closed set, not paths, so they stay unquoted.
 
 ---
 
