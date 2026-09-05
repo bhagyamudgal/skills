@@ -217,13 +217,13 @@ BASES=$(for remote in origin/main origin/master origin/develop; do
   git merge-base HEAD "$ref" 2>/dev/null || continue
 done | sort -u)
 RESULT=""
-[ -n "$BASES" ] && RESULT=$(printf '%s\n' "$BASES" | while IFS= read -r b; do
+if [ -n "$BASES" ]; then RESULT=$(printf '%s\n' "$BASES" | while IFS= read -r b; do
   [ -n "$b" ] || continue
   BAD=$(printf '%s\n' "$BASES" | grep -vx "$b" | while IFS= read -r o; do
     git merge-base --is-ancestor "$o" "$b" 2>/dev/null || printf 'bad\n'
   done)
   [ -z "$BAD" ] && printf 'WINNER %s\n' "$b"
-done)
+done); fi
 ```
 
 Read the file at the winning commit and log the source. Take it only when the result names exactly one winner (`grep -c WINNER` equals 1) and the winner is not `HEAD` itself: a winner equal to `HEAD` means no older base exists to trust. Otherwise set `SUPPRESSIONS = ""`: triaging without a policy adds noise, trusting the reviewed change hides findings. An empty candidate set emits no winner lines at all. When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added file was ignored.
