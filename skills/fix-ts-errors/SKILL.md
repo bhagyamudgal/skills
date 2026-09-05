@@ -3,78 +3,60 @@ name: fix-ts-errors
 description: Fix TypeScript errors and loop the type-check until green. Use when the user says "ts errors" or "fix types", when a change "still isn't working" in a TS context, after editing any TypeScript file, and when another skill needs the type-check loop (/done, /parallel-review, /fix-pr-review).
 ---
 
-# Fix TypeScript Errors
+# Fix TypeScript errors
+
+I fix the types at their source and loop the workspace check until it exits 0. I do not work around them.
 
 ## Workflow
 
 ### Step 1: Identify Target Files
 
-- If user specifies files → use those
-- If user says "changed files" → run `git diff --name-only` to get modified `.ts`/`.tsx` files
-- If unclear → ask which files
+- If the user specifies files, I use those.
+- If the user says "changed files", I run `git diff --name-only HEAD` for staged plus unstaged `.ts` and `.tsx` files, plus `git ls-files --others --exclude-standard` for untracked ones.
+- If it is unclear, I ask which files.
 
 ### Step 2: Go red
 
-Run the workspace type-check: `pnpm type-check` / `turbo type-check`, or `bunx tsc --noEmit` for a plain TS project. **That output is the loop's ground truth.**
+I run the workspace type-check, `pnpm type-check` or `turbo type-check`, or `bunx tsc --noEmit` for a plain TS project. That output is the loop ground truth.
 
-Use IDE diagnostics (the LSP tool, or `mcp__ide__getDiagnostics`) only to localise an error the check already reported. IDE diagnostics are per-file and unreliable across workspace package boundaries, so they narrow. They never decide.
+I use IDE diagnostics, the LSP tool or `mcp__ide__getDiagnostics`, only to localize an error the check already reported. IDE diagnostics are per-file and unreliable across workspace package boundaries, so they narrow. They never decide.
 
 ### Step 3: Fix Errors
 
-For each error found:
+For each error I find, I read the file around the error location, understand the root cause, then fix at the source with a proper type-safe pattern.
 
-1. Read the file around the error location
-2. Understand the root cause, then fix at the source
-3. Fix with proper type-safe patterns
+I fix in this order. Missing imports get the import added. Type mismatches get the declaration corrected at its source. Missing properties get aligned with the source type definition. Null or undefined gets narrowed with a type guard or an early return. Generic type issues get explicit type parameters.
 
-**Fix priority:**
-
-- Missing imports → add the import
-- Type mismatches → correct the declaration at its source
-- Missing properties → check the source type definition and align
-- Null/undefined → narrow with a type guard or an early return
-- Generic type issues → provide explicit type parameters
-
-**Every error exits through a real type:** add the missing import, narrow the union, widen the signature at its source, or derive it from the schema (`z.infer`). An `as` survives only with a comment naming the third-party gap.
+Every error exits through a real type. I add the missing import, narrow the union, widen the signature at its source, or derive it from the schema with `z.infer`. An `as` survives only with a comment naming the third-party gap.
 
 ### Step 4: Re-verify
 
-Re-run the same workspace check. **Green means it exits 0.**
+I re-run the same workspace check. Green means it exits 0.
 
-A file whose squiggles cleared is not green. A type change breaks its importers, so chase the cascade to the workspace edge before reporting. If new errors appeared, go back to Step 3.
+A file whose squiggles cleared is not green. A type change breaks its importers, so I chase the cascade to the workspace edge before I report. When new errors appeared, I go back to Step 3.
 
 ### Step 5: Escape-Hatch Audit
 
-Once green, grep the changed lines for all four escape hatches, `as` assertions (excluding `as const`), `@ts-ignore`, `@ts-expect-error`, and non-null assertions:
+Once green, I grep the changed lines for all four escape hatches, `as` assertions excluding `as const`, `@ts-ignore`, `@ts-expect-error`, and non-null assertions.
 
 ```bash
-git diff -U0 -- '*.ts' '*.tsx' | grep '^+' | grep -E '\bas\b|@ts-ignore|@ts-expect-error|!\.' | grep -v 'as const'
+git diff -U0 HEAD -- '*.ts' '*.tsx' | grep '^+' | grep -E '\bas\b|@ts-ignore|@ts-expect-error|[]A-Za-z0-9_$)][!]([^=]|$)|["'\''"`][!]([^=]|$)' | sed 's/as const/__AS_CONST__/g'
+git ls-files --others --exclude-standard -- '*.ts' '*.tsx' | tr '\n' '\0' | xargs -0 grep -nE '\bas\b|@ts-ignore|@ts-expect-error|[]A-Za-z0-9_$)][!]([^=]|$)|["'\''"`][!]([^=]|$)' | sed 's/as const/__AS_CONST__/g'
 ```
 
-Skip import aliases (`import { x as y }`). For every remaining hit:
+The `[!]` groups match a postfix assertion: a value character, closing quote, bracket, or paren before the bang and no equals after it, so `value!`, `value!.x`, `value![0]`, `value!()`, `"value"!`, and backtick-quoted receivers all hit while `!=`, `!==`, and prefix negation like `!ready` stay out. The trailing `sed` neutralizes only the `as const` idiom into a marker instead of dropping whole lines, so co-occurring hatches on the same line survive. A line whose only match is the `__AS_CONST__` marker needs no action.
 
-1. Attempt to remove it with proper typing: inference, narrowing, type guards, generics, or schema-derived types (`z.infer`)
-2. Re-run the check after each removal; if errors appear, go back to Step 3
-3. A hatch may survive only if genuinely unavoidable (e.g., a third-party library type gap), and it must carry a comment explaining why
+I skip import aliases like `import { x as y }`. For every remaining hit I attempt removal with proper typing, meaning inference, narrowing, type guards, generics, or schema-derived types with `z.infer`. I re-run the check after each removal, and when errors appear I go back to Step 3. A hatch survives only when genuinely unavoidable, for example a third-party library type gap, and it must carry a comment that explains why.
 
 ### Step 6: Report
 
-Once green, briefly report:
+Once green, I briefly report how many errors I found, what I fixed, and the surviving escape hatches, `as` casts, `@ts-ignore`, `@ts-expect-error`, and non-null assertions, with the count of each and a one-line justification per survivor. My target is 0.
 
-- How many errors were found
-- What was fixed
-- Surviving escape hatches, `as` casts, `@ts-ignore`, `@ts-expect-error`, non-null assertions: the count of each, with a one-line justification per survivor (target: 0)
+## Loop breaker
 
-## Loop Breaker
+When errors persist after 3 fix-verify cycles, I stop and explain the root cause, show the remaining errors, suggest whether the issue sits in the file itself or in a dependency, and ask the user how to proceed.
 
-If after 3 fix-verify cycles errors persist:
+## Important rules
 
-1. Stop and explain the root cause
-2. Show the remaining errors
-3. Suggest whether the issue is in the file itself or in a dependency
-4. Ask the user how to proceed
-
-## Important Rules
-
-- A wrong type in a shared workspace package is fixed in that package: report it and stop
-- Check whether the error is in generated code or authored code. If a codegen step is stale, suggest the command, do not run it
+- I fix a wrong type in a shared workspace package in that package. I report it and stop.
+- I check whether the error sits in generated code or authored code. When a codegen step is stale, I suggest the command and do not run it.

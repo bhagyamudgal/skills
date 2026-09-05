@@ -79,8 +79,7 @@ member thread for resolution in Phase 7.
 STEP 1.5. CLASS SWEEP (MANDATORY, for each comment or meta-finding
 classified FIX):
 
-STEP 1 groups callsites the REVIEWER reported. It cannot group what nobody
-reported. This step finds those.
+STEP 1 groups only what the reviewer reported. It cannot see the rest. This step hunts those down.
 
 For each finding, derive a searchable signature from the defect itself, the
 literal or structural pattern, not the prose, and search outward: the cited
@@ -99,14 +98,11 @@ every caller has been classified affected / not-affected.
 
 Fold every affected site into the SAME fix plan. One finding, N sites.
 
-Fixing only the cited site is the single largest cause of a follow-up review
-round: the reviewer re-reads the file, finds the sibling you left, and files
-it as a new finding. Real cases: a fix added error branches to three sibling
+Fixing only the cited site is the fastest way to earn a follow-up round. The reviewer re-reads the file, spots the sibling you left, and files it as a new finding. One fix added error branches to three sibling
 hooks and missed the fourth in the same file; another added `role="alert"` to
 two components and missed the third.
 
-If a sweep turns up sites you decide NOT to fix, say so explicitly in the
-reply with the reason. Silence reads as "missed it" and earns another round.
+If you leave a swept site unfixed, say why in the reply. Silence reads as missed work and earns another round.
 
 STEP 2. MECHANICAL GROUNDING (MANDATORY, for each comment or meta-finding
 BEFORE classifying): In one line each, state:
@@ -219,9 +215,7 @@ STEP 5. For each FIX, write a concrete fix plan:
 
 STEP 5.5. INVERSE-RISK CHECK (MANDATORY, before the plan is presented):
 
-A reviewer's suggestion is a hypothesis, not a specification. Implementing it
-verbatim is how the next round's findings get written. How much work this step
-owes depends on where the finding came from:
+A reviewer suggestion is a hypothesis, not a spec. Apply it word for word and you write the next round of findings yourself. What you owe this step depends on where the finding came from:
 
   - **CodeRabbit / human / pasted**: the one-sentence `Suggested fix` arrives
     with no inverse-risk pass behind it. Derive `inverse_risk` yourself.

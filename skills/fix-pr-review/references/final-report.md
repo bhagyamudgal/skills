@@ -22,7 +22,7 @@ Render reply and resolution independently. For `confirmed-absent` plus
 `already-resolved`, report that the thread is resolved, the frozen reply is absent, and no
 automatic retry is authorized. Reserve "thread is still open" for `confirmed-open` or an
 authoritative open-thread read-back. For `reconcile-required`, name the indeterminate operation
-and its exact settling query; authorize no retry until that query settles the state.
+and its exact settling query. Hold every retry until that query settles.
 
 ## Main body
 
@@ -166,7 +166,7 @@ One-liner:
 ## Stashed work
 
 Stashed: <yes | no>
-Restored: <yes | no | conflict>
+Restored: <yes | no | conflict | foreign-top | failed>
 
 <If conflict:>
   Your working tree now contains:
@@ -177,4 +177,16 @@ Restored: <yes | no | conflict>
   dependency-ready next action.
   Your original stash is still available as `git stash list` entry
   `fix-pr-review auto-stash <timestamp>`.
+
+<If foreign-top:>
+  The stash stack changed mid-run. Either nothing was applied and nothing
+  was dropped, or the content applied but the recorded entry is still
+  stashed. Reconcile the stash stack before any commit or push; it is the
+  only dependency-ready next action.
+
+<If failed:>
+  The restore step errored outside the conflict and foreign-top cases, so
+  the worktree state is unknown and the stash entry is retained. Recover
+  by hand before any commit or push; it is the only dependency-ready
+  next action.
 ```

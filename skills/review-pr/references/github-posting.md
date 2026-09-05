@@ -1,15 +1,15 @@
 # GitHub posting flow (Phase 4): REST + GraphQL hybrid + rolling-review
 
-Loaded by SKILL.md when posting findings to a real PR. SKILL.md keeps a ~30-line dispatch step that delegates to this reference.
+SKILL.md loads this when posting findings to a real PR. SKILL.md keeps a ~30-line dispatch step that delegates to this reference.
 
 This file owns:
-- Composing summary body + per-finding review comments
-- Pre-posting hunk validation (line vs file-level routing)
-- Three-phase REST/GraphQL posting (PENDING review → file-level threads → submit)
+- Compose summary body and per-finding review comments
+- Validate hunks before posting to route line and file-level comments
+- Post in three phases with REST and GraphQL, from PENDING review to file-level threads to submit
 - **Rolling-review fix**: reuse a recent `/review-pr` review only when its GitHub state matches the required submission event.
 - Pre-posting preflight on re-runs: verdict-body sync check, thread resolution for findings now `resolved`
-- Failure recovery (Phase A/B/C disclosed partial state)
-- State + cache write-back
+- Recover failures by disclosing partial Phase A, B and C state
+- Write back state and cache
 
 ---
 
@@ -21,9 +21,9 @@ This file owns:
 - **File-level review comments** (no line anchor): Supported ONLY by GraphQL `addPullRequestReviewThread` with `subjectType: FILE`. The REST endpoint uses `DraftPullRequestReviewComment` which has no `subjectType` field. Passing `subject_type: "file"` returns `422 Unprocessable Entity`. This was the bug that silently collapsed past runs to a monolithic body and lost every resolvable thread.
 
 The hybrid flow:
-1. **Phase A (REST)**: create PENDING review with line-level comments.
-2. **Phase B (GraphQL)**: attach file-level threads.
-3. **Phase C (GraphQL)**: submit with the verdict event.
+1. **Phase A with REST**. Create PENDING review with line-level comments.
+2. **Phase B with GraphQL**. Attach file-level threads.
+3. **Phase C with GraphQL**. Submit with the verdict event.
 
 When a prior `/review-pr` review exists on the PR, the rolling path may replace Phase A only for a body-only update whose complete current thread set already belongs to that submitted review.
 

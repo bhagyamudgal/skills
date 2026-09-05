@@ -1,6 +1,6 @@
 # Batch mode: reviewing multiple PRs in one run
 
-Loaded by main at the start of Phase 1, and only when the user provides **2+ PR URLs** or asks to review **all open PRs**. A single-PR run never reaches any of this.
+Main loads this at the start of Phase 1 only when the user gives **2+ PR URLs** or asks to review **all open PRs**. A single-PR run never reaches any of this.
 
 For "all open PRs", enumerate via `gh pr list --json number,url,title --limit 50`, print the list in the kickoff message, then start: no confirmation prompt (batch mode is unattended by design; a wrong list is visible in the report).
 
@@ -16,7 +16,7 @@ For "all open PRs", enumerate via `gh pr list --json number,url,title --limit 50
 
 Every per-PR subagent runs the full single-PR flow, so it loads the same reference files main would: the Q6 search algorithm, the false-positive table, the state schema, the verifier prompts. It also dispatches its own Subagent 1 / Subagent 3 / verifiers, whose prompts carry `<SKILL_DIR>` placeholders of their own. A subagent has no way to derive that value: its working directory is the user's repo, not the skill directory, so every bare `references/...` load silently finds nothing and it reviews from memory.
 
-`<SKILL_DIR>` is the absolute directory of the SKILL.md the orchestrator is executing, resolved through any symlink, per "Subagent 1" in SKILL.md Phase 2. The orchestrator resolves it once and opens every per-PR subagent prompt with it:
+`<SKILL_DIR>` is defined in `<SKILL_DIR>/references/dispatch-prompts.md`, pointed at from "Subagent 1" in SKILL.md Phase 2. The orchestrator resolves it once and opens every per-PR subagent prompt with it:
 
 ```
 SKILL_DIR: <SKILL_DIR>
@@ -37,10 +37,10 @@ Do not post to GitHub and do not ask questions. Return your Phase 4 terminal blo
 
 ## "Don't stop" semantics
 
-The run continues unattended through the WHOLE list. Batch mode implies the user may be away. Do NOT stop between PRs. Resolve review-only checkpoints as follows:
+The run continues unattended through the WHOLE list. The user may be away in batch mode. Do NOT stop between PRs. Resolve review-only checkpoints as follows:
 
 - Stop-and-ask intent gap → review with just the diff; tag that PR's report `intent not grounded, findings may be generic`.
-- PR > 2000 lines → proceed with chunked review; note the size in that PR's report header.
+- A PR over 2000 lines gets a chunked review. Note the size in that PR report header.
 - Completed review → queue every surviving finding for automatic posting. Queue a clean review for automatic approval, or for a comment when `IS_SELF_REVIEW=true`.
 - A failed subagent doesn't stop the batch: record `<pr>: review failed (<reason>)` in the consolidated report and continue with the rest.
 

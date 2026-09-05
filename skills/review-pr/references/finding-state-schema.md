@@ -213,16 +213,17 @@ The subagent prompt MUST emit `rule_class` for every finding. Use a slug from th
 
 ## Run-over-run cache
 
-Phase 1 computes `$CACHE_FILE` and `CURRENT_HEAD`; everything below describes what that file contains and which of three replay branches the comparison selects.
+Phase 1 computes `$CACHE_FILE`, `CURRENT_HEAD`, and the pinned base OID; everything below describes what that file contains and which of three replay branches the comparison selects.
 
 ```bash
-REVIEW_CACHE_CONTRACT_VERSION=2
+REVIEW_CACHE_CONTRACT_VERSION=3
 ```
 
 ```json
 {
-  "contract_version": 2,
+  "contract_version": 3,
   "last_run_sha": "abc123...",
+  "base_sha": "def456...",
   "last_run_timestamp": "2026-04-11T13:29:50Z",
   "last_run_verdict": "request-changes",
   "findings": [...],
@@ -251,15 +252,15 @@ REVIEW_CACHE_CONTRACT_VERSION=2
 
 These branches apply only after the contract-version check succeeds.
 
-1. **`last_run_sha == CURRENT_HEAD`**: no new commits. Reuse the cached review result. If authoritative cache evidence confirms the same review body, head SHA, required GitHub state, and threaded publication ownership are already posted, print the cached result and exit. Otherwise continue directly to Phase 4 and post the cached complete finding set; do not ask whether to replay or post.
+1. **`last_run_sha == CURRENT_HEAD` with stored `base_sha` equal to the pinned base OID**: no new commits on either side. Reuse the cached review result. If authoritative cache evidence confirms the same review body, head SHA, required GitHub state, and threaded publication ownership are already posted, print the cached result and exit. Otherwise continue directly to Phase 4 and post the cached complete finding set; do not ask whether to replay or post.
 
-2. **New commits since last run** (cached SHA is an ancestor of HEAD), PARTIAL re-review:
+2. **New commits since last run**, when cached SHA is an ancestor of HEAD, means PARTIAL re-review:
    - `git diff <last_run_sha>..<CURRENT_HEAD>` (or `gh api compare` cross-repo) for new-commits diff.
-   - Dispatch Phase 2 with NEW diff + FULL file context, prompted to ONLY report findings on new commits.
+   - Dispatch Phase 2 with NEW diff and FULL file context to report findings on new commits only.
    - Phase 3 merges new findings with cached findings still applicable (re-verify each cached finding against current HEAD; drop with `stale after new commits` if changed).
    - Phase 4 header: `Mode: partial re-review (N new commits since cached run at <sha>)`.
 
-3. **Cache exists but `last_run_sha` is NOT an ancestor** (force-push, branch reset): invalidate cache, full fresh run.
+3. **Cache exists but `last_run_sha` is NOT an ancestor** (force-push, branch reset), **or stored `base_sha` differs from the pinned base OID** (base moved): invalidate cache, full fresh run.
 
 ---
 
@@ -269,7 +270,7 @@ These branches apply only after the contract-version check succeeds.
 
 Both files load in Phase 1: the cache check above (compare `last_run_sha` to `CURRENT_HEAD`, pick a branch) and the state-file read below.
 
-After PR-metadata fetch and before subagent dispatch:
+Fetch PR metadata, then dispatch subagents:
 
 ```bash
 STATE_FILE=".claude/review-state/<pr-number>.yml"   # or cross-repo path
@@ -307,7 +308,7 @@ For each remaining finding:
 
 ### Phase 4: write back
 
-After successful posting:
+After posting succeeds:
 
 1. For each finding currently posted/active in this round:
    - If `id` not in `PRIOR_STATE.findings`: append new entry with `status: active`, `round_first_seen: <current_round>`, and the cascade fields taken straight off the printed finding: `inverse_risk` from its `Inverse risk:` line, `class_sites` from the site list in its `class_completeness:` audit as verified in Phase 3 (each site `handled: false` unless this PR's diff already covers it), `caused_by` from the regression sweep's lineage attribution (null when it attributed none), `depends_on: null`.
@@ -317,9 +318,9 @@ After successful posting:
 3. For each finding whose fix has shipped (writer caveat below; this transition is currently made by hand): `status: resolved` + `commit_sha_resolved: <sha of the resolving commit>` regardless of prior status, but **only when every `class_sites` entry is `handled: true`**. If any site is still unhandled, keep the prior status (`active` / `regression`), write the updated `handled` flags, and leave `commit_sha_resolved` untouched: a fix covering part of the class is not a resolution. A regression that gets fully re-fixed goes back to `resolved` with the *new* commit SHA; the prior `commit_sha_resolved` is overwritten (only the latest resolving commit is kept; `label_history` retains the full timeline).
 4. For each closed finding the Phase 3 regression sweep reopened: an entry reopened because a `class_sites` site went unhandled or its `inverse_risk` failure mode materialized becomes `status: regression`; a `dismissed`/`wontfix` entry whose `depends_on` condition was voided becomes `status: active`, keeping `dismissal_reason` and `round_resolved` as history and naming the voiding commit in `last_message`.
 5. Increment `last_round`. Update `updated_at`.
-6. Write the file atomically (temp + rename).
+6. Write the file atomically with temp and rename.
 
-State transitions written by Phase 4:
+Phase 4 writes these state transitions:
 
 | Prior status     | Subagent emits finding? | Fix shipped? | New status           |
 |------------------|-------------------------|--------------|----------------------|
@@ -359,4 +360,4 @@ for f in .claude/review-state/*.yml; do
 done
 ```
 
-Cap at 50 files; oldest deleted first. Run lazily (skip if it would add > 1s to Phase 1).
+Cap at 50 files. Delete oldest first. Run lazily and skip if it would add more than 1s to Phase 1.

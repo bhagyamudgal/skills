@@ -5,9 +5,9 @@
   2. Key content (headline, supporting copy, image presence; bullet list is fine)
 - **Output**: exactly 5 numbered layout ideas. Each includes:
   - **Name** (e.g., "Asymmetric Type-Lockup", "Stacked Editorial")
-  - **Structure** (how elements are arranged, described positionally)
-  - **Hierarchy** (what reads first, second, third)
-  - **Spacing & rhythm** (notes on whitespace, density, alignment grid)
-  - **Visual balance** (where weight sits, how it's counterweighted)
+  - **Structure**, how the elements sit on the page in positional terms
+  - **Hierarchy**, what the eye reads first, second, third
+  - **Spacing & rhythm**, notes on whitespace, density, and the alignment grid
+  - **Visual balance**, where the weight sits and what counterweights it
 - **File save**: no
 - **Next step**: → `/figma-generate-design`

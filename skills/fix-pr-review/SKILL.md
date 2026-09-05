@@ -5,9 +5,9 @@ description: Triage and fix review findings that already exist on a GitHub PR, t
 
 # /fix-pr-review: Triage, Fix, and Resolve PR Review Comments
 
-Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding, applies validated fixes, runs `/done`, and replies + resolves conversations on GitHub, all in one flow.
+Takes a PR review from CodeRabbit, `/review-pr`, or pasted text. It triages each finding, applies validated fixes, runs `/done`, then replies to and resolves the GitHub conversations in one flow.
 
-**Use AskUserQuestion only when the run still needs a user decision**: branch safety, stash confirmation, contested-item confirmation, `--interactive` per-fix confirmations, type-check failure triage, and post-completion next actions. Invoking `/fix-pr-review` or imperatively asking to fix review findings authorizes execution of the validated FIX plan; do not ask for separate plan approval. Every required option is a concrete, considered answer, strongest first and marked "(Recommended)".
+**Use AskUserQuestion only when the run still needs a user decision**: branch safety, stash confirmation, contested-item confirmation, `--interactive` per-fix confirmations, type-check failure triage, and post-completion next actions. Invoking `/fix-pr-review` or imperatively asking to fix review findings authorizes execution of the validated FIX plan. Do not ask for separate plan approval. Mark every required option as concrete and considered, strongest first with "(Recommended)".
 
 ## Quick Reference
 
@@ -53,13 +53,16 @@ Consumes a PR review (CodeRabbit, `/review-pr`, or pasted), triages each finding
 
 ### Reference files
 
-Each carries its firing condition in the pointer at the point of use; load it there, not up front.
+Each carries its firing condition in the pointer at the point of use. Load it there, not up front.
 
 - `references/fetch-review-data.md`: per-input-type GraphQL/REST fetch, CodeRabbit review-body anatomy, `Comment` schema. Loaded by main in Phase 2, at the GitHub fetch step, and again at the `Comment`-schema normalisation step if the local-file path meant it was not read there.
 - `references/triage-prompt.md`: the whole Phase 3 subagent prompt (STEP 0 → STEP 6 + output format). Read by main in Phase 3, placeholder-substituted, passed verbatim.
 - `references/triage-rubric.md`: R1-R9 detail, NEEDS-INPUT calibration, `change_class` worked examples, reply formats. Loaded by the triage SUBAGENT at STEP 4.
 - `references/github-reply-resolve.md`: Steps 7a-7d posting/resolving mechanics. Loaded by main in Phase 7; never loaded for local-file input.
 - `references/final-report.md`: the Phase 8 report template and its rendering rules. Loaded by main in Phase 8 before printing.
+- `references/branch-safety.md`: repo plus branch landing with detached-HEAD and different-branch questions. Loaded by main in Phase 1 for GitHub inputs; skipped for local files.
+- `references/per-fix-loop.md`: per-fix loop, interactive confirmations, narrow type-check plus baseline compare, retry/skip/abort. Loaded by main at the Phase 5 loop.
+- `references/needs-input-triage.md`: NEEDS-INPUT settle, per-item triage, Phase 8 fix plus verify, preflight before GitHub replies. Loaded by main in Phase 8 step 1, only when the count is nonzero.
 
 One reference is not bundled here: `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` holds the `repo_map_files` / `repo_map_exports` shell, the one copy this skill shares with `/review-pr` and `/harden-plan`. Loaded by main in Phase 1 when `packages/` or `apps/` exists.
 
@@ -110,40 +113,11 @@ Set `EXECUTION_AUTHORIZED=true` when the original request explicitly invokes `/f
 
 ### Ensure correct repo + branch (GitHub inputs only)
 
-1. Parse `owner`, `repo`, `num` from the URL.
-2. `gh repo view --json nameWithOwner -q .nameWithOwner`: compare with URL's `owner/repo`. Mismatch → fail fast and tell the user to `cd` into the right clone; the fix is theirs to make, so leave cloning and directory changes to them.
-3. `gh pr view <url> --json headRefName,baseRefName -q .` → PR branch name + base branch.
-4. `git branch --show-current` → current branch (returns empty string on detached HEAD).
-5. Branch state handling:
-   - **Empty output (detached HEAD)**: Use AskUserQuestion:
-
-     Question:
-       header: "Branch"
-       text: "Detached HEAD detected. 'gh pr checkout <num>' will move you to the PR branch. Any uncommitted detached work may be lost."
-       options:
-         - label: "Checkout PR branch"
-           description: "Run 'gh pr checkout <num>' to switch to the PR's head branch"
-         - label: "Abort"
-           description: "Stop here. I'll sort out my branch state manually"
-
-     On "Checkout PR branch": run `gh pr checkout <num>`. On failure (conflicts, missing refs), surface the error and abort. On "Abort": exit.
-
-   - **Different branch in the same repo**: Use AskUserQuestion:
-
-     Question:
-       header: "Branch"
-       text: "You're on branch '<current>' but the PR uses '<pr-branch>'. Switch to the PR branch?"
-       options:
-         - label: "Switch branch"
-           description: "Run 'gh pr checkout <num>' to move to the PR branch"
-         - label: "Abort"
-           description: "Stop. I'll checkout the right branch manually"
-
-     On "Switch branch": run `gh pr checkout <num>`. On gh failure (conflicts, missing refs), surface the error and abort. On "Abort": exit.
-
-   - **On the PR branch**: continue.
+Parse owner, repo, and number from the URL and land on the PR branch per `${CLAUDE_SKILL_DIR}/references/branch-safety.md`. Load it now. If the tree is mid-merge, mid-rebase, or mid-cherry-pick, stop and hand conflict resolution to resolving-merge-conflicts before touching anything.
 
 ### Auto-stash uncommitted work (branch safety)
+
+This step runs for every input type, GitHub or local file. Fixes never land on top of unstashed WIP.
 
 ```bash
 git status --porcelain
@@ -152,16 +126,19 @@ git status --porcelain
 If non-empty, use AskUserQuestion:
 
    Question:
-     header: "Stash"
-     text: "Uncommitted changes detected. Auto-stash before applying fixes? Contents will be restored via 'git stash pop' at the end."
-     options:
-       - label: "Auto-stash"
-         description: "Stash changes now. They'll be restored when the run completes"
-       - label: "Abort"
-         description: "Stop. I'll commit or stash my work manually first"
+      header: "Stash"
+      text: "Uncommitted changes detected. Auto-stash before applying fixes? Contents will be restored at the end."
+      options:
+        - label: "Auto-stash"
+          description: "Stash changes now. They'll be restored when the run completes"
+        - label: "Abort"
+          description: "Stop. I'll commit or stash my work manually first"
 
-On "Auto-stash": run `git stash push -u -m "fix-pr-review auto-stash $(date +%s)"` and set `STASH_PUSHED=true`. If the run aborts, the user can find their work in `git stash list` as `fix-pr-review auto-stash <timestamp>`.
-On "Abort": print "Commit or stash your uncommitted work first." and exit.
+On "Auto-stash", run `git stash push -u -m "fix-pr-review auto-stash $(date +%s)"`. Only on success, record `STASH_OID=$(git rev-parse -q --verify refs/stash)` and set `STASH_PUSHED=true`, then confirm `git status --porcelain` is empty. A failed push records nothing and aborts the run instead of marking a stash that was never created. If the run aborts, the user can find the work in `git stash list` as `fix-pr-review auto-stash <timestamp>`.
+On "Abort", print "Commit or stash your uncommitted work first." and exit.
+
+**Stash-restore guard.** Every restore in this run, here and at every early exit, runs only when `STASH_PUSHED=true`: apply the recorded OID by OID only when the top of stack equals it (`git stash apply "$STASH_OID"`, never a bare pop), drop only after a clean apply with the top still equal, and on any mismatch leave every entry untouched, record `stash_restored: foreign-top`, print `stash_restored: foreign-top, stash left untouched`, and continue without applying or dropping.
+
 
 ### Compute the merge base (for already-fixed detection later)
 
@@ -173,7 +150,7 @@ Stash as `BASE_SHA` for use in Phase 3's already-fixed checks.
 
 ### Pre-fix type-check baseline (what the narrow type-check compares against)
 
-Run ONE baseline type-check before Phase 5, capture the set of files already failing:
+Run one baseline type-check before Phase 5, capture the set of files already failing:
 
 ```bash
 bun turbo run check-types 2>&1 | tee /tmp/fix-pr-review-baseline-$$.log
@@ -183,7 +160,7 @@ Define one parser for the whole run. For each diagnostic, key its file and build
 
 ### Compute shared-package repo map (for reusability-aware classification)
 
-Inventory shared packages AND apps so the Phase 3 classifier can cross-check comments about reuse/extraction against what already exists. Scan BOTH `packages/` and `apps/`. Cross-app helper duplication (e.g., `apps/backend/src/modules/v1/feature-a/helpers.ts` vs `feature-b/helpers.ts`) is common in NestJS-style monorepos and is invisible to a packages-only scan.
+Inventory shared packages and apps so the Phase 3 classifier can cross-check comments about reuse and extraction against what already exists. Scan both `packages/` and `apps/`. Cross-app helper duplication, for example `apps/backend/src/modules/v1/feature-a/helpers.ts` versus `feature-b/helpers.ts`, is common in NestJS-style monorepos and stays invisible to a packages-only scan.
 
 Load `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` and run its **Local mode** block, the one copy of this shell, shared with `/review-pr` and `/harden-plan`. It carries the `bash -c` wrapping the globs need to survive zsh, and caps each half at 500 lines with the truncation marked. Load it when `packages/` or `apps/` exists; when neither does there is nothing to run and the fallback below applies.
 
@@ -195,7 +172,7 @@ Stash both outputs as `repo_map_files` and `repo_map_exports` for the Phase 3 su
 
 ### Dual-path input for /review-pr findings
 
-`/review-pr` now posts findings as **individual inline comments** (one per finding, each on a specific code line). These create standard `PullRequestReviewThread`s on GitHub, identical to CodeRabbit threads. The existing GraphQL fetch below handles them with zero special parsing.
+`/review-pr` now posts findings as **individual inline comments**, one per finding on a specific code line. These create standard `PullRequestReviewThread`s on GitHub, identical to CodeRabbit threads. The existing GraphQL fetch below handles them with zero special parsing.
 
 Manually exported or legacy `/review-pr` findings files use the existing local-file path. Phase 7 skips GitHub operations for those inputs.
 
@@ -219,8 +196,8 @@ Every input path ends here. The `Comment` schema, the exact field names Phases 3
 
 ### Short-circuit cases
 
-- **Empty list** (all threads resolved, local file has no findings): print `Nothing to triage. No unresolved comments found.` → restore stash → exit 0.
-- **Only nitpicks remain AND `--all-nitpicks` not set**: print `Only nitpicks found (N). Pass --all-nitpicks to triage them, or ignore.` → restore stash → exit 0.
+- **Empty list** (all threads resolved, local file has no findings): print `Nothing to triage. No unresolved comments found.` → restore the stash under the guard → exit 0.
+- **Only nitpicks remain AND `--all-nitpicks` not set**: print `Only nitpicks found (N). Pass --all-nitpicks to triage them, or ignore.` → restore the stash under the guard → exit 0.
 
 ---
 
@@ -228,13 +205,40 @@ Every input path ends here. The `Comment` schema, the exact field names Phases 3
 
 ### Load review suppressions (main agent, before dispatch)
 
-Before dispatching the subagent, load `.claude/review-suppressions.yml` from the project root (if it exists). In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=<head-sha>`. If not found, set `SUPPRESSIONS = ""`.
+Before dispatching the subagent, load `.claude/review-suppressions.yml` at the base revision, never the worktree: a checked-out PR must not suppress its own triage. For GitHub inputs, read it at the pinned base OID: `git show "$PINNED_BASE_OID:.claude/review-suppressions.yml"` locally (fetch origin once when the objects are absent), or `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=$PINNED_BASE_OID` in cross-repo mode. For local-file inputs without a PR, HEAD itself may be the change under triage. Resolve the trusted base as the one candidate merge-base that contains every other candidate's: collect one base per mainline, preferring each remote alias over its local counterpart since a local mainline may itself be the change under triage, and take the base only when it is the unique one containing all the rest. Ties, incomparable pairs, and empty sets disable suppressions.
+
+```bash
+BASES=$(for remote in origin/main origin/master origin/develop; do
+  bare=${remote#origin/}
+  if git rev-parse --verify -q "$remote" >/dev/null 2>&1; then ref=$remote
+  elif git rev-parse --verify -q "$bare" >/dev/null 2>&1; then ref=$bare
+  else continue
+  fi
+  git merge-base HEAD "$ref" 2>/dev/null || continue
+done | sort -u)
+RESULT=""
+if [ -n "$BASES" ]; then RESULT=$(printf '%s\n' "$BASES" | while IFS= read -r b; do
+  [ -n "$b" ] || continue
+  BAD=$(printf '%s\n' "$BASES" | grep -vx "$b" | while IFS= read -r o; do
+    git merge-base --is-ancestor "$o" "$b" 2>/dev/null || printf 'bad\n'
+  done)
+  [ -z "$BAD" ] && printf 'WINNER %s\n' "$b"
+done); fi
+```
+
+Read the file at the winning commit and log the source. Count winners in a way that stays successful on empty input, since `grep -c` exits 1 when it counts zero:
+
+```bash
+WINNERS=$(printf '%s\n' "$RESULT" | grep -c WINNER || true)
+```
+
+Take it only when `WINNERS` equals 1 and the winner is not `HEAD` itself: a winner equal to `HEAD` means no older base exists to trust. Otherwise set `SUPPRESSIONS = ""`: triaging without a policy adds noise, trusting the reviewed change hides findings. An empty candidate set emits no winner lines at all. When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added file was ignored.
 
 Pass loaded suppressions into the subagent prompt as a `## Review suppressions` section (same approach as CLAUDE.md content, PR diff, and repo maps; main agent fetches, subagent receives as context).
 
 ### Dispatch
 
-Dispatch **one** `general-purpose` subagent with `Read`, `Grep`, and `Bash` tools. The triage plan comes from this subagent alone. If it fails outright, abort the run and say so; classifying inline skips the grounding and class-sweep passes the whole plan is built on.
+Dispatch **one** `general-purpose` subagent with `Read`, `Grep`, and `Bash` tools. The triage plan comes from this subagent alone. If it fails outright, abort the run and say so. Classifying inline skips the grounding and class-sweep passes the whole plan is built on.
 
 **Important**: The Bash allowlist (`git log/diff/blame/show/merge-base/rev-parse`, `grep`, `rg`) is a **prompt-level instruction**. Claude Code's Agent tool doesn't sandbox Bash per-command. The subagent is trusted not to run other commands, not mechanically prevented from doing so.
 
@@ -323,9 +327,9 @@ Nothing is posted or resolved during this step. Phase 7 remains the only place G
 
 ### Execution
 
-If `--dry-run`: print the plan, print `dry run, not executing`, restore stash, exit 0.
+If `--dry-run`: print the plan, print `dry run, not executing`, restore the stash under the guard, exit 0.
 
-If `EXECUTION_AUTHORIZED=true`, proceed directly to Phase 5. The invocation already authorizes execution of every validated FIX item. If `--interactive` was set, ask for per-item confirmation in Phase 5; it does not add a plan-level confirmation.
+If `EXECUTION_AUTHORIZED=true`, proceed directly to Phase 5. The invocation already authorizes execution of every validated FIX item. If `--interactive` was set, ask for per-item confirmation in Phase 5. It does not add a plan-level confirmation.
 
 Otherwise, use AskUserQuestion:
 
@@ -338,7 +342,7 @@ Otherwise, use AskUserQuestion:
        - label: "Cancel"
          description: "Leave the worktree unchanged and restore any stash"
 
-On "Execute plan": set `EXECUTION_AUTHORIZED=true`, record the choice as `execution_authorization_evidence`, and proceed to Phase 5. On "Cancel": restore the stash if present, print `cancelled`, and exit 0.
+On "Execute plan": set `EXECUTION_AUTHORIZED=true`, record the choice as `execution_authorization_evidence`, and proceed to Phase 5. On "Cancel": restore the stash under the guard if pushed, print `cancelled`, and exit 0.
 
 ---
 
@@ -348,7 +352,7 @@ On "Execute plan": set `EXECUTION_AUTHORIZED=true`, record the choice as `execut
 
 ### Dependency resolution
 
-Build an execution order from `dependencies:` fields with a simple topological sort. On a **cycle** (A→B→A): abort with `Cyclic fix dependencies detected. Correct the dependency fields and rerun /fix-pr-review <original-input>.` Restore stash. Exit non-zero.
+Build an execution order from `dependencies:` fields with a simple topological sort. On a **cycle** (A→B→A): abort with `Cyclic fix dependencies detected. Correct the dependency fields and rerun /fix-pr-review <original-input>.` Restore the stash under the guard. Exit non-zero.
 
 ### Pre-edit snapshots (revert mechanism; Edit tool has no undo)
 
@@ -369,55 +373,8 @@ Immediately before each ordinary fix, capture every declared path's then-current
 
 ### Per-fix loop
 
-For each FIX item in topological order:
+For each FIX item in topological order, work the loop per `${CLAUDE_SKILL_DIR}/references/per-fix-loop.md`. Load it now. It holds the interactive confirmations, the narrow type-check with baseline compare, and the retry, skip, and abort branches, including the symptom-patching rule that sends an item to systematic-debugging instead of spending another retry.
 
-1. Print `[<idx>/<total>] Fixing: <file:line>`.
-
-   If `--interactive` flag is set, use AskUserQuestion before applying each fix:
-
-   Question:
-     header: "Fix <idx>"
-     text: "[<idx>/<total>] <file:line>: <fix_plan summary, first 80 chars>"
-     options:
-       - label: "Apply fix"
-         description: "Execute this fix and continue to the next"
-       - label: "Skip"
-         description: "Skip this fix and mark it NEEDS-INPUT in the final report"
-       - label: "Skip remaining"
-         description: "Stop here and skip all remaining fixes"
-
-   On "Apply fix": continue with steps 2-7. In ordinary Phase 5, "Skip" marks `fix_status[idx] = skipped` and advances to the next fix; "Skip remaining" marks every remaining fix `skipped` and jumps to Phase 6. In Phase 8 context, "Skip" restores every declared path from `active_snapshot` through the state-preserving restore rule with fallback `skipped`, sets `needs_input_status[idx]=skipped` and `convergence[idx]=not-run, user skipped before edit`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, user skipped before edit` otherwise. Phase 8 "Skip remaining" performs that same restore and settlement for the current item; it marks each not-yet-run fix skipped unless its current status is `inverse_risk_applied`, which remains unchanged with its publication blocker. Earlier landed fixes remain untouched. Both choices clear `phase8_triage_context`, terminate the nested Phase 5 path immediately, bypass Phases 5.5-6, and rejoin Phase 8 at the next independent item. On "Other": treat as freeform instruction (e.g., "modify the fix plan for this item").
-
-2. In ordinary context, first add any never-edited declared path to `preedit_snapshot`, then capture every declared path in `perfix_snapshot[idx]` and bind it as `active_snapshot` before editing. In Phase 8 context, require every declared path in `active_snapshot`; a missing entry violates the declared-path gate, so stop the item and use Phase 8's expansion rule to append that new path and baseline before editing while existing entries remain immutable.
-3. Apply the change(s) via `Edit` tool.
-4. **Narrow type-check (this file only)**:
-   - Detect project type: if `turbo.json` exists → turborepo mode; else if `tsconfig.json` exists → plain TS mode; else → skip the check.
-   - Turborepo: run `bun turbo run check-types --filter=<package>` (or `pnpm turbo run check-types --filter=<package>` if the repo uses pnpm), targeting the workspace package containing the edited file. The `turbo run` form is what carries `--filter` through; `bun` alone drops unknown flags instead of forwarding them to the underlying script.
-   - Plain TS: `bunx tsc --noEmit` or `npx tsc --noEmit`.
-   - No TS tooling: skip the check with a one-line note, and let `/done` in Phase 6 catch what it would have caught.
-5. **Compare diagnostic-identity multisets**: parse the current output with Phase 1's parser, then subtract `active_baseline_errors[path]` from the current multiset by identity and count. Ordinary Phase 5 uses the Phase 1 run baseline; a Phase 8 item uses the baseline captured immediately before that item's edits. Classifications:
-   - **pass**: the current multiset for every edited file is empty.
-   - **failed**: `current - baseline` is non-empty for any edited file; report those remaining identities as genuinely new errors.
-   - **inconclusive, preexisting errors**: current errors remain, but `current - baseline` is empty because every current identity and duplicate count is covered by the baseline. Continue.
-6. On **pass** or **inconclusive**: mark `[<idx>] ✓ fixed` / `[<idx>] ~ inconclusive`, continue.
-7. On **failed**:
-
-   Print the error output (trimmed to ~30 lines), then use AskUserQuestion:
-
-   Question:
-     header: "Type-check"
-     text: "[<idx>] Fix applied but type-check has NEW errors vs baseline. <error count> new error(s) in <file>."
-     options:
-       - label: "Retry fix"
-         description: "Revert and re-dispatch to a fresh subagent with error context (max 2 retries)"
-       - label: "Skip this fix"
-         description: "Revert this fix, mark as NEEDS-INPUT, continue with remaining fixes"
-       - label: "<Abort all | Abort item>"
-         description: "Ordinary: revert all run-level edits and exit | Phase 8: restore only this item"
-
-   On "Retry fix": restore the fix's declared paths from `active_snapshot`, re-dispatch the fix plan to a fresh `general-purpose` subagent with the new-errors context, loop (max 2 retries; on 3rd failure, auto-treat as "Skip this fix").
-   In ordinary context, "Skip this fix" restores the current `perfix_snapshot[idx]`, marks `fix_status[idx]=skipped` and `[<idx>] NEEDS-INPUT`, skips its Phase 7 reply/resolve, and continues with the remaining fixes. In Phase 8 context, it restores every `phase8_item_files[idx]` path through the state-preserving restore rule with fallback `skipped`, sets `needs_input_status[idx]=skipped` and `convergence[idx]=not-run, user skipped after type-check failure`, then sets paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, user skipped after type-check failure` otherwise. Clear `phase8_triage_context`, terminate before Phases 5.5-6, and rejoin Phase 8 at the next independent item.
-   Present "Abort all" only in ordinary context and "Abort item" only in Phase 8 context. On "Abort all", restore every run-level path, restore the stash, and exit non-zero. On "Abort item", restore only `phase8_item_files[idx]` through the state-preserving restore rule with fallback `aborted`, set `needs_input_status[idx]=failed` and `convergence[idx]=not-run, user aborted after type-check failure`, then set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, user aborted after type-check failure` otherwise. Clear `phase8_triage_context`, terminate before Phases 5.5-6, and rejoin Phase 8 at the next independent item without touching the stash or earlier fixes.
 
 ### Fix execution tracking
 
@@ -433,8 +390,8 @@ landed_fix_statuses = {ok, retried_ok, inconclusive, type_check_skipped}
 
 ## Phase 5.5: Convergence (subagent)
 
-Run after all fixes are applied, BEFORE the `/done` pipeline. A run converges when every
-fix is class-complete, carries no inverse risk, and spawned no new siblings; anything
+Run after all fixes are applied, before the `/done` pipeline. A run converges when every
+fix is class-complete, carries no inverse risk, and spawned no new siblings. Anything
 short of that is what the next review round will find.
 
 Dispatch ONE `general-purpose` subagent. It gets `git diff HEAD` plus, per fix, the
@@ -583,74 +540,28 @@ Derive `reply_ok=true` from `reply_state ∈ {landed, verified-existing, not-app
 
 ### 1. Settle NEEDS-INPUT
 
-Keep the run-level stash untouched throughout this step. Build `needs_input_items` from current workflow state: every item still classified `NEEDS-INPUT` and every item Phase 5 or 5.5 routed there. Initialize `needs_input_status[idx]=pending` for each entry. For any entry lacking `gh_status`, initialize paired `not-applicable` states when `has_github_surface=false`; otherwise initialize paired `skipped` states with `NEEDS-INPUT not yet authorized`. Do not derive this count from a rendered report. If the count is nonzero, use AskUserQuestion:
+Keep the run-level stash untouched throughout this step. Build `needs_input_items` from current workflow state: every item still classified `NEEDS-INPUT` and every item Phase 5 or 5.5 routed there. Do not derive this count from a rendered report. Triage every NEEDS-INPUT item per `${CLAUDE_SKILL_DIR}/references/needs-input-triage.md`, loaded only when the count is nonzero. Leave this step only when no entry is still pending.
 
-   Question:
-     header: "NEEDS-INPUT"
-     text: "<N> item(s) need your input. Would you like to triage them now?"
-     options:
-       - label: "Triage now"
-         description: "Walk through each NEEDS-INPUT item and decide: fix, defer, or dismiss"
-       - label: "Skip for now"
-         description: "Leave them unresolved and handle them manually later"
-
-On "Triage now": for each `needs_input_items` entry, use AskUserQuestion:
-
-   Question:
-     header: "Item N<idx>"
-     text: "<file:line>: <why_unclear>"
-     options:
-       - label: "Fix it"
-         description: "Provide guidance and have the agent apply a fix"
-       - label: "Defer"
-         description: "Mark as out-of-scope, post a DEFER reply on GitHub"
-       - label: "Dismiss"
-         description: "Not a real issue. Post a DISMISS reply on GitHub"
-
-For every automatic `Other` freeform path in the batch prompt or an item prompt, honor an instruction that unambiguously maps named items to `Fix it`, `Defer`, `Dismiss`, or `Skip for now`. Preserve the exact freeform text with the item. If the mapping is ambiguous, set each affected item's `needs_input_status=skipped` and carry the text into its manual-handling reason. Do not leave it pending.
-
-On "Fix it": use a follow-up AskUserQuestion to collect guidance:
-
-   Question:
-     header: "Guidance"
-     text: "What should the fix do for <file:line>? Describe the intended behavior or approach."
-     options:
-       - label: "Use reviewer's suggestion"
-         description: "Apply the original review comment's recommended change as-is"
-       - label: "I'll describe"
-         description: "Let me type specific guidance for this fix"
-
-   On "Use reviewer's suggestion": use the original comment's recommendation as the fix plan. On "I'll describe" or "Other", treat unambiguous fix guidance as the fix plan; honor an unambiguous defer, dismiss, or skip instruction through that action's branch. Preserve ambiguous text, set `needs_input_status=skipped`, and continue.
-
-   Validate the complete FIX record through Phase 4 before editing. Record immutable `phase8_snapshot_fix_state[idx]` as the entry `fix_status` when it is `inverse_risk_applied` or `reverted_inverse_risk`; otherwise record `clear`. When the snapshot state is `inverse_risk_applied`, require the validated plan to record `phase8_remediation_kind[idx]=removal|replacement` and map every entry in the prior `perfix_owned_components[idx]` ledger exactly once to removal or replacement evidence. Reject an incomplete or duplicated map. Derive `phase8_item_files[idx]` from the union of every mapped owned-component path and every additional file declared by the validated plan, then capture each file's current content or authoritative absence in a dedicated `phase8_item_snapshot[idx]`. This snapshot includes all earlier landed fixes. Every later restore of this snapshot is state-preserving: restore the exact bytes, then restore `fix_status[idx]` from `phase8_snapshot_fix_state` when it is not `clear`, or use the branch's named fallback status when it is `clear`. Never change `phase8_snapshot_fix_state` without replacing the snapshot itself. Immediately after the snapshot and before any edit, run the affected Phase 5 narrow type-check against that state and parse `phase8_item_baseline_errors[idx]` with the Phase 1 diagnostic-identity multiset parser; when the applicable tooling is unavailable, record the baseline as unavailable and preserve the existing skipped-check behavior. Both item stores are append-only and separate from the run-level `preedit_snapshot` and `baseline_errors`: nested Phases 5-6 neither read nor overwrite the run-level stores. Set `phase8_triage_context=true` only after the snapshot, snapshot state, applicable remediation map, and item baseline are complete.
-
-   In Phase 8 context, Phase 5 edits and retry agents may touch only `phase8_item_files[idx]`. When the plan expands, revalidate it and derive only the newly declared paths absent from `phase8_item_snapshot[idx]`; preserve every existing snapshot and baseline entry byte-for-byte. Before any new path is edited, append that path's current content or authoritative absence and its isolated per-path baseline, parsed with the Phase 1 diagnostic-identity multiset parser, to the item stores. Never recapture an existing path or rerun its baseline after an edit. If earlier item edits make a trustworthy per-path baseline for a new path impossible, fail closed: restore every path already present in the append-only item snapshot through the state-preserving restore rule with fallback `restored_failed`, leave the new path unedited, set `needs_input_status[idx]=failed` and `convergence[idx]=not-run, unsafe expansion baseline for <new-path>; snapshotted paths restored and new path left unedited`, then set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, unsafe expansion baseline` otherwise. Clear `phase8_triage_context` and continue with the next independent item. Phase 5.5 may verify all sites but may apply a corrective edit only within declared, snapshotted files.
-
-   Apply the Phase 5 per-fix loop. When it returns a settled `skipped` or `aborted` item, preserve its `fix_status`, `needs_input_status`, `convergence`, and `gh_status`, then rejoin Phase 8 immediately; Phase 5.5 and Phase 6 are barred from running or reapplying it. Otherwise run Phase 5.5 for that fix. After a successful active-snapshot restore yields `reverted_inverse_risk`, preserve that status without another restore, set `needs_input_status[idx]=failed`, set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, inverse-risk fix reverted` otherwise, clear `phase8_triage_context`, and rejoin Phase 8. For any other status outside `landed_fix_statuses`, record it as `pre_restore_fix_status[idx]`, restore every declared path from `phase8_item_snapshot[idx]` through the state-preserving restore rule with fallback `restored_failed`, set `needs_input_status[idx]=failed`, and preserve the original convergence evidence with an appended `restored item snapshot after <pre_restore_fix_status>` disposition. Set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, convergence rejected and item restored` otherwise. Clear `phase8_triage_context` and rejoin Phase 8 at the next independent item. Only a status in `landed_fix_statuses` proceeds to the affected Phase 6 type-check, review, and simplify assessments in verification-only mode; do not apply type-fix, self-heal, or simplify edits.
-
-   A Critical or Serious blocker, validation abort, edit failure, exhausted retry, or Phase 6 failure aborts only this item. Before restoring, record the exact triggering error or blocker as `phase8_failure_reason[idx]`. Restore every declared path from `phase8_item_snapshot[idx]`, including removing a path whose snapshot recorded authoritative absence, through the state-preserving restore rule with fallback `restored_failed`; set `needs_input_status[idx]=failed`. Preserve existing convergence evidence and append `restored item snapshot after <phase8_failure_reason>`; when convergence never ran, set `convergence[idx]=not-run, <phase8_failure_reason>; item snapshot restored`. Set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `no landed fix, <phase8_failure_reason>; item restored` otherwise. Clear the context and continue with the next independent item without restoring the run-level stash, exiting the skill, or bypassing the renderer. Ordinary Phase 5 and Phase 6 behavior remains unchanged when `phase8_triage_context` is false.
-
-   When the fix and verification land cleanly, record current content risk as clear without changing the immutable snapshot state, then update `done_verified_snapshot` from the prior snapshot plus this item's verified declared-path bytes. If `phase8_snapshot_fix_state[idx]=inverse_risk_applied` and `phase8_remediation_kind[idx]=removal`, set `fix_status[idx]=reverted_inverse_risk`, set `needs_input_status[idx]=failed`, set paired `gh_status` states to `not-applicable` when `has_github_surface=false` or to `skipped` with `original finding not accepted, risky fix removed` otherwise, clear `phase8_triage_context`, and rejoin Phase 8 without GitHub reply or resolution. A verified replacement retains its applicable landed status and may proceed to the Phase 7 reply/resolve mechanics. Set `needs_input_status=fixed` only when `fix_status ∈ landed_fix_statuses` and both GitHub operations are successful or not applicable; set it to `reconcile-required` if either operation has that state, otherwise set it to `failed`. Preserve the final classification, `fix_status`, convergence, current-content risk, and `gh_status` before continuing.
-
-Immediately before any chosen Fix, Defer, or Dismiss reply mutates GitHub, invoke `preflight-mutations` for that item's reply/resolve batch with the exact PR and current head SHA, target thread ID, final reply text, classification, and the per-item choice above. Apply its result contract before continuing. Record a blocked or confirmed failure as `needs_input_status=failed`, an indeterminate operation as `reconcile-required`, and the exact Phase 7 `gh_status`; then continue to the next independent item. Every branch rejoins report rendering.
-
-On "Defer": set the classification to `DEFER` and run the Phase 7 reply/resolve mechanics. On "Dismiss": do the same with classification `DISMISS`. When `has_github_surface=false`, set both GitHub states to `not-applicable` without entering any GitHub report section. Map the final result for either branch: both required operations successful or not applicable → `needs_input_status` "deferred" or "dismissed"; either operation `reconcile-required` → `reconcile-required`; every other non-success or confirmed failure → `failed`. Preserve every authoritative outcome in `gh_status`, then continue.
-
-On "Skip for now": mark each untouched entry `needs_input_status=skipped` and preserve its current classification, `gh_status`, and any freeform guidance for later handling.
-
-Treat `inverse_risk_applied` as a content-state blocker, not a triage disposition. Fix, Skip, Defer, Dismiss, or freeform reclassification preserves that status and its publication block until the risky owned components are removed or replaced, Phase 5.5 and Phase 6 pass on the resulting content, and `done_verified_snapshot` is rebuilt. A verified removal may set `reverted_inverse_risk`; a verified replacement may set an applicable landed status.
-
-Skip the questions if the NEEDS-INPUT count is 0. Before leaving this step, require every `needs_input_items` entry to have a non-pending status. Convert an unexpected remaining `pending` entry to `skipped`, preserving its recorded choice and guidance as the manual-handling reason.
 
 ### 2. Restore WIP
 
 Only after every NEEDS-INPUT item has settled, if `STASH_PUSHED=true`:
 
 ```bash
-git stash pop
+if [ "$(git rev-parse -q --verify refs/stash)" = "$STASH_OID" ]; then
+  if git stash apply "$STASH_OID"; then
+    [ "$(git rev-parse -q --verify refs/stash)" = "$STASH_OID" ] && git stash drop || echo "STASH_CHANGED_MID_RESTORE"
+  elif [ -n "$(git diff --name-only --diff-filter=U)" ]; then
+    echo "STASH_CONFLICT"
+  else
+    echo "STASH_APPLY_FAILED"
+  fi
+else
+  echo "STASH_TOP_MISMATCH"
+fi
 ```
 
-On stash pop conflict, leave every conflict marker exactly as `git stash pop` left it. Resolving the user's WIP is the user's call. Record `stash_restored: conflict` for the final report. No edit, type-check, convergence check, Phase 6 check, commit, or push may run after this restoration. Expose conflict resolution as the only dependency-ready next action.
+On `STASH_TOP_MISMATCH`, record `stash_restored: foreign-top` and continue to the final report: another stash now sits on top of ours, so nothing was applied and nothing was dropped. On `STASH_CONFLICT`, leave every conflict marker exactly as the apply left it and skip the drop: the entry stays stashed as the recovery source. Record `stash_restored: conflict` for the final report; resolving the user's WIP is the user's call. On `STASH_APPLY_FAILED`, the apply errored without conflict markers, so the worktree state is unknown: record `stash_restored: failed`, leave the worktree and every entry untouched, and continue to the report. When the drop reports `STASH_CHANGED_MID_RESTORE`, the content applied cleanly but the stack moved first: record `stash_restored: foreign-top`, leave the recorded entry for the user to drop by hand, and continue to the report. After a `conflict` or `failed` restoration, no edit, type-check, convergence check, Phase 6 check, commit, or push may run. Expose stash recovery as the only dependency-ready next action.
 
 ### 3. Print the final report once
 
@@ -689,10 +600,11 @@ Skip this step entirely if:
 - There are no DISMISS or DISAGREE items
 - The input was a local file from outside a git repo (no project root to write suppressions into)
 - `stash_restored=conflict` (the conflicted worktree remains read-only)
+- `stash_restored=failed` (the worktree state is unknown)
 
 ### 5. Post-completion next actions
 
-After printing the final report and completing the suppression step when applicable, compute `inverse_risk_blockers` from every item whose current `fix_status` is `inverse_risk_applied`, independent of final classification or `needs_input_status`. When `stash_restored=conflict`, suppress the prompt and report `Resolve stash conflicts` as the sole dependency-ready next action; Commit and Push remain unavailable. Otherwise, if `inverse_risk_blockers` is non-empty, suppress the prompt and report the dependency-ready removal/replacement action from Step 3; Commit and Push remain unavailable even when `done_verified_snapshot` exists. Skip the prompt if all fixes were aborted (nothing was applied); otherwise use AskUserQuestion.
+After printing the final report and completing the suppression step when applicable, compute `inverse_risk_blockers` from every item whose current `fix_status` is `inverse_risk_applied`, independent of final classification or `needs_input_status`. When `stash_restored=conflict`, suppress the prompt and report `Resolve stash conflicts` as the sole dependency-ready next action; Commit and Push remain unavailable. When `stash_restored=foreign-top`, suppress the prompt and report `Reconcile the stash stack: the recorded auto-stash entry is still stashed` as the sole dependency-ready next action; Commit and Push remain unavailable. When `stash_restored=failed`, suppress the prompt and report `Recover the worktree and stash by hand` as the sole dependency-ready next action; Commit and Push remain unavailable. Otherwise, if `inverse_risk_blockers` is non-empty, suppress the prompt and report the dependency-ready removal/replacement action from Step 3; Commit and Push remain unavailable even when `done_verified_snapshot` exists. Skip the prompt if all fixes were aborted (nothing was applied); otherwise use AskUserQuestion.
 
    Question:
      header: "Next"
@@ -707,7 +619,7 @@ After printing the final report and completing the suppression step when applica
        - label: "Done"
          description: "Exit. I'll handle the rest manually"
 
-On "Commit changes" or "Push to remote", require `inverse_risk_blockers` to be empty, `stash_restored != conflict`, and a valid `done_verified_snapshot`. Recompute the blocker set instead of trusting the rendered report; a non-empty set stops the action. Invoke `git-commit` in Verified content snapshot sealed-index mode with that snapshot; never stage or restage the live worktree. Require the created commit tree to equal the snapshot tree. Ordinary restored WIP remains in the worktree and outside the candidate commit.
+On "Commit changes" or "Push to remote", require `inverse_risk_blockers` to be empty, `stash_restored` to be none of `conflict`, `foreign-top`, or `failed`, and a valid `done_verified_snapshot`. Recompute the blocker set instead of trusting the rendered report; a non-empty set stops the action. Invoke `git-commit` in Verified content snapshot sealed-index mode with that snapshot; never stage or restage the live worktree. Require the created commit tree to equal the snapshot tree. Ordinary restored WIP remains in the worktree and outside the candidate commit.
 
 On "Push to remote", commit first, then require the commit tree to still equal the snapshot before freezing the publication branch and push-attempt SHA. For GitHub PR input, re-read the current PR's `headRefName` plus `headRepository.id` and `nameWithOwner`; freeze those authoritative values, require the Phase 1 expected PR branch and active branch to equal the frozen head name, and set `<exact-ref>` to `refs/heads/<frozen-headRefName>`. That head repository identity is the intended publication target and remains independent of the input/base repository. For local-file or other no-current-PR input, freeze the active branch and derive `<exact-ref>` as `refs/heads/<active-branch>`. Freeze the push-attempt SHA only when the active symbolic ref equals `<exact-ref>` and that branch ref and `HEAD` resolve to the same SHA. Resolve the intended publication target before binding `<preflighted-remote>`. For GitHub PR input, enumerate configured remotes and validate every endpoint in each ordered complete fetch/push set. Auto-select the only remote whose every endpoint matches the PR head identity; when multiple match, immediately use AskUserQuestion with concrete `<remote>: <nameWithOwner> (<id>)` options and pagination when needed; when none match, stop with `Configure a remote whose complete endpoint sets resolve to the current PR head repository, then choose Push to remote again.` The selected match becomes `<preflighted-remote>`.
 

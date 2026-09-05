@@ -1,6 +1,6 @@
 # Q6a Reusability: search algorithm and audit format
 
-Loaded by **Subagent 1**, when the diff has 1+ new top-level definitions, for STEP A onward. The main SKILL.md keeps only the Q6a header + reporting format. This reference explains HOW to search.
+**Subagent 1** loads this when the diff has 1+ new definitions, top-level or methods added to existing classes, for STEP A onward. The main SKILL.md keeps only the Q6a header and reporting format. This reference explains HOW to search.
 
 STEP B searches against `repo_map_files` / `repo_map_exports`, which main computes in Phase 1. That shell is in `${CLAUDE_SKILL_DIR}/references/repo-map.md`, the copy `/fix-pr-review` and `/harden-plan` share.
 
@@ -14,13 +14,13 @@ For each new definition of the kinds below, write one line:
 added <kind> <name> in <file>
 ```
 
-Kinds to enumerate (do NOT restrict to top-level exports):
+Kinds to enumerate. Do NOT restrict to top-level exports:
 
 - `function` (top-level: `function x()`, `const x = () =>`, `const x = function`)
 - `class`
 - `interface`, `type` alias
 - exported `const` (including React components as arrow-function consts)
-- React component (function or const form)
+- React component in function or const form
 - React hook (name starts with `use`)
 - **class method**: NestJS service methods like `async findOne(...)`, `private formatInvoice(...)`, `protected validate(...)`. These live inside existing classes but are still new code that can duplicate shared helpers.
 - default-exported function or class (`export default function X`, `export default class X`)
@@ -30,13 +30,13 @@ Kinds to enumerate (do NOT restrict to top-level exports):
 - (b) its name does NOT match any symbol in `repo_map_exports` (case-insensitive root match), AND
 - (c) it's purely a re-export, type alias trivially renaming another type, or a one-line wrapper.
 
-If ANY of (a)/(b)/(c) fails, enumerate the item. This catches the "4-line private helper that duplicates a 4-line shared helper" case.
+If ANY of a, b or c fails, enumerate the item. This catches the "4-line private helper that duplicates a 4-line shared helper" case.
 
 ---
 
 ## STEP B: Search for each enumerated item
 
-Run **all** of the following; do NOT stop at the first hit. Pay for thoroughness with tokens, not with missed findings.
+Run **all** of the following. Do NOT stop at the first hit. Spend tokens on thoroughness instead of missing findings.
 
 ### 1. Exact-name search
 
@@ -52,8 +52,8 @@ Extract the root by **dropping domain prefixes/suffixes** and searching the rema
 **Algorithm**:
 
 a) Split name on CamelCase boundaries: `renderUserCard` → `[render, User, Card]`
-b) Drop tokens that are DOMAIN nouns (Order, Invoice, Product, Customer, Account, User, Subscription; any business-entity noun specific to the project)
-c) Keep tokens that are GENERIC verbs/nouns (format, parse, validate, build, sleep, chunk, retry, merge, group, sort, filter, map, find, compute, calculate, extract)
+b) Drop tokens that are DOMAIN nouns, like Order, Invoice, Product, Customer, Account, User, Subscription or any business-entity noun specific to the project
+c) Keep tokens that are GENERIC verbs and nouns, like format, parse, validate, build, sleep, chunk, retry, merge, group, sort, filter, map, find, compute, calculate and extract
 d) Grep each kept token against `packages/` and `apps/`
 
 **Worked examples**:
@@ -104,7 +104,7 @@ reusability_searches:
 - **At least one entry per item enumerated in STEP A.**
 - For each search where `N > 0`, `verified:` is MANDATORY. Critic rejects audits that claim "0 matches" for all searches as shallow / suspicious. If `N == 0`, write `verified: n/a`.
 - If STEP A was empty, write EXACTLY:
-  `reusability_searches: N/A (no new top-level definitions in diff)`
+  `reusability_searches: N/A (no new definitions in diff)`
 
 ---
 

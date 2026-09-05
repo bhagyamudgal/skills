@@ -1,6 +1,6 @@
 # GitHub reply + resolve mechanics (Phase 7)
 
-Loaded by main in Phase 7, once the local-file skip check has passed. SKILL.md keeps the skip condition and the batch-failure rule; this file holds the four steps. None of it runs for local-file input.
+Main loads this in Phase 7 after the local-file skip check passes. SKILL.md keeps the skip condition and the batch-failure rule. This file holds the four steps. None of it runs for local-file input.
 
 ---
 
@@ -29,7 +29,7 @@ Skipped/aborted FIX items get no reply (they land in NEEDS-INPUT for the final r
 
 ## Step 7b: Reply validator (pre-post mechanical check)
 
-Before posting any reply, validate it against forbidden-phrase / must-contain rules:
+Check every reply against the forbidden-phrase and must-contain rules before you post it:
 
 ```
 forbidden_prefixes = [
@@ -74,7 +74,7 @@ if comment.reusability_context?.flagged:
         reject reply; dispatch rewriter subagent with failing rule cited
 ```
 
-Concretely this catches:
+This catches concrete cases:
 - `"Fixed: now importing from @<scope>/utils/format.ts:45 instead of reimplementing"` → PASSES (FIX with destination)
 - `"Fixed: refactored to a helper"` → FAILS (no destination)
 - `"Moved to helpers"` → FAILS (no concrete target)

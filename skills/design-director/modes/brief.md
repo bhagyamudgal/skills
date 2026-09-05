@@ -1,7 +1,7 @@
 # Mode: Brief Simplify
 
 - **Inputs**: pasted brief text, attached document, or image of a brief
-- **Slots**: none (the input IS the brief)
+- **Slots**: none, the input IS the brief
 - **Output**: structured summary with these sections, in order:
   - **Objective** (one sentence)
   - **Target audience** (one sentence)

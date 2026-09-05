@@ -1,9 +1,6 @@
 # Finding output format
 
-The single shape every reviewer and verifier emits a finding in. Loaded by **Subagent 1**
-(Phase 2 reviewer), **Subagent 3** (Phase 2 cross-cutting reviewer) and **V3** (Phase 3
-deep gap check). All three produce findings that Phase 3 dedupes, sweeps and persists,
-and without this file each invents a shape that dedupe and step 4.55 cannot parse.
+The single shape every reviewer and verifier uses for a finding. **Subagent 1** in Phase 2 loads it, and so do **Subagent 3** and **V3** in Phase 3. All three produce findings that Phase 3 dedupes, sweeps and persists. Without this file each invents a shape that dedupe and step 4.55 cannot parse.
 `q6-reusability-search.md` points here too, so a Q6a finding comes out in the same shape
 as every other finding.
 
@@ -40,8 +37,8 @@ Class-sites:    <A>/<N> (affected sites over sites searched, from the
 
 `Inverse risk` and `Class-sites` are REQUIRED on every finding that proposes a code
 change, one field per cascade feeder. `/fix-pr-review` seeds its own inverse-risk check
-and class sweep from these two lines, so a finding printed without them costs the next
-skill a full re-derivation.
+and class sweep from these two lines. A finding printed without them forces the next
+skill into a full re-derivation.
 
 `Rule-class` and `Enclosing-symbol` are required too. They let the critic compute a
 stable finding ID (`sha1(file::enclosing_symbol::rule_class)`) that survives line shifts
@@ -51,7 +48,7 @@ normalization it assumes on both fields, and the `status` values a finding may c
 
 ## `class_completeness:` audit
 
-Required on every finding that proposes a code change. Use this EXACT field name so
+Every finding that proposes a code change needs this. Use this EXACT field name so
 Phase 3 step 4.55 can parse it:
 
 ```
@@ -71,8 +68,7 @@ the total number of entries in `sites:`.
 
 Do NOT write `handled` in this audit. `handled` belongs to a different, later layer:
 `class_sites[].handled` in `<SKILL_DIR>/references/finding-state-schema.md` records
-whether the PR has since COVERED an affected site, and only affected sites are carried
-into that list. One word per layer. Conflating them makes a merely-swept finding look
+whether the PR has since COVERED an affected site. Only affected sites move into that list. One word per layer. Mixing them makes a merely-swept finding look
 fixed.
 
 If the finding proposes no code change, write exactly:
@@ -80,7 +76,7 @@ If the finding proposes no code change, write exactly:
 
 ## Run-level closing block
 
-A reviewer whose scope is the WHOLE PR (Subagent 1 in unchunked modes) ends its output
+Subagent 1 with WHOLE-PR scope in unchunked modes ends its output
 with:
 
 ```
@@ -90,5 +86,5 @@ Summary: <3 sentences. What the PR does, the biggest concern, the overall verdic
 Verdict: approve | request-changes
 ```
 
-Chunk reviewers, Subagent 3 and V3 report findings only. Their scope is partial, so main
+Chunk reviewers, Subagent 3 and V3 report findings only. They cover part of the PR, so main
 composes the run-level verdict in Phase 3.
