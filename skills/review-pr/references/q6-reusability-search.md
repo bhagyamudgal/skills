@@ -111,20 +111,28 @@ reusability_searches:
 ## Cross-repo mode
 
 If `repo_map_exports` is the cross-repo `N/A` marker, there is no local tree:
-`Grep`/`Glob` against `packages/` or `apps/` prove nothing. Run the same three
-searches by fetching candidate files on demand:
+`Grep`/`Glob` against `packages/` or `apps/` prove nothing. Phase 1 sets this
+marker on every cross-repo run regardless of the local cwd layout, so its
+presence is the whole trigger. Run the same three searches by fetching
+candidate files on demand. Paths come from the target repository, so never
+interpolate one into shell source: build the endpoint from variables with the
+path URL-encoded, and pass it as one quoted argument:
 
-```
-gh api "repos/<owner>/<repo>/contents/<path>?ref=<head-sha>"
+```bash
+encoded=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "<path>")
+gh api "repos/<owner>/<repo>/contents/${encoded}?ref=<head-sha>"
 ```
 
 Pick candidates from `repo_map_files` (populated cross-repo; only the export
 scan is unavailable): same-name or name-similar paths first for the exact-name
 search, then paths under shared roots for the semantic-root tokens, then the
-components directories for UI components. Verify by reading the fetched
-content, and record each fetch as the audit entry's tool call. When a fetch
-fails or no candidate path exists, write `Cannot assess: would need <file>`
-rather than a zero-hit claim.
+components directories for UI components. When that list carries the truncation
+marker it is a subset, not coverage: run the token searches against the target
+repository through `gh api search/code` (`q=<token>+repo:<owner>/<repo>`) and
+fetch what it returns. Verify by reading the fetched content, and record each
+fetch as the audit entry's tool call. When a fetch fails, no candidate path
+exists, or the complete search cannot run, write
+`Cannot assess: would need <file>` rather than `No issues`.
 
 ---
 

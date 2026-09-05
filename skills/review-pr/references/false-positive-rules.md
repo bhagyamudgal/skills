@@ -15,8 +15,10 @@ rules:
       Verify cited line in stashed diff. Drop if the call is structurally enclosed by
       Number(...) / parseFloat(...) / unary +(...) on the SAME line.
       parseInt(...) counts ONLY for a verified-integer field
-      (DB integer/bigint, Zod z.number().int(); definition owned by
-      <SKILL_DIR>/references/q5-type-coercion.md, not restated here).
+      (DB integer/bigint, Zod z.number().int() per
+      <SKILL_DIR>/references/q5-type-coercion.md) whose source is verified
+      integer-formatted and within Number.MAX_SAFE_INTEGER, or where explicit
+      truncation intent is documented at the write site.
       Anchored patterns:
         =\s*(Number|parseFloat|parseInt|\+)\s*\(\s*<call>
         :\s*(Number|parseFloat|parseInt|\+)\s*\(\s*<call>

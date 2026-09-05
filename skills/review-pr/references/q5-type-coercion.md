@@ -13,8 +13,11 @@ Coercion methods to scan: `.toFixed`, `.toString`, `.toLocaleString`, `String(..
 template-literal `` `${...}` `` containing those.
 Flag when NOT wrapped in `Number(...)` / `parseFloat(...)` / unary `+(...)`.
 `parseInt(...)` counts as a safe wrap ONLY for a verified-integer field
-(DB `integer`/`bigint`, Zod `z.number().int()` per the rules below):
-elsewhere it truncates fractions and IS the bug.
+(DB `integer`/`bigint`, Zod `z.number().int()` per the rules below) whose source
+is verified integer-formatted (no fractions, separators, or unit suffixes) and
+within `Number.MAX_SAFE_INTEGER`, or where explicit truncation intent is
+documented at the write site. Otherwise it IS the bug: `parseInt("1.9")` and
+`parseInt("1,234")` both yield `1`, and values past the safe range lose precision.
 
 How to tell a field is numeric:
 
