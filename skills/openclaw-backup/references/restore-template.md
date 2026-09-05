@@ -102,7 +102,12 @@ final deletion follow this contract item by item; they are not single unchecked 
 
 ### 1. Stop the service
 
+Render only the block matching the recorded manager. An on-demand launchd job restarts after `stop`, so launchd unloads instead:
+
 ```
+# launchd only; delete for other managers:
+launchctl unload -w '<SERVICE_DEF_PATH>'
+# all managers except launchd; delete for launchd:
 <SERVICE_CTL> stop '<SERVICE_NAME>'
 pgrep -af "openclaw" || echo "clear"
 ```
@@ -236,7 +241,15 @@ mv "$BROKEN_STATE_DIR" '<STATE_DIR>'
 rm -rf -- '<WORKSPACE_DIR>'
 [ -e "$WORKSPACE_ASIDE" ] && mv "$WORKSPACE_ASIDE" '<WORKSPACE_DIR>'
 rmdir "$RESTORE_RESERVATION_DIR"
+# Render only the restart line matching the recorded manager. Delete the other three.
+# systemd only:
 <SERVICE_CTL> start '<SERVICE_NAME>'
+# pm2 only:
+pm2 resurrect
+# Docker only:
+docker compose -f '<SERVICE_DEF_PATH>' up -d
+# launchd only:
+launchctl load -w '<SERVICE_DEF_PATH>'
 ```
 
 ## Falling back to the official archive
