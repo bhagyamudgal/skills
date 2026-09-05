@@ -226,7 +226,13 @@ if [ -n "$BASES" ]; then RESULT=$(printf '%s\n' "$BASES" | while IFS= read -r b;
 done); fi
 ```
 
-Read the file at the winning commit and log the source. Take it only when the result names exactly one winner (`grep -c WINNER` equals 1) and the winner is not `HEAD` itself: a winner equal to `HEAD` means no older base exists to trust. Otherwise set `SUPPRESSIONS = ""`: triaging without a policy adds noise, trusting the reviewed change hides findings. An empty candidate set emits no winner lines at all. When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added file was ignored.
+Read the file at the winning commit and log the source. Count winners in a way that stays successful on empty input, since `grep -c` exits 1 when it counts zero:
+
+```bash
+WINNERS=$(printf '%s\n' "$RESULT" | grep -c WINNER || true)
+```
+
+Take it only when `WINNERS` equals 1 and the winner is not `HEAD` itself: a winner equal to `HEAD` means no older base exists to trust. Otherwise set `SUPPRESSIONS = ""`: triaging without a policy adds noise, trusting the reviewed change hides findings. An empty candidate set emits no winner lines at all. When the base has no such file, set `SUPPRESSIONS = ""` and log that a PR-added file was ignored.
 
 Pass loaded suppressions into the subagent prompt as a `## Review suppressions` section (same approach as CLAUDE.md content, PR diff, and repo maps; main agent fetches, subagent receives as context).
 
