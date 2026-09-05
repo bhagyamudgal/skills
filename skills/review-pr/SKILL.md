@@ -13,7 +13,7 @@ Goal: produce an accurate, critical, actionable PR review, filter out noise (sty
 
 This skill expects CodeRabbit on the repo via `.coderabbit.yaml`. CodeRabbit handles style and convention findings first. `/review-pr` handles the deep semantic and codebase-wide review only it can do.
 
-**Use AskUserQuestion for user-facing decisions that still require judgment**: stop-and-ask, large-PR confirmation, and post-failure recovery. Posting is not a decision point. Invoking `/review-pr` authorizes submission of the complete review. Any sentence that offers the user 2+ labeled paths is an AskUserQuestion call. Options are cursor-selectable, concrete, and considered. Put the strongest first and mark it "(Recommended)".
+**Use AskUserQuestion for user-facing decisions that still require judgment**: stop-and-ask and post-failure recovery. Posting is not a decision point. Invoking `/review-pr` authorizes submission of the complete review. Large PRs always proceed with chunked review without asking. Any sentence that offers the user 2+ labeled paths is an AskUserQuestion call. Options are cursor-selectable, concrete, and considered. Put the strongest first and mark it "(Recommended)".
 
 ## Reference files
 
@@ -21,7 +21,7 @@ Main or a subagent loads each file only on the branch that reaches it. Loader an
 
 - `references/batch-mode.md`: orchestration rules, "don't stop" semantics, consolidated-report template, and automatic posting sequence. Loaded by **main** at Phase 1 when the user gives 2+ PR URLs or asks for all open PRs.
 - `references/reviewer-prompt.md`: the whole Subagent 1 prompt, the anti-slop rules it works under, and the note on why the finding shape is not restated inside it. Loaded by **main** at the Phase 2 dispatch on every `SIZE_MODE` branch, `solo-main` included.
-- `references/cross-cutting-prompt.md`: the whole Subagent 3 prompt. Loaded by **main** at the Phase 2 dispatch when `SIZE_MODE` is `parallel-chunked` or `parallel-chunked-confirm`; the unchunked modes never dispatch Subagent 3.
+- `references/cross-cutting-prompt.md`: the whole Subagent 3 prompt. Loaded by **main** at the Phase 2 dispatch when `SIZE_MODE` is `parallel-chunked`; the unchunked modes never dispatch Subagent 3.
 - `references/q5-type-coercion.md`: the Q5 type-coercion scan: coercion methods, how to decide a field is numeric, severity. Loaded by **Subagent 1** while answering Q5 when the diff contains a DB insert/update or an API payload construction.
 - `references/class-sweep-and-inverse-risk.md`: reviewer-prompt steps 5 and 6: blast-radius search order, the `class_completeness:` and `Inverse risk:` field rules, the worked inverse-risk examples. Loaded by **Subagent 1** as soon as any finding proposes a code change.
 - `references/repo-map.md`: the `repo_map_files` / `repo_map_exports` shell, local and cross-repo modes. The one copy in the repo; `/fix-pr-review` and `/harden-plan` load it from here too. Loaded by **main** in Phase 1 when `packages/` or `apps/` exists.
@@ -193,8 +193,7 @@ SIZE = additions + deletions
 
 if SIZE < 100:        SIZE_MODE = "solo-main"             # Skip subagent dispatch; run inline
 elif SIZE <= 500:     SIZE_MODE = "parallel-standard"     # Claude reviewer + conditional silent-failure hunter
-elif SIZE <= 2000:    SIZE_MODE = "parallel-chunked"      # Per-chunk Claude reviewers + silent-failure hunter
-else:                 SIZE_MODE = "parallel-chunked-confirm"  # AskUserQuestion: Continue vs Cancel
+else:                 SIZE_MODE = "parallel-chunked"      # Per-chunk Claude reviewers + silent-failure hunter, always proceed without asking
 ```
 
 For `solo-main`, Phase 2's Subagent 1 section runs inline in main context with the same prompt body and no Agent tool call.
@@ -279,21 +278,12 @@ Launch in a **single message with multiple Agent tool calls** based on `SIZE_MOD
 **`SIZE_MODE == "parallel-standard"`** (100-500 lines, default):
 - Dispatch Subagent 1 (Claude reviewer) + conditional Subagent 2 (silent-failure hunter) in parallel.
 
-**`SIZE_MODE == "parallel-chunked"`** (500-2000 lines):
+**`SIZE_MODE == "parallel-chunked"`** (> 500 lines):
 - Split the diff by file into ~500-line chunks. Never split a file across chunks.
 - Dispatch ONE Subagent 1 PER CHUNK with full intent model + prior review timeline + repo map + schema context, but only its chunk's files in scope. Prompt: "Your scope is the files listed above. Do not report findings in other files."
 - Dispatch one silent-failure hunter at full PR scope.
 - Dispatch one **cross-cutting reviewer** at full PR scope as Subagent 3. See below. Chunk reviewers report within their own chunk only, so Subagent 3 is the one reviewer that can see a defect class spanning two chunks. Without it, that class feeds the cascade directly.
-
-**`SIZE_MODE == "parallel-chunked-confirm"`** (> 2000 lines):
-
-```
-header: "Large PR"
-text: "This PR is <N> lines. Chunked review will dispatch <M> reviewer subagents (one per ~500-line chunk) plus silent-failure hunter. Expected wall: 2-4 minutes."
-options:
-  - "Continue": Proceed with chunked parallel review
-  - "Cancel": Abort; consider breaking into smaller PRs
-```
+- Always proceed with chunked parallel review. Never ask for confirmation, regardless of size.
 
 ### Degraded-mode rule
 
@@ -317,7 +307,7 @@ The context packet is PART OF THE PROMPT, not commentary around it. Dispatch the
 
 ### Subagent 3 (conditional): Cross-cutting reviewer
 
-Dispatch when `SIZE_MODE` is `parallel-chunked` or `parallel-chunked-confirm`. Skip otherwise.
+Dispatch when `SIZE_MODE` is `parallel-chunked`. Skip otherwise.
 In unchunked modes Subagent 1 already sees every file.
 
 - `subagent_type`: `general-purpose`
