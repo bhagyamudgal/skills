@@ -1,8 +1,8 @@
 # Subagent 1: Claude reviewer prompt
 
 Loaded by **main** at the Phase 2 dispatch, on every `SIZE_MODE` branch: dispatched once
-under `parallel-standard`, once per chunk under `parallel-chunked` /
-`parallel-chunked-confirm`, and run inline in main context under `solo-main`.
+under `parallel-standard`, once per chunk under `parallel-chunked`,
+and run inline in main context under `solo-main`.
 
 Substitute `<SKILL_DIR>`, `<PROMPT_PREAMBLE>` and `<GROUND_TRUTH>` before the prompt is
 used. All three are defined in `<SKILL_DIR>/references/dispatch-prompts.md`, pointed at from

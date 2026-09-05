@@ -1,7 +1,7 @@
 # Subagent 3: cross-cutting reviewer prompt
 
-Loaded by **main** at the Phase 2 dispatch when `SIZE_MODE` is `parallel-chunked` or
-`parallel-chunked-confirm`. In the unchunked modes Subagent 3 is never dispatched and this
+Loaded by **main** at the Phase 2 dispatch when `SIZE_MODE` is `parallel-chunked`.
+In the unchunked modes Subagent 3 is never dispatched and this
 file stays unread.
 
 Substitute `<SKILL_DIR>` and `<PROMPT_PREAMBLE>` before dispatching. Both are defined in
