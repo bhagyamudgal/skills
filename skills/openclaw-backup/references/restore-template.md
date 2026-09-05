@@ -14,7 +14,6 @@ opens it during an incident.
 | `<SERVICE_NAME>` | Unit or process name |
 | `<UNIT_DIR>` | Unit directory, systemd only: the directory containing the unit file. Omit when the manager is not systemd. |
 | `<SERVICE_DEF_PATH>` | Definition file path, non-systemd managers only. Omit for systemd. |
-| `<SERVICE_RESTART_CMD>` | Native restart command recorded at backup time, non-systemd managers only. Omit for systemd. |
 | `<RAW_ARCHIVE>` | Filename of the raw archive |
 | `<WORKSPACE_ARCHIVE>` | Filename of the workspace archive, if the workspace sits outside the state dir |
 | `<WORKSPACE_DIR>` | Restored workspace path |
@@ -27,7 +26,7 @@ in step 4 and corrupting a database they just restored.
 Render every substituted path below as a shell literal: keep the single quotes around each
 placeholder and replace every `'` inside the value with `'\''`. Never use double quotes for
 substituted paths: `$(...)`, backticks, and `\"` inside them still execute or break out.
-`<SERVICE_CTL>` and `<SERVICE_RESTART_CMD>` are the exceptions: they name commands from a closed set, not paths, so they stay unquoted.
+`<SERVICE_CTL>` and the fixed activation words (`daemon-reload`, `resurrect`, `up -d`, `load -w`) are the exceptions: they name commands from a closed set, not paths, so they stay unquoted.
 
 ---
 
@@ -159,11 +158,10 @@ Copy the drop-in directory too, not just the unit file. Overrides live there.
 Other managers (pm2, Docker, launchd):
 
 ```
-cp -a '<BACKUP_DIR>/meta/service-def/.' "$(dirname -- '<SERVICE_DEF_PATH>')/"
-<SERVICE_RESTART_CMD>
+cp -a '<BACKUP_DIR>/meta/service-def/.' "$(dirname -- '<SERVICE_DEF_PATH>')"
 ```
 
-Copy the archived definition back over its recorded path, then restart with the recorded native command.
+Copy the archived definition back over its recorded path. Do not start anything here: activation waits for step 7, after every artifact is restored and validated.
 
 ### 6. Restore the workspace
 
@@ -191,9 +189,18 @@ rm -rf -- '<WORKSPACE_DIR>'
 
 ### 7. Start and verify
 
+Render only the block matching the recorded manager. Delete the other three. No block starts anything outside its manager, and every path stays quoted:
+
 ```
+# systemd only:
 <SERVICE_CTL> start '<SERVICE_NAME>'
 <SERVICE_CTL> status '<SERVICE_NAME>'
+# pm2 only:
+pm2 resurrect
+# Docker only:
+docker compose -f '<SERVICE_DEF_PATH>' up -d
+# launchd only:
+launchctl load -w '<SERVICE_DEF_PATH>'
 openclaw doctor
 ```
 

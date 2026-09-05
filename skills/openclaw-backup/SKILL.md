@@ -135,7 +135,7 @@ Pass this step only when `zstd -t` passes, the listing exit is 0, and the listin
 
 Capture each of these into `meta/`:
 
-- Service unit file and its drop-in directory. Overrides live in the drop-ins. Record the service manager. For systemd, record the unit directory as `UNIT_DIR`: the directory containing the unit file, with drop-ins under `<name>.d`. For pm2, Docker, or launchd there is no unit directory: archive the definition file under `meta/service-def/` keeping its basename, and record its live path as `SERVICE_DEF_PATH` and the native restart command as `SERVICE_RESTART_CMD`.
+- Service unit file and its drop-in directory. Overrides live in the drop-ins. Record the service manager. For systemd, record the unit directory as `UNIT_DIR`: the directory containing the unit file, with drop-ins under `<name>.d`. For pm2, Docker, or launchd there is no unit directory: archive the definition file under `meta/service-def/` keeping its basename, record its live path as `SERVICE_DEF_PATH`, and record the service manager. The template restores per recorded manager.
 - Environment files the unit references.
 - `openclaw --version`, `node --version`, global npm packages.
 - Listening ports, running OpenClaw processes, crontab.
