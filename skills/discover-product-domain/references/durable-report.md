@@ -18,7 +18,8 @@ Resolve `docs/<slug>_domain_discovery.md` against the repository's resolved
 ## Contents
 
 Include the brief, the entry route, the supplied or generated candidates,
-rejected domains, finalists or survivors, and evidence timestamps. Name a winner
+rejected domains, finalists or survivors, and the complete per-result evidence
+record required by `references/domain-verification.md`. Name a winner
 when one exists, and a runner-up only when at least two names survive. Include
 the artifacts the route actually produced:
 

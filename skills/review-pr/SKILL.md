@@ -25,7 +25,7 @@ Main or a subagent loads each file only on the branch that reaches it. Loader an
 - `references/q5-type-coercion.md`: the Q5 type-coercion scan: coercion methods, how to decide a field is numeric, severity. Loaded by **Subagent 1** while answering Q5 when the diff contains a DB insert/update or an API payload construction.
 - `references/class-sweep-and-inverse-risk.md`: reviewer-prompt steps 5 and 6: blast-radius search order, the `class_completeness:` and `Inverse risk:` field rules, the worked inverse-risk examples. Loaded by **Subagent 1** as soon as any finding proposes a code change.
 - `references/repo-map.md`: the `repo_map_files` / `repo_map_exports` shell, local and cross-repo modes. The one copy in the repo; `/fix-pr-review` and `/harden-plan` load it from here too. Loaded by **main** in Phase 1 when `packages/` or `apps/` exists.
-- `references/q6-reusability-search.md`: STEP A enumeration + STEP B search algorithm + Q6 control-flow gap. Loaded by **Subagent 1** when the diff has 1+ new top-level definitions.
+- `references/q6-reusability-search.md`: STEP A enumeration + STEP B search algorithm + Q6 control-flow gap. Loaded by **Subagent 1** when the diff has 1+ new definitions of any STEP A kind (not top-level only).
 - `references/finding-output-format.md`: the per-finding field block, the `class_completeness:` audit shape, and the run-level closing block. The one copy of the finding shape. Loaded by **Subagent 1**, **Subagent 3** and **V3** before they write any finding.
 - `references/schema-design-checks.md`: Q7 (overlap), Q8 (1:1 consolidation), Q9 (cross-table FK) checks. Loaded by **Subagent 1** when `INCLUDE_SCHEMA_CHECKS = true`, and by **V3** when the gap check covers Q7-Q9.
 - `references/verification-subagents.md`: V1/V2/V3 dispatch conditions + the exact prompt each is given. Loaded by **main** in Phase 3 at the first of steps 4.55 / 4.9 / 6 that fires.
@@ -208,9 +208,9 @@ If `PRIOR_STATE.convergence` exists, invoke `converge-reviews` with the current 
 
 ### Compute shared-package repo map (for Q6)
 
-If `packages/` or `apps/` exists, load `${CLAUDE_SKILL_DIR}/references/repo-map.md` and run the block for the mode you are in: it holds both shell blocks (the cross-repo `gh api` tree fetch and the local `bash -c` find/grep pair, each truncating at 500 lines) and stashes `repo_map_files` + `repo_map_exports` for Subagent 1's prompt. It is the one copy of that shell, shared with `/fix-pr-review` and `/harden-plan`.
+If `CROSS_REPO_MODE=true`, load `${CLAUDE_SKILL_DIR}/references/repo-map.md` and run the cross-repo block unconditionally: the target repository's layout decides, not the local cwd's. Otherwise, if `packages/` or `apps/` exists, load `${CLAUDE_SKILL_DIR}/references/repo-map.md` and run the block for the mode you are in: it holds both shell blocks (the cross-repo `gh api` tree fetch and the local `bash -c` find/grep pair, each truncating at 500 lines) and stashes `repo_map_files` + `repo_map_exports` for Subagent 1's prompt. It is the one copy of that shell, shared with `/fix-pr-review` and `/harden-plan`.
 
-If neither directory exists, skip the shell. Set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false`. Subagent 1 reroutes greps to the changed files' directories, or the repository root when those reveal nothing. Never assume `src/`.
+If neither directory exists in local mode, skip the shell. Set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false`. Subagent 1 reroutes greps to the changed files' directories, or the repository root when those reveal nothing. Never assume `src/`.
 
 ### Check for error-handling touches (flag for Phase 2)
 
@@ -411,7 +411,7 @@ From round 2, suppress already-handled findings per the reference loaded at step
 
 ### 4.96. Attribute lineage on this round's findings
 
-Skip entirely when `CURRENT_ROUND == 1`. There is no earlier fix to attribute to, and every finding gets `caused_by: null`. From round 2, attribute fresh findings per the reference loaded at step 4.9, one hop, same bound as step 4.9. Step 7.5 counts the non-null values.
+Skip entirely when `CURRENT_ROUND == 1`. There is no earlier fix to attribute to, and every finding gets `caused_by: null`. From round 2, attribute fresh findings per the reference loaded at step 4.9, one hop, same bound as step 4.9. Step 7.5 counts only the resolvable links; dangling ids are excluded per `references/finding-state-schema.md` (`caused_by` cardinality).
 
 
 ### 5. Confidence-based drop
@@ -472,8 +472,10 @@ skip the trend sentence, and move on.
 From round 2:
 
 ```
-cascade_share: <count of active findings with a non-null caused_by> / <count of active findings>
+cascade_share: <count of active findings with a resolvable caused_by> / <count of active findings>
 ```
+
+A `caused_by` counts only when its target finding is still present. Dangling ids are excluded, per `references/finding-state-schema.md` (`caused_by` cardinality), which owns that rule.
 
 Zero active findings → `cascade_share = 0`, not a division by zero.
 
@@ -558,7 +560,7 @@ Mandatory from round 2. PRINT the value Phase 3 step 7.5 computed. Do not recomp
 here. Step 8 already read that same number for the verdict prefix, and a second
 computation on a different finding set is how the two disagree.
 
-`cascade_share` = (active findings with `caused_by` set) / (total active findings)
+`cascade_share` = the step 7.5 value (resolvable `caused_by` links only; defined once at step 7.5, not recomputed here)
 
 Emit exactly one trend sentence, picked from what the numbers say:
 - `cascade_share > 0.5` → `Not converging, because the fixes are generating the findings.`

@@ -2,10 +2,10 @@
 
 Loaded from section 6 of `SKILL.md`, and only when the card carries an **Existing PR URL**. An initial publication never reaches any of this. Section 6's `$repository` resolution and its **valid remote** definition are already in hand before this branch starts.
 
-Read that exact URL before enumerating remotes; its `headRepository` establishes the required head repository identity:
+Read that exact URL before enumerating remotes, with the identical ten-field `gh pr view` read-back whose field list section 6 of `SKILL.md` owns (not restated here); its `headRepository` establishes the required head repository identity:
 
 ```bash
-gh pr view "$existing_pr_url" --repo "$repository" --json url,title,body,baseRefName,baseRefOid,headRefName,headRefOid,headRepository,state,isDraft
+gh pr view "$existing_pr_url" --repo "$repository" --json <same ten fields as section 6's read-back>
 ```
 
 Require `headRepository.id` and `nameWithOwner` to be available. Enumerate configured valid remotes and keep only those matching that exact head identity. Auto-select one match; for multiple matches, use AskUserQuestion with concrete `<remote>: <nameWithOwner> (<id>)` options, paginating disjoint option sets when needed; zero matches stops with the exact next action `Configure a remote whose complete endpoint sets resolve to the existing PR head repository, then rerun file-pr.` Freeze the selected remote, revalidate its remote branch at current `HEAD`, and reconcile the PR's base, state, draft mode, head branch, and head SHA against the card and publication request. A mismatch stops or enters `done`'s explicit base-rebind path. Only a separately preflighted title/body edit may mutate it.

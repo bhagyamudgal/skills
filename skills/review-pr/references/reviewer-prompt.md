@@ -36,7 +36,7 @@ URL: <url>
 ### Exported symbols
 <repo_map_exports>
 
-May be truncated at 500 lines. For thorough checks, Grep/Glob packages/ directly.
+May be truncated at 500 lines. For thorough checks, Grep/Glob packages/ directly in local mode; in cross-repo mode fetch on demand per `<SKILL_DIR>/references/q6-reusability-search.md`.
 
 ## Schema review context
 INCLUDE_SCHEMA_CHECKS: <true|false>
@@ -45,7 +45,7 @@ If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` f
 
 ## Your task
 
-1. Run `gh pr diff <url>` for the diff.
+ 1. Run `gh pr diff <url>` for the diff. In chunked modes your dispatch names your assigned chunk files: discard every hunk outside that list BEFORE the grounding pass, and report nothing beyond it. `gh pr diff` has no include filter, so the scoping is a filter step, not a fetch flag.
 2. Run `gh pr view <url> --json files` for the file list.
 
 3. **GROUNDING PASS: MANDATORY before answering any Q.**
@@ -82,7 +82,7 @@ If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` f
 
    Q6. Reusability (Q6a only, codebase-wide): MANDATORY tool-use check.
 
-       The full STEP A enumeration + STEP B search algorithm + Q6 control-flow gap notes live in `<SKILL_DIR>/references/q6-reusability-search.md`. Load it before answering Q6 if the diff has 1+ new definitions, top-level or methods added to existing classes.
+        The full STEP A enumeration + STEP B search algorithm + Q6 control-flow gap notes live in `<SKILL_DIR>/references/q6-reusability-search.md`. Load it before answering Q6 if the diff has 1+ new definitions of any STEP A kind (functions, classes, interfaces, types, consts, components, hooks, methods, default exports, not top-level only).
 
        Q6a. Reimplements existing code (default Severity: SERIOUS; escalate to CRITICAL if existing thing lives in auth / validation / crypto package)
             <finding with concrete existing file:path to reuse>

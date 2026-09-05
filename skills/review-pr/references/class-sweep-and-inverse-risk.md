@@ -32,4 +32,4 @@ Answer in concrete terms and name the failure mode, not vague warnings. Examples
 Write it into the finding's `Inverse risk:` field. If the fix is a pure addition
 with no behavior traded away, say `none, pure addition`.
 
-A fix with worse inverse risk than the original finding adds harm. Rewrite the suggestion or downgrade the finding to an observation.
+A fix with worse inverse risk than the original finding adds harm. Apply the step 4.56 remedy in `references/critic-verify.md`; no second outcome lives here.

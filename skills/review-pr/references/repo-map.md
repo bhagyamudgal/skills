@@ -39,7 +39,7 @@ if [ -d packages ] || [ -d apps ]; then
   find packages apps 2>/dev/null -type d \( -name src -o -name lib -o -name source \) \
     -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/build/*" \
     -not -path "*/.next/*" 2>/dev/null \
-    | xargs -I{} grep -rhnE "^export (default (async )?function|function|const|class|type|interface|async function) \w+" {} 2>/dev/null \
+    | xargs -I{} grep -rnE "^export (default (async )?function|function|const|class|type|interface|async function) \w+" {} 2>/dev/null \
     | awk "NR<=500{print} END{if(NR>500)print \"[truncated at 500 of \" NR \" lines, grep packages/ apps/ directly for more]\"}"
 fi
 '
