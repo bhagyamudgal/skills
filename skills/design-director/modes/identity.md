@@ -1,4 +1,4 @@
-# Mode: Brand Identity System
+# Mode: Brand Identity
 
 - **Slots**:
   1. Industry / category
