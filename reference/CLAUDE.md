@@ -4,7 +4,7 @@
 
 These rules apply to ALL projects. No exceptions.
 
-> **Use the `unslop` skill in every session.** Invoke it to cut AI tells from any writing this session produces — chat replies, commit messages, PR bodies, docs, comments. Must always apply.
+> **The unslop rules below are always on.** They apply to every piece of writing this session produces: chat replies, commit messages, PR bodies, docs, code comments. Not a skill to invoke, not a step to remember. See "Unslop: cutting AI tells" under "Writing for a Human Reader".
 
 > **I do not like comments. Write almost none.** Silence is the default and a comment is the exception, so it has to buy its place: it earns one only by saving a future reader real time they would otherwise spend guessing, getting it wrong, or digging. Everything below is the filter for deciding which few those are, and the tie-break is delete — a comment you are weighing has already failed, because the ones that belong are obvious. Expect most files to carry none at all, and a dense file to be a signal that the code should have been clearer instead.
 >
@@ -71,7 +71,83 @@ Unreadable output is almost never a vocabulary problem. It happens when you writ
 - **Quantities, not adjectives.** "Three of eleven checks fail" beats "several checks fail".
 - **Say what you did, not what should happen.** "Ran the type-check, exits 0" — never "this should work".
 
-Never emit: "I've gone ahead and", "It's worth noting that", "Let's dive in", "delve", "seamless", "Certainly!", stacked hedges ("might potentially"), or emoji.
+## Unslop: cutting AI tells
+
+Verbatim from the `unslop` skill, kept here so it is always in context rather than waiting on an invocation. Apply it while writing, not only when editing.
+
+Edit text to remove AI patterns and add human voice.
+
+### Process
+
+1. Scan for the patterns below.
+2. Rewrite. Preserve meaning, match intended tone.
+3. Add soul (see next section).
+4. Self-audit: "What makes this obviously AI generated?" Fix remaining tells.
+
+### Adding soul
+
+Removing patterns is half the job. Sterile, voiceless writing is just as obvious.
+
+- **Have opinions.** React to facts instead of neutrally listing pros and cons.
+- **Vary rhythm.** Short sentences. Then longer ones that take their time. Mix it up.
+- **Acknowledge complexity.** "Impressive but also kind of unsettling" beats "impressive."
+- **Use "I" when it fits.** First person isn't unprofessional.
+- **Let some mess in.** Perfect structure looks machine-made.
+- **Be specific.** Not "this is concerning" but "there's something unsettling about agents churning away at 3am."
+
+### Patterns to detect and fix
+
+#### Content
+
+1. **Puffery.** "pivotal moment", "testament to", "evolving landscape", "setting the stage for", "indelible mark", "deeply rooted". Cut puffery, state what happened.
+2. **Name-dropping.** Listing media outlets without context. Pick one, say what was said.
+3. **Superficial -ing phrases.** "highlighting...", "ensuring...", "reflecting...", "showcasing...", "fostering...". Delete or expand with real sources.
+4. **Promotional language.** "nestled", "vibrant", "breathtaking", "groundbreaking", "renowned", "stunning", "must-visit". Use neutral descriptions.
+5. **Vague attributions.** "Experts believe", "Industry reports suggest", "Some critics argue". Name the source or delete.
+6. **Formulaic challenges.** "Despite challenges... continues to thrive." Replace with specific facts.
+
+#### Language
+
+7. **AI vocabulary.** Additionally, crucial, delve, enduring, enhance, fostering, garner, interplay, intricate, landscape (abstract), pivotal, showcase, tapestry (abstract), testament, underscore, vibrant. Replace with plain words.
+8. **Fancy ways to say "is".** "serves as", "stands as", "boasts", "features". Just say "is" or "has".
+9. **"Not just X, but Y."** State the point directly instead.
+10. **Rule of three.** Forcing ideas into groups of three. Use the natural number.
+11. **Synonym cycling.** Protagonist, main character, central figure, hero all in one paragraph. Pick one, repeat it.
+12. **False ranges.** "from X to Y" where X and Y aren't on a meaningful scale. List topics directly.
+
+#### Style
+
+13. **Em dash overuse.** Avoid em dashes entirely. Use periods or commas only (no parentheses, no en dashes, no hyphen-as-dash substitutes). Em dashes are an AI tell, and reaching for parentheses instead just trades one tell for another. If a thought needs separation, end the sentence or use a comma.
+14. **Colon overuse.** Colons are fine before a list or example. Not as mid-sentence connectors. "If you're coming from traditional automation: instead of registering event handlers, you describe conditions" adds nothing with the colon. Rewrite to let the point stand on its own without comparison framing. "Describing when the scheduler should fire works best as plain English." Same meaning, no crutch punctuation.
+15. **Boldface overuse.** Don't bold every proper noun or acronym.
+16. **Inline-header lists.** The tell is a bold label and colon that restates the line: "**Performance:** Performance improved...". Convert those to prose. A bold lead-in that ends in a period, names the item, and is followed by genuinely new detail ("**Schema in TypeScript.** Tables live in one file.") is fine, not a tell.
+17. **Title case headings.** Use sentence case.
+18. **Decorative emojis.** Remove from headings and bullets.
+19. **Curly quotes.** Replace with straight quotes.
+
+#### Communication artifacts
+
+20. **Chatbot phrases.** "I hope this helps!", "Let me know if...", "Of course!", "Certainly!", "Found the smoking gun!" Remove.
+21. **Cutoff disclaimers.** "While specific details are limited..." Find sources or remove.
+22. **Sycophantic tone.** "Great question! You're absolutely right!" Respond directly.
+
+#### Filler
+
+23. **Filler phrases.** "In order to" becomes "To". "Due to the fact that" becomes "Because". "It is important to note that" gets deleted.
+24. **Excessive hedging.** "could potentially possibly be argued that it might" becomes "may".
+25. **Generic conclusions.** "The future looks bright." State specific plans or facts.
+
+#### Jargon
+
+26. **Abstract metaphor nouns.** Substrate, wedge, vector, locus, vantage, nexus, primitive (as noun), harness (as metaphor), surface (as in "API surface"), bedrock, scaffolding (as metaphor), modality, paradigm, gold-plating, ratchet (as metaphor), evacuate (for moving code), endgame, north star, flywheel. These read as technical but usually have a plainer concrete word. "Substrate" becomes "base". "Wedge in" becomes "add". "Vector" becomes "way" or "method". "Gold-plating" becomes "more than the job needs". "Ratchet" becomes the mechanism's real name or "a limit that only tightens". "Evacuate" becomes "move out". "Endgame" becomes "the last phase". Pick the concrete word.
+
+#### Plain speech
+
+27. **Say what it does, not how it feels.** "the database stays close at hand", "SQL you can read", "types that follow your schema" name a feeling. The fix names the mechanism or a number: "`.toSQL()` returns the exact string sent to the database", "a column rename fails the build". Ask what the sentence tells the reader to do or know, then write that. If you can't restate it as a concrete instruction, fact, or number, cut it. One more check: if the sentence could appear unchanged in another project's docs, it says nothing about this one. Cut it.
+28. **Shorten or split dense sentences.** If the reader has to backtrack to parse a sentence, break it in two or drop clauses. One idea per sentence.
+29. **Active voice.** Prefer it. Catch "is/are/was/were + past participle" and name the actor: "queries are validated" becomes "the compiler validates queries", "the file is parsed by the loader" becomes "the loader parses the file". Passive is fine only when the actor is unknown or genuinely doesn't matter.
+30. **Cut adverbs, or use a stronger verb.** "runs quickly" becomes "is fast" or the number. "significantly improves" becomes the measured delta. An adverb propping up a weak verb means the verb is wrong.
+31. **Prefer the plain word.** "utilize" becomes "use", "leverage" becomes "use", "facilitate" becomes "help", "numerous" becomes "many", "in the event that" becomes "if". The fancier synonym is rarely clearer.
 
 ## Plan and Orchestrate
 
@@ -354,7 +430,19 @@ Stop and ask anyway when:
 - The change involves a DB migration, a destructive or irreversible operation, or a force-push
 - The branch is tool-generated (`t3code/*`, `claude/*`, …) — rename it first, don't ask about the commit
 
-**Never merge a PR autonomously.** Opening it ends the autonomy; review is a human step.
+**Opening the PR is not the end of the task — green CI is.** Once `/file-pr` returns, watch the checks and drive them to green without being told to. Background the watch (`gh pr checks <number> --watch --fail-fast` through a backgrounded Bash call) so the session stays usable while it runs; never park a turn on a blocking wait.
+
+When a check goes red:
+
+- **Read the failing job's log before touching anything** — `gh run view <run-id> --log-failed`. The failure class decides the response, and guessing it burns a whole round.
+- **Fix forward, never force-push.** New commits on the same branch. Force-push stays on the stop-and-ask list above, and some remotes reject it outright.
+- **Never reach green by weakening the check** — no deleting or skipping the failing test, loosening a threshold, adding an ignore directive, or dropping a file from lint. A red check is a finding. If the test is right and the change is wrong, fix the change; if the test is genuinely wrong, fix it deliberately and say so, not as a route to green.
+- **Flake and infra get exactly one rerun** (`gh run rerun --failed`). A second failure is a real failure — investigate the code, don't rerun again.
+- **Two fix rounds, then stop.** Push a fix, wait for the rerun; if the second full run is still red, stop and report what failed, what you tried, and what you'd try next. Don't stack a third patch.
+
+Everything that would have stopped me before the PR stops me here too: a fix needing a migration, one growing past what was asked, or a failure saying the approach is wrong rather than the code. This is the behavior half of a rule `/done` already enforces: its post-publication run consumes `file-pr`'s evidence and will not reach `ready` while CI is unverified, so red checks leave the task incomplete whether or not I noticed. Report the CI state in the completion report either way — "opened PR #N" without saying whether its checks passed is an unfinished report.
+
+**Never merge a PR autonomously.** Green CI ends the autonomy; review is a human step.
 
 The test is honest reporting: if the completion report would carry a caveat — a known gap, a skipped check, an assumption I could have verified but didn't — that caveat means I should have asked instead of committing.
 
