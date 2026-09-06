@@ -13,6 +13,7 @@ I run every reviewer at once over the local diff and merge what they find into o
 
 - When the user specifies files, I review those files.
 - Otherwise I review all unstaged and staged changes through `git diff HEAD`.
+- I pin the comparison base before dispatch. When the caller supplies a merge-base SHA, as `done` does, I use it. Otherwise I resolve `git merge-base HEAD origin/<default branch>`, reading the default from `gh repo view --json defaultBranchRef`. Reviewers need it to tell base-branch behavior from behavior that earlier commits on this branch introduced.
 - When a prior convergence artifact exists, I invoke `converge-reviews` with the current baseline, diff hash, paths, request, and planned roster and lenses before I dispatch. I reuse an unchanged result. When it returns `continue`, I dispatch only the invalidated coverage it names. I apply any other result without starting another review round.
 
 ### Step 2: Build the roster, then dispatch
@@ -38,9 +39,9 @@ I add to the roster when the condition holds:
 3. Silent Failure Hunter with `subagent_type: "pr-review-toolkit:silent-failure-hunter"`. I add it when the diff touches error handling, try-catch, or fallback logic.
 4. UI Review Agent with `subagent_type: "general-purpose"`. I add it when the diff touches frontend or UI code. I prompt it to invoke `/web-interface-guidelines`, `/ui-skills`, and `/rams` against the diff and return their merged findings.
 
-The shared prompt, plus the per-agent lens, reads "Review these changed files for bugs, logic errors, and adherence to project CLAUDE.md conventions: [files]."
+The shared prompt, plus the per-agent lens, reads "Review these changed files for bugs, logic errors, and adherence to project CLAUDE.md conventions: [files]. The comparison base is [merge-base SHA]. `git diff [merge-base SHA] -- <file>` shows what this branch changed against it."
 
-Every reviewer also carries the product-intent instruction. When a finding's fix would change observable behavior that already exists on the base branch, the reviewer adds a `product-intent` tag to it and reports what it found: whether a test asserts the current behavior, whether a comment or doc explains it, and which commit introduced it per `git blame` or `git log -S`, including "found nothing". Reviewers report tagged findings at their real severity and do not fix them.
+Every reviewer also carries the product-intent instruction. When a finding's fix would change observable behavior that already exists on the base branch, meaning at the pinned merge-base rather than in this branch's earlier commits, the reviewer adds a `product-intent` tag to it and reports what it found: whether a test asserts the current behavior, whether a comment or doc explains it, and which commit introduced it per `git blame` or `git log -S`, including "found nothing". Reviewers report tagged findings at their real severity and do not fix them.
 
 I state the roster before dispatching. It is the checklist Step 3 merges against.
 
