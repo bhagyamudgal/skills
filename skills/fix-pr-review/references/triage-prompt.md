@@ -60,14 +60,14 @@ Expected format:
       reason: "Timeout handled at caller level"
       added: 2026-04-13
 
-Before applying the R1-R9 rubric in STEP 4, check each finding against
+Before applying the R1-R10 rubric in STEP 4, check each finding against
 suppressions. For each suppression entry:
   1. Match `pattern` (case-insensitive substring) against the comment body
   2. If `category` is set, also match against the finding's category
   3. If `file` is set, also match against the finding's file path
 If ALL specified conditions match: auto-classify as DISMISS with reason
   "suppressed by .claude/review-suppressions.yml: <reason>"
-Skip the R1-R9 rubric for suppressed findings. They go straight to
+Skip the R1-R10 rubric for suppressed findings. They go straight to
 DISMISS in the triage plan.
 
 STEP 1. DEDUPE PASS: Group comments that describe the same pattern at
@@ -194,11 +194,11 @@ STEP 3 (for each comment or meta-finding):
      If ANY one is Yes → PROMOTE to full triage (continue with Step 4) and
      mark `promoted_from_nitpick: true`.
 
-STEP 4. CLASSIFY using the R1-R9 rubric. Load
+STEP 4. CLASSIFY using the R1-R10 rubric. Load
 `<SKILL_DIR>/references/triage-rubric.md` NOW and apply its rubric in order, first
 match wins. Do not classify from rule names you already know. R3, R6 and R7 each
 carry carve-outs that decide every reuse-related finding. That file also holds the
-NEEDS-INPUT calibration R9 needs, the `change_class` worked examples STEP 5 needs,
+NEEDS-INPUT calibration R9 and R10 need, the `change_class` worked examples STEP 5 needs,
 and the anti-slop reply formats STEP 6 needs.
 
 STEP 5. For each FIX, write a concrete fix plan:
@@ -321,9 +321,10 @@ Return the plan in this EXACT format. Missing required fields cause rejection.
 ## NEEDS-INPUT (<count>)
 [N1] <file:line>: <comment ask>
      html_url: <direct URL>
+     rubric: R9|R10
      grounding_a: <what code>
      grounding_b: <what ask>
-     why_unclear: <1 sentence>
+     why_unclear: <1 sentence; R10 uses the shape in triage-rubric.md>
      reusability_context: { flagged: <bool>, matches: [...], verified: <yes|no> }
                                    # from STEP 2.5; { flagged: false } when nothing found
 

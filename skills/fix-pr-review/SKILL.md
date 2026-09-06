@@ -34,7 +34,7 @@ Takes a PR review from CodeRabbit, `/review-pr`, or pasted text. It triages each
 | R4 | DISMISS: already fixed | `prior_commit_sha` |
 | R5 | DISMISS: contradicts CLAUDE.md | `claude_md_quote` |
 | R3 | DISMISS: pure style/naming | Not reusability-flagged |
-| R10 | NEEDS-INPUT: fix would change pre-existing observable behavior | `why_unclear` in the R10 shape |
+| R10 | NEEDS-INPUT: fix would change base-branch observable behavior | `why_unclear` in the R10 shape |
 | R6 | FIX: bug/security/perf/correctness/reusability | `fix_plan` ≥30 chars, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (with `verdict`) |
 | R7 | DEFER: valid but out of scope | Tracking reference |
 | R8 | DISAGREE: legitimate technical disagreement | `disagree_rationale` |
@@ -58,7 +58,7 @@ Each carries its firing condition in the pointer at the point of use. Load it th
 
 - `references/fetch-review-data.md`: per-input-type GraphQL/REST fetch, CodeRabbit review-body anatomy, `Comment` schema. Loaded by main in Phase 2, at the GitHub fetch step, and again at the `Comment`-schema normalisation step if the local-file path meant it was not read there.
 - `references/triage-prompt.md`: the whole Phase 3 subagent prompt (STEP 0 → STEP 6 + output format). Read by main in Phase 3, placeholder-substituted, passed verbatim.
-- `references/triage-rubric.md`: R1-R9 detail, NEEDS-INPUT calibration, `change_class` worked examples, reply formats. Loaded by the triage SUBAGENT at STEP 4.
+- `references/triage-rubric.md`: R1-R10 detail, NEEDS-INPUT calibration, `change_class` worked examples, reply formats. Loaded by the triage SUBAGENT at STEP 4.
 - `references/github-reply-resolve.md`: Steps 7a-7d posting/resolving mechanics. Loaded by main in Phase 7; never loaded for local-file input.
 - `references/final-report.md`: the Phase 8 report template and its rendering rules. Loaded by main in Phase 8 before printing.
 - `references/branch-safety.md`: repo plus branch landing with detached-HEAD and different-branch questions. Loaded by main in Phase 1 for GitHub inputs; skipped for local files.

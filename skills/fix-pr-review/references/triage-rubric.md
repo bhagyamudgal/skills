@@ -20,15 +20,16 @@ Loaded by the triage subagent at STEP 4 of `triage-prompt.md`. Main never reads 
   look "stylistic" (e.g., "rename to match helper X") is actually a
   R6 reusability FIX, not style.
 
-  R10. Fixing it would change observable behavior that predates this PR →
-       NEEDS-INPUT. REQUIRES `why_unclear`
+  R10. Fixing it would change observable behavior that already exists on
+       the base branch → NEEDS-INPUT. REQUIRES `why_unclear`
 
        Observable means something outside the changed code sees the
        difference: UI output, an API response's shape or values, persisted
        data, a notification, a permission check, a default value, or timing
-       and ordering a user notices. The current behavior may be a deliberate
+       and ordering a user notices. Base-branch behavior may be a deliberate
        product decision that no test or comment records, so a technically
-       correct fix can still ship a product regression.
+       correct fix can still ship a product regression. Behavior this PR's
+       own diff introduced is not base-branch behavior. Classify it normally.
 
        Before classifying, search for intent: a test asserting the current
        behavior, a comment or doc explaining it, and the commit that
@@ -40,12 +41,6 @@ Loaded by the triage subagent at STEP 4 of `triage-prompt.md`. Main never reads 
 
        `found nothing` is a valid evidence value and does NOT authorize
        the fix.
-
-       An incoming finding already carrying a `product-intent` tag routes
-       here regardless of its severity.
-
-       Carve-out: when THIS PR's own diff introduced the behavior, there is
-       no pre-existing product intent to protect. Classify it normally.
 
   R6. Real bug / security / perf / correctness / REUSABILITY issue → FIX
 

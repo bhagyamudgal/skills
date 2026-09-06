@@ -173,19 +173,6 @@ Removing patterns is half the job. Sterile, voiceless writing is just as obvious
 - If you notice unrelated dead code, mention it. Do not delete it unless asked.
 - Remove imports/variables/functions that YOUR changes made unused.
 
-## Existing behavior is intentional until proven otherwise
-
-Treat the product's current observable behavior as a deliberate decision, including when it looks wrong. Behavior that reads as a defect is often a choice made once in a conversation and never written down. Correct as a bug report, wrong as a change, is the failure this section prevents, and it costs a product regression every time it lands.
-
-- **An observable behavior change needs my explicit approval before the edit.** Observable means something outside the changed code sees the difference: UI output, an API response's shape or values, persisted data, an email or notification, a permission check, a default value, or timing and ordering a user notices. Refactors, type changes, tests, and logging are free. Do not write the change first. State the current behavior, the proposed behavior, and the evidence that the current one is wrong, then ask.
-- **My request authorizes the behavior I named and nothing else.** "Fix the total showing zero for an empty cart" authorizes that number. Another endpoint calling the same helper, a second screen rendering the same function, or a related default each still stop and ask. Blast radius outside the named behavior is where the unwanted regression hides.
-- **Only behavior that predates the task is protected.** Behavior your own change introduces has no earlier decision to overwrite, so ordinary judgment applies and the completion report names the call you made. Do not stop for a behavior my request already implies, or for a decision inside a feature I asked you to build. Stopping when nothing was at stake trains me to approve without reading, which costs more than the regression this section prevents.
-- **Investigate before calling current behavior a defect.** Look for a test asserting it, a comment or doc explaining it, and the commit that introduced it through `git blame` or `git log -S`. Report what you found, including "found nothing". A covering test or a deliberate commit message makes it a product question, not a bug.
-- **This section overrides the technical rules when they would change observable behavior without my approval.** That includes test discipline, investigation discipline, and simplicity first. A test asserting intentional behavior is not a test asserting a bug. Those rules still govern how the fix gets written once I approve it. This defers a fix until I decide. It is not a reason to leave a real defect unfixed once I have decided.
-- **Reviewers tag, they do not fix.** A finding that targets possibly-intentional behavior keeps its severity, stays in the ranked list, and carries a `product-intent` tag with the evidence above. The tag is binding. No agent fixes a tagged finding without asking me, and no agent drops or downgrades the tag when passing findings to another agent.
-- **Approval is one gate, not two.** Once I approve, `/done` and `/file-pr` proceed as usual and the PR body names the old behavior, the new behavior, and my approval. Report a behavior change only when one happened, so silence in a completion report means nothing observable changed.
-- **Unattended, skip the unit.** Leave the work undone, record the current behavior, the proposed behavior, and the evidence in the handoff ledger, then move to the next task. This is the same class as the destructive and irreversible work already left for my return.
-
 ## Goal-driven execution
 
 - Define success criteria, then loop until verified: "Fix the bug" → "write a test that reproduces it, then make it pass"; "Refactor X" → "ensure tests pass before and after".
@@ -212,6 +199,7 @@ If you cannot find an analog, ask the user where the closest similar feature liv
 When you hit an error, bug, or unexpected behavior:
 
 - **Find the root cause before patching.** A fix you do not understand is a delay, not a fix.
+- **A flagged behavior may be a product decision, not a bug.** Before changing behavior that already exists on the base branch, look for a test asserting it, a comment or doc explaining it, and the commit that introduced it through `git blame` or `git log -S`. Report what you found, including nothing. If nothing says it is a bug, treat it as a product question and ask instead of fixing. Behavior your own change introduces is not covered.
 - **Adding a null check is a smell.** Ask why the value is ever null and whether it should be.
 - **Adding try-catch around a mystery error is a smell.** Catch only errors you understand and can handle.
 - **`as any`, `as unknown`, and `@ts-ignore` are smells.** Fix the type instead of hiding it.

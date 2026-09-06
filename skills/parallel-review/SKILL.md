@@ -40,7 +40,7 @@ I add to the roster when the condition holds:
 
 The shared prompt, plus the per-agent lens, reads "Review these changed files for bugs, logic errors, and adherence to project CLAUDE.md conventions: [files]."
 
-Every reviewer also carries the product-intent instruction. When a finding's fix would change observable behavior that predates this diff, the reviewer adds a `product-intent` tag to it and reports what it found: whether a test asserts the current behavior, whether a comment or doc explains it, and which commit introduced it per `git blame` or `git log -S`, including "found nothing". Reviewers report tagged findings at their real severity and do not fix them.
+Every reviewer also carries the product-intent instruction. When a finding's fix would change observable behavior that already exists on the base branch, the reviewer adds a `product-intent` tag to it and reports what it found: whether a test asserts the current behavior, whether a comment or doc explains it, and which commit introduced it per `git blame` or `git log -S`, including "found nothing". Reviewers report tagged findings at their real severity and do not fix them.
 
 I state the roster before dispatching. It is the checklist Step 3 merges against.
 
