@@ -40,13 +40,15 @@ I add to the roster when the condition holds:
 
 The shared prompt, plus the per-agent lens, reads "Review these changed files for bugs, logic errors, and adherence to project CLAUDE.md conventions: [files]."
 
+Every reviewer also carries the product-intent instruction. When a finding's fix would change observable behavior that predates this diff, the reviewer adds a `product-intent` tag to it and reports what it found: whether a test asserts the current behavior, whether a comment or doc explains it, and which commit introduced it per `git blame` or `git log -S`, including "found nothing". Reviewers report tagged findings at their real severity and do not fix them.
+
 I state the roster before dispatching. It is the checklist Step 3 merges against.
 
 ### Step 3: Merge
 
 The merge is not done while any reviewer on the roster is outstanding. I account for every member by name, reported or failed and re-dispatched.
 
-1. I merge all findings, collapsing duplicates across reviewers.
+1. I merge all findings, collapsing duplicates across reviewers. A `product-intent` tag on any source finding survives the collapse, and its evidence carries into the merged finding.
 2. I assign each merged finding a stable ID from its file, enclosing symbol, normalized defect class, and defect-instance fingerprint. I derive the fingerprint from the smallest stable semantic code anchor, such as a callee, accessed field, branch label, or data-flow endpoints, plus the violated invariant. When two defects still share an anchor, I extend it with the nearest distinct semantic parent or operand. I normalize incidental formatting, literals, and reviewer wording, and I exclude raw line numbers. I merge only when all four parts match, and I preserve every source reviewer. The caller owns these IDs and their dispositions. I do not create a shared finding-ID authority.
-3. Rank: Critical > Serious > Moderate > Minor, then present one traceable list
+3. Rank: Critical > Serious > Moderate > Minor, then present one traceable list. A `product-intent` tag rides alongside the severity and never lowers it. The tag is binding: no agent fixes a tagged finding without the user's approval, and no agent drops or downgrades it when handing the list on.
 4. I invoke `converge-reviews` with the originating request, local baseline and current diff hash, reviewed paths, roster and lenses, merged findings, dispositions, and prior convergence artifact. I apply its result contract, then hand the ranked list and convergence result back to the caller.
