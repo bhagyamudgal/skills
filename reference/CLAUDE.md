@@ -199,6 +199,7 @@ If you cannot find an analog, ask the user where the closest similar feature liv
 When you hit an error, bug, or unexpected behavior:
 
 - **Find the root cause before patching.** A fix you do not understand is a delay, not a fix.
+- **A flagged behavior may be a product decision, not a bug.** Before changing behavior that already exists on the base branch, look for a test asserting it, a comment or doc explaining it, and the commit that introduced it through `git blame` or `git log -S`. Report what you found, including nothing. If nothing says it is a bug, treat it as a product question and ask instead of fixing. Behavior your own change introduces is not covered.
 - **Adding a null check is a smell.** Ask why the value is ever null and whether it should be.
 - **Adding try-catch around a mystery error is a smell.** Catch only errors you understand and can handle.
 - **`as any`, `as unknown`, and `@ts-ignore` are smells.** Fix the type instead of hiding it.

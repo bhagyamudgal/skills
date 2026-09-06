@@ -20,6 +20,28 @@ Loaded by the triage subagent at STEP 4 of `triage-prompt.md`. Main never reads 
   look "stylistic" (e.g., "rename to match helper X") is actually a
   R6 reusability FIX, not style.
 
+  R10. Fixing it would change observable behavior that already exists on
+       the base branch → NEEDS-INPUT. REQUIRES `why_unclear`
+
+       Observable means something outside the changed code sees the
+       difference: UI output, an API response's shape or values, persisted
+       data, a notification, a permission check, a default value, or timing
+       and ordering a user notices. Base-branch behavior may be a deliberate
+       product decision that no test or comment records, so a technically
+       correct fix can still ship a product regression. Behavior this PR's
+       own diff introduced is not base-branch behavior. Classify it normally.
+
+       Before classifying, search for intent: a test asserting the current
+       behavior, a comment or doc explaining it, and the commit that
+       introduced it per `git blame` or `git log -S`. Write `why_unclear`
+       in this shape:
+
+         why_unclear: "current: <behavior>; proposed: <behavior>;
+                       intent evidence: <what the search found>"
+
+       `found nothing` is a valid evidence value and does NOT authorize
+       the fix.
+
   R6. Real bug / security / perf / correctness / REUSABILITY issue → FIX
 
       Reuse problems are correctness problems. A duplicated helper drifts.
@@ -83,7 +105,9 @@ Loaded by the triage subagent at STEP 4 of `triage-prompt.md`. Main never reads 
 Rubric ordering rationale: R1/R2 are objective fact-checks (first). R4/R5 are
 HIGH-SIGNAL dismissals, evaluated before R3 so a style nit on already-
 refactored code dismisses with the stronger "already fixed in abc123" reason
-instead of the weaker "pure style" reason. R3 comes after. R6-R9 are action
+instead of the weaker "pure style" reason. R3 comes after. R10 sits above R6
+because a finding can be correct and still describe deliberate product
+behavior, and severity alone cannot tell those apart. R6-R9 are action
 buckets.
 
 ---

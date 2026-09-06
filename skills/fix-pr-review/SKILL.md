@@ -34,12 +34,13 @@ Takes a PR review from CodeRabbit, `/review-pr`, or pasted text. It triages each
 | R4 | DISMISS: already fixed | `prior_commit_sha` |
 | R5 | DISMISS: contradicts CLAUDE.md | `claude_md_quote` |
 | R3 | DISMISS: pure style/naming | Not reusability-flagged |
+| R10 | NEEDS-INPUT: fix would change base-branch observable behavior | `why_unclear` in the R10 shape |
 | R6 | FIX: bug/security/perf/correctness/reusability | `fix_plan` ≥30 chars, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (with `verdict`) |
 | R7 | DEFER: valid but out of scope | Tracking reference |
 | R8 | DISAGREE: legitimate technical disagreement | `disagree_rationale` |
 | R9 | NEEDS-INPUT: ambiguous/needs user knowledge | `why_unclear` |
 
-*R4/R5 sit above R3 by design, not by accident. The full rubric and the reason for that order live in `references/triage-rubric.md`.*
+*R4/R5 sit above R3 by design, not by accident, and R10 sits above R6 so a technically correct finding never reaches the fix loop on the strength of being correct. The full rubric and the reason for that order live in `references/triage-rubric.md`.*
 
 ### Key Cross-References
 
@@ -57,7 +58,7 @@ Each carries its firing condition in the pointer at the point of use. Load it th
 
 - `references/fetch-review-data.md`: per-input-type GraphQL/REST fetch, CodeRabbit review-body anatomy, `Comment` schema. Loaded by main in Phase 2, at the GitHub fetch step, and again at the `Comment`-schema normalisation step if the local-file path meant it was not read there.
 - `references/triage-prompt.md`: the whole Phase 3 subagent prompt (STEP 0 → STEP 6 + output format). Read by main in Phase 3, placeholder-substituted, passed verbatim.
-- `references/triage-rubric.md`: R1-R9 detail, NEEDS-INPUT calibration, `change_class` worked examples, reply formats. Loaded by the triage SUBAGENT at STEP 4.
+- `references/triage-rubric.md`: R1-R10 detail, NEEDS-INPUT calibration, `change_class` worked examples, reply formats. Loaded by the triage SUBAGENT at STEP 4.
 - `references/github-reply-resolve.md`: Steps 7a-7d posting/resolving mechanics. Loaded by main in Phase 7; never loaded for local-file input.
 - `references/final-report.md`: the Phase 8 report template and its rendering rules. Loaded by main in Phase 8 before printing.
 - `references/branch-safety.md`: repo plus branch landing with detached-HEAD and different-branch questions. Loaded by main in Phase 1 for GitHub inputs; skipped for local files.
@@ -266,6 +267,7 @@ Before anything is shown to the user, mechanically validate the classifier's out
 - Every FIX MUST have non-empty `test_scenario`. For `change_class: hardening`, the value MUST be exactly `smoke test, happy path unchanged`. For `change_class: logic-change`, the value MUST be a 1-sentence concrete repro (not just "verify it works").
 - Every FIX MUST have non-empty `inverse_risk` that either names a specific failure mode or is exactly `none, pure addition`. Hedges fail validation: an empty value, or anything of the shape "could have issues" / "minor risk" / "some risk" / "possible regression" / "none" on its own. A named failure mode says what breaks, where. Phase 5.5 consumes this field; an unnamed risk is unverifiable there.
 - Every FIX MUST have a `class_completeness` block with a non-empty `verdict` starting with either `COMPLETE` or `INCOMPLETE`. `INCOMPLETE` MUST name the excluded sites and give a reason for each. An `INCOMPLETE` verdict with no per-site reason fails validation.
+- Every NEEDS-INPUT with `rubric: R10` MUST have a `why_unclear` carrying all three of its `current:`, `proposed:`, and `intent evidence:` parts, each non-empty. The shape itself lives in `references/triage-rubric.md`. `found nothing` is a valid evidence value; an empty one is not.
 - Every item MUST have non-empty `grounding_a` and `grounding_b`.
 - Every item MUST carry a `reusability_context` field, even when it is just `{ flagged: false }`. That holds for every classification, NEEDS-INPUT included. Phase 7's reply validator branches on it, so a missing field silently disables the reusability gate on that reply.
 
