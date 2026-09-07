@@ -256,7 +256,7 @@ When I say that I am going to sleep or stepping away and tell you to keep going,
 - Always use `function` keyword to define functions, not arrow functions (arrows OK for inline callbacks)
 - Do not use non-null assertions (`!.`). Refactor to a type-safe pattern.
 - Do not use the `any` type. Define proper types. If you cannot define them, use `unknown` and narrow it.
-- Do not use type assertions with `as` unless no other option works. Prefer inference, narrowing, and generics. If a third-party type gap makes `as` unavoidable, add a comment that explains why.
+- Do not use type assertions with `as` unless no other option works. Prefer inference, narrowing, and generics. If a third-party type gap makes `as` unavoidable, cite the upstream issue or type gap in a one-line comment.
 - In monorepos, always verify through the CLI type-check. Use `tsc --noEmit` or the workspace equivalent, such as `pnpm type-check` or `turbo type-check`. IDE type checking is often unreliable with project references and workspace package boundaries. Run the check after every change and loop until clean.
 - Strict mode should always be enabled
 
