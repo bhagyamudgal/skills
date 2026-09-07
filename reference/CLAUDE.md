@@ -20,10 +20,10 @@ These rules apply to ALL projects. No exceptions.
 > ```bash
 > CITED='https?://|docs/|ADR|#[0-9]+|§'
 > git diff -U0 <base> -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.go' '*.rs' '*.java' '*.kt' '*.swift' '*.c' '*.h' '*.cpp' '*.cs' \
->   | grep -E '^\+([[:space:]]*(//|/\*|\* )|.*[[:space:]]//[[:space:]])' \
+>   | grep -E '^\+([[:space:]]*(//|/\*|\* )|.*[[:space:]](//|/\*))' \
 >   | grep -vE "$CITED|^\+[[:space:]]*/\*\*.*\*/[[:space:]]*\$"
 > git diff -U0 <base> -- '*.py' '*.sh' '*.zsh' '*.rb' '*.toml' '*.yml' '*.yaml' \
->   | grep -E '^\+([[:space:]]*#|.*[[:space:]]#[[:space:]])' | grep -vE "$CITED|^\+#!"
+>   | grep -E '^\+([[:space:]]*#|.*[[:space:]]#)' | grep -vE "$CITED|^\+#!"
 > ```
 
 # Working rules
