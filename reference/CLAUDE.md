@@ -433,6 +433,7 @@ Use honest reporting as the test. If the completion report would contain a known
 
 ### PR and commit hygiene
 
+- **Close every review thread you fix.** After the fix commit is pushed, reply on that thread with the commit SHA and what changed, then resolve the conversation. An open thread reads as unaddressed. Leave one open only when you disagree with it, and say why in the reply.
 - **Never open a PR by hand. Invoke `/file-pr`.** It owns the preconditions, base-branch discovery, title and body standards, and issue linking. This is a hard rule in the same class as `/done`.
 - **Put one logical change in each commit.** Never mix a refactor, feature, and bug fix in the same commit.
 - **Commit messages explain why, not what.** The diff shows what changed. The message explains why the change was needed.
