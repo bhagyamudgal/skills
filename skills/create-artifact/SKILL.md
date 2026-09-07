@@ -1,11 +1,15 @@
 ---
 name: create-artifact
-description: Upload a Markdown or HTML artifact to Folslate and return a public fol.ink URL. Use to share plans, reports, audits, findings, or other user-facing material as a link, when output is too long to paste inline, or when reading a fol.ink link.
+description: Upload an HTML report to Folslate and return a public fol.ink URL. Prefer HTML over Markdown. Use to share plans, reports, audits, findings, or other user-facing material as a link, when output is too long to paste inline, or when reading a fol.ink link.
 ---
 
 # Create artifact
 
-Folslate hosts one Markdown or HTML file at a public URL. There is no account and no token. I POST the bytes to `api.folslate.com` and get back a `fol.ink` link.
+Folslate hosts one HTML or Markdown file at a public URL. There is no account and no token. I POST the bytes to `api.folslate.com` and get back a `fol.ink` link. I default to HTML for every report.
+
+## Prefer HTML
+
+I build an HTML report unless the document is plain text with no tables, charts, or custom styling. HTML keeps inline `<style>`, images load as `data:` URIs, and I control the layout. Markdown is a fallback for simple text-only documents, not the default.
 
 ## Check these before uploading
 
@@ -17,11 +21,22 @@ None of the three can be undone after the upload, so I read them as a checklist,
 
 **The page is inert.** A hosted document cannot run JavaScript, load an external stylesheet, font, or image, submit a form, or be framed. An HTML report that pulls a chart library from a CDN renders as a blank page. Folslate also strips every `<meta http-equiv>` and every `<noscript>` at upload.
 
-What I can do instead depends on the upload type. A `text/html` upload keeps inline `<style>`, and images load as `data:` URIs, so I inline the SVG the CDN would have drawn. A `text/markdown` upload escapes raw HTML rather than passing it through, so an `<svg>` or `<style>` block written into Markdown arrives as visible text. Folslate styles Markdown itself, and a chart has to become a `data:` image.
+What I can do instead depends on the upload type. A `text/html` upload keeps inline `<style>`, and images load as `data:` URIs, so I inline the SVG the CDN would have drawn. A `text/markdown` upload escapes raw HTML rather than passing it through, so an `<svg>` or `<style>` block written into Markdown arrives as visible text. Folslate styles Markdown itself, and a chart has to become a `data:` image. This is why HTML is the default.
 
 ## Upload
 
 Immediately before any POST below, I invoke `preflight-mutations` for the exact artifact and Folslate target. Its mutation card must cover the document bytes, any sensitive material they contain, the public one-day retention, and the absence of revocation or deletion. Because this is an irreversible off-box publication, I let `preflight-mutations` decide whether the current authorization is fresh and exact enough. I continue only on `ready`. On `confirmation-required` I wait for the named confirmation. I re-check the card invalidators before sending.
+
+I run the upload preflight above for this exact HTML artifact before this POST.
+
+```bash
+curl -sS -X POST https://api.folslate.com/v1/upload \
+  -H 'content-type: text/html' \
+  -H 'x-folslate-title: Release notes' \
+  --data-binary @page.html
+```
+
+Markdown is the fallback for simple text-only documents:
 
 ```bash
 curl -sS -X POST https://api.folslate.com/v1/upload \
@@ -31,7 +46,7 @@ curl -sS -X POST https://api.folslate.com/v1/upload \
 
 I use `--data-binary`, never `-d`. `-d` strips newlines and collapses the whole file into one paragraph, which destroys Markdown.
 
-The `content-type` is `text/markdown` or `text/html`. Folslate rejects every other value with `415`, and it decides the pipeline. A `text/markdown` body is converted to HTML and wrapped in a page shell, while a `text/html` body is sanitized and kept.
+The `content-type` is `text/html` by default, `text/markdown` for the text-only fallback. Folslate rejects every other value with `415`, and it decides the pipeline. A `text/markdown` body is converted to HTML and wrapped in a page shell, while a `text/html` body is sanitized and kept.
 
 A `201` looks like this.
 
@@ -64,16 +79,7 @@ Ids are `doc_` followed by 26 lowercase Crockford Base32 characters, which exclu
 
 ## Titles
 
-Every stored document carries a `<title>`. Folslate takes it from `X-Folslate-Title`, else the document own `<title>` or first heading, else the document id.
-
-I run the upload preflight above for this exact HTML artifact before this POST.
-
-```bash
-curl -sS -X POST https://api.folslate.com/v1/upload \
-  -H 'content-type: text/html' \
-  -H 'x-folslate-title: Release notes' \
-  --data-binary @page.html
-```
+Every stored document carries a `<title>`. Folslate takes it from `X-Folslate-Title`, else the document own `<title>` or first heading, else the document id. The HTML upload above already sends `x-folslate-title`.
 
 The `201` echoes the title the document actually got, so I read `data.title` rather than fetching the document back to check. Folslate collapses whitespace and cuts the title at 200 characters, so a long one comes back changed.
 
@@ -85,7 +91,7 @@ Every response from `api.folslate.com`, and every failure on either host, has th
 
 | `error.code`             | Status | What to do                                                                                                       |
 | ------------------------ | ------ | ---------------------------------------------------------------------------------------------------------------- |
-| `unsupported_media_type` | 415    | Send `text/markdown` or `text/html`. `error.accepts` lists them.                                                 |
+| `unsupported_media_type` | 415    | Send `text/html`, or `text/markdown` for the text-only fallback. `error.accepts` lists them.                     |
 | `payload_too_large`      | 413    | The body is over `error.maxBytes`. Split the document or trim it.                                                |
 | `unprocessable_document` | 422    | Rendering failed. The same bytes fail the same way, so change them before retrying.                              |
 | `rate_limited`           | 429    | Wait the `Retry-After` seconds, then retry.                                                                      |
