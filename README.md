@@ -51,7 +51,7 @@ npx skills add bhagyamudgal/skills
 | Skill | Description |
 |-------|-------------|
 | `done` | MANDATORY readiness verification. Map every request item to implementation, verify six acceptance lanes and five evidence facets, and issue final readiness only after required publication evidence exists |
-| `create-artifact` | Publish Markdown or HTML through Folslate as a public `fol.ink` link that expires after one day |
+| `create-artifact` | Publish an HTML report through Folslate as a public `fol.ink` link that expires after one day (Markdown only for simple text) |
 | `simplify` | Remove unnecessary complexity from a completed diff while preserving its behavior, guards, and verified scope |
 | `parallel-review` | Build a reviewer roster, dispatch it in parallel over a local diff, and merge to one ranked list. The merge is not done while any reviewer is outstanding |
 | `review-pr` | Deep anti-slop review of a GitHub PR with critic-pass filtering, persistent multi-round state, and automatic GitHub submission; self-authored PRs receive the same assessment as a comment |
