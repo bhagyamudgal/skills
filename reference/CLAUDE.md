@@ -15,12 +15,15 @@ These rules apply to ALL projects. No exceptions.
 >
 > Existing comments in a file are not a style to match and not a license to add more. Leave them alone when you touch the file for another reason.
 >
-> Before reporting a code change done, print every added comment line that lacks a citation token and delete each one. Any output is a defect to fix, never a count to report.
+> Before reporting a code change done, print every added comment line that lacks a citation token and delete each comment it shows. The pattern is a net, not a parser: a printed line that is not a comment is a false positive to leave alone.
 >
 > ```bash
-> git diff -U0 <base> -- . ':!*.md' \
->   | grep -E '^\+[[:space:]]*(//|#|/\*|\*)' \
->   | grep -vE 'https?://|docs/|ADR|#[0-9]+|§|^\+[[:space:]]*/\*\*.*\*/[[:space:]]*$'
+> CITED='https?://|docs/|ADR|#[0-9]+|§'
+> git diff -U0 <base> -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.go' '*.rs' '*.java' '*.kt' '*.swift' '*.c' '*.h' '*.cpp' '*.cs' \
+>   | grep -E '^\+([[:space:]]*(//|/\*|\* )|.*[[:space:]]//[[:space:]])' \
+>   | grep -vE "$CITED|^\+[[:space:]]*/\*\*.*\*/[[:space:]]*\$"
+> git diff -U0 <base> -- '*.py' '*.sh' '*.zsh' '*.rb' '*.toml' '*.yml' '*.yaml' \
+>   | grep -E '^\+([[:space:]]*#|.*[[:space:]]#[[:space:]])' | grep -vE "$CITED|^\+#!"
 > ```
 
 # Working rules
