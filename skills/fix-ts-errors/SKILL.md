@@ -46,7 +46,7 @@ git ls-files --others --exclude-standard -- '*.ts' '*.tsx' | tr '\n' '\0' | xarg
 
 The `[!]` groups match a postfix assertion: a value character, closing quote, bracket, or paren before the bang and no equals after it, so `value!`, `value!.x`, `value![0]`, `value!()`, `"value"!`, and backtick-quoted receivers all hit while `!=`, `!==`, and prefix negation like `!ready` stay out. The trailing `sed` neutralizes only the `as const` idiom into a marker instead of dropping whole lines, so co-occurring hatches on the same line survive. A line whose only match is the `__AS_CONST__` marker needs no action.
 
-I skip import aliases like `import { x as y }`. For every remaining hit I attempt removal with proper typing, meaning inference, narrowing, type guards, generics, or schema-derived types with `z.infer`. I re-run the check after each removal, and when errors appear I go back to Step 3. A hatch survives only when genuinely unavoidable, for example a third-party library type gap, and it must carry a comment that explains why.
+I skip import aliases like `import { x as y }`. For every remaining hit I attempt removal with proper typing, meaning inference, narrowing, type guards, generics, or schema-derived types with `z.infer`. I re-run the check after each removal, and when errors appear I go back to Step 3. A hatch survives only when genuinely unavoidable, for example a third-party library type gap, and it must carry a one-line comment citing the upstream issue or type gap.
 
 ### Step 6: Report
 

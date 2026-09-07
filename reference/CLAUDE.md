@@ -6,45 +6,25 @@ These rules apply to ALL projects. No exceptions.
 
 > **The unslop rules below are always on.** They apply to every piece of writing this session produces: chat replies, commit messages, PR bodies, docs, code comments. Not a skill to invoke, not a step to remember. See "Unslop: cutting AI tells" under "Writing for a Human Reader".
 
-> **I do not like comments. Write almost none.** Silence is the default. A comment earns its place only when it saves a future reader real time they would otherwise spend guessing, getting it wrong, or digging. Use every test below to decide which few comments stay. When in doubt, delete it. A comment that needs debate has already failed because the ones worth keeping are obvious. Expect most files to have no comments. Treat a comment-heavy file as a sign that the code could be clearer.
+> **No comments in code. Rename or restructure instead.** Two exceptions, and each must fit on one line:
 >
-> **Comment the dig, not the code.** A comment earns its place when its fact required a _dig_, such as running the binary, reading four packages, measuring a benchmark, or recovering a decision made once in a conversation. Ask one question: _Where does the evidence live, in this file or outside it?_ If the evidence lives in the file, delete the comment. The code already carries that fact. Evidence outside the file still counts when it lives elsewhere in the repo. A consequence in another package or a rule enforced by a sibling module costs a real dig from here. Apply this test to every comment, including the ones that feel certain.
+> 1. A `/** */` docstring on an exported symbol, stating a contract the signature cannot show.
+> 2. A citation for a constraint the code cannot express: a URL, a spec section, an ADR or `docs/` path, or an issue number. The line carries the pointer, never the explanation.
 >
-> The evidence location matters, not the symbol. A non-exported constant can carry a fact from CPython or an authority document, and the surrounding file cannot reveal that fact. The author of a decision always believes a note will stop the next person from getting it wrong. That makes "would deleting this cause a bug?" useless because the answer is always yes. "Did I dig for this?" produces enough honest noes to set a real limit. A file header only summarizes the file beneath it, so the evidence already lives in the one place guaranteed to contain it.
+> Everything else is banned. That includes any comment that explains what the code does, why it has its shape, what would break, or what you learned while writing it. Put that reasoning in the PR body, a test name, or an ADR.
 >
-> **Use `/** */` when a caller outside the file needs the comment; otherwise use `//`.** The compiler attaches a `/** */` comment to the symbol. It appears on hover at the call site and carries into `.d.ts`. A `//` comment never leaves its file. That difference alone decides the form. Exported symbols and members of exported types use docstrings. Internal helpers and module constants use `//`.
+> Existing comments in a file are not a style to match and not a license to add more. Leave them alone when you touch the file for another reason.
 >
-> **The bar rises as the audience narrows.** A comment on a non-exported symbol has one job: carry a fact from outside the file. That fact may be a runtime quirk, an external specification, a measurement, a consequence in another package, or a gotcha that cost a dig. **A tripwire counts.** A note that says a branch is unreachable today and names what breaks if that changes can look like noise beside provably dead code. Deleting that note is exactly how the future bug lands. Delete anything that explains what the code does or why it has its current shape because the reader is already looking at that code. An exported symbol may also state its contract because callers cannot see the body. First decide whether the comment clears the bar for its audience. Only then choose between `/** */` and `//`.
->
-> **Derive it before you keep it.** Try to reconstruct the comment's claim from the code beneath it. If you can name the lines that already carry it, delete the comment. `Math.min(a, b)` already says "the weaker governs." A `key → label` table already says which keys share a label. An error string that reads "two records have run together" already says a repeated field means a garbled boundary. This test catches what "does it carry a fact?" cannot. **A restatement carries a true fact**, which is why it survives any review that only asks whether the fact is real. Compressing it produces a shorter restatement, so run this test before editing. "This looks redundant" is a verdict, not a derivation. Name the lines or keep the comment.
->
-> **Then name what it changes.** A fact can be true, external, and still inert. Ask one last question: _What edit, decision, or debugging step changes because someone read this?_ Name a simplification they would attempt and abandon, a constant they would choose incorrectly, or an hour they would spend chasing a bug. If you cannot name one, delete the comment. "It gives context" is not an answer. A restatement fails the derivation test, but an inert fact passes every test except this one.
->
-> **Keep a comment to 1-3 lines.** State the finding, not the reasoning that produced it. Put that reasoning in the ADR, PR body, or test. A dig worth more than three lines deserves an ADR, with the comment reduced to a citation. Count comment lines against your diff before submitting. Length, not count, is where a justified comment turns into an essay.
->
-> **Give each fact one home.** Good arguments attract copies. The same claim appears in a module header, beside the constant that enforces it, in the covering test, and in a printed string. Each copy passes the "is this necessary?" test alone, so the duplication survives review. A later edit leaves one copy stale because nothing checks a comment in one file against code in another. Write each invariant once at the code that enforces it. Everywhere else cites it, such as `see rate-limit.ts WINDOW_MS`, or says nothing. **A test comment that restates the test name is one of those copies.** Before writing a comment, ask where that fact already lives.
->
-> **Write the file without comments, then add back only comments whose absence blocks a named reader.** This turns the authoring default into a concrete action, and it is the only part of this rule that has consistently worked. Judging each comment while writing it fails. Ask whether it carries an external fact and the answer is yes for lol-html's parser quirk, a vendor's header cap, or a measured limit. The comment stays. Forty true facts become forty comments, each defensible alone. The tie-break already says a comment you are weighing has failed. Starting with none stops that debate.
->
-> When adding comments back, put the fact outside the code when possible. A dig worth recording deserves a specification section or an ADR. The code then cites it with `See docs/spec.md §N`, or says nothing. Prefer a citation because copied explanations go stale.
->
-> **The audit below is a backstop, not permission to write freely.** It exists because I will still get this wrong. It does not make writing comments cheap or cleaning them up later acceptable. If a change needs the audit to reach a sane comment count, the authoring default failed. Report that failure instead of quietly culling comments and claiming a clean diff.
->
-> Compare added comment lines with added code lines. Above roughly **one per 25**, the change is documenting itself instead of citing a source. Then list the added comments from longest to shortest because length tracks duplication. Search each distinctive phrase in both `docs/` and sibling `*.ts` files. Two modules that explain the same platform quirk have the same defect as a comment that restates the specification.
+> Before reporting a code change done, print every added comment line that lacks a citation token and delete each comment it shows. The pattern is a net, not a parser: a printed line that is not a comment is a false positive to leave alone.
 >
 > ```bash
-> # `/\*` is in the class on purpose: without it a lone `/** … */` counts zero
-> # and the ratio divides by zero on exactly the well-behaved case.
-> MATCH='^\+[[:space:]]*(//|/\*|\*)'
-> code=$(git diff --numstat <base> -- '*.ts' | awk '{s+=$1} END {print s+0}')
-> cmt=$(git diff -U0 <base> -- '*.ts' | grep -cE "$MATCH")
-> [ "$cmt" -eq 0 ] && echo "no comments added" \
->   || echo "1 comment per $((code/cmt)) added lines"
-> git diff -U0 <base> -- '*.ts' | grep -E "$MATCH" | sed 's/^+[[:space:]]*//' \
->   | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2-
+> CITED='https?://|docs/|ADR|#[0-9]+|§'
+> git diff -U0 <base> -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.go' '*.rs' '*.java' '*.kt' '*.swift' '*.c' '*.h' '*.cpp' '*.cs' \
+>   | grep -E '^\+([[:space:]]*(//|/\*|\* )|.*[[:space:]](//|/\*))' \
+>   | grep -vE "$CITED|^\+[[:space:]]*/\*\*.*\*/[[:space:]]*\$"
+> git diff -U0 <base> -- '*.py' '*.sh' '*.zsh' '*.rb' '*.toml' '*.yml' '*.yaml' \
+>   | grep -E '^\+([[:space:]]*#|.*[[:space:]]#)' | grep -vE "$CITED|^\+#!"
 > ```
-
-> **A comment describes the symbol beneath it. Check that it still does.** Inserting a declaration between a comment and its original subject leaves a correct comment attached to the wrong thing. Nothing flags the mistake. The file parses, the tests pass, and the claim now appears to describe its new neighbor. Scripted and multi-hunk edits cause this most because the diff shows the insertion but hides the adoption. After inserting anything, compare each comment in the touched region with the declaration now beneath it. Dense comments let a detached one survive longer, which gives you another reason to keep them few.
 
 # Working rules
 
@@ -168,7 +148,7 @@ Removing patterns is half the job. Sterile, voiceless writing is just as obvious
 
 ## Surgical changes
 
-- Touch only what you must; every changed line should trace directly to the user's request. Match existing style, even if you'd do it differently.
+- Touch only what you must; every changed line should trace directly to the user's request. Match existing style, even if you'd do it differently. Comments are the one exception; the comment rule at the top of this file governs.
 - Don't "improve" adjacent code, comments, or formatting. Don't refactor things that aren't broken.
 - If you notice unrelated dead code, mention it. Do not delete it unless asked.
 - Remove imports/variables/functions that YOUR changes made unused.
@@ -276,7 +256,7 @@ When I say that I am going to sleep or stepping away and tell you to keep going,
 - Always use `function` keyword to define functions, not arrow functions (arrows OK for inline callbacks)
 - Do not use non-null assertions (`!.`). Refactor to a type-safe pattern.
 - Do not use the `any` type. Define proper types. If you cannot define them, use `unknown` and narrow it.
-- Do not use type assertions with `as` unless no other option works. Prefer inference, narrowing, and generics. If a third-party type gap makes `as` unavoidable, add a comment that explains why.
+- Do not use type assertions with `as` unless no other option works. Prefer inference, narrowing, and generics. If a third-party type gap makes `as` unavoidable, cite the upstream issue or type gap in a one-line comment.
 - In monorepos, always verify through the CLI type-check. Use `tsc --noEmit` or the workspace equivalent, such as `pnpm type-check` or `turbo type-check`. IDE type checking is often unreliable with project references and workspace package boundaries. Run the check after every change and loop until clean.
 - Strict mode should always be enabled
 
@@ -453,6 +433,7 @@ Use honest reporting as the test. If the completion report would contain a known
 
 ### PR and commit hygiene
 
+- **Close every review thread you fix.** After the fix commit is pushed, reply on that thread with the commit SHA and what changed, then resolve the conversation. An open thread reads as unaddressed. Leave one open only when you disagree with it, and say why in the reply.
 - **Never open a PR by hand. Invoke `/file-pr`.** It owns the preconditions, base-branch discovery, title and body standards, and issue linking. This is a hard rule in the same class as `/done`.
 - **Put one logical change in each commit.** Never mix a refactor, feature, and bug fix in the same commit.
 - **Commit messages explain why, not what.** The diff shows what changed. The message explains why the change was needed.

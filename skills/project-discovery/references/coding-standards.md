@@ -134,7 +134,7 @@ const label = STATUS_LABELS[status] ?? 'Unknown';
   `user.name ?? 'Unknown'` (`||` swallows empty strings).
 - Destructure instead of repeated property access; template literals over concatenation.
 - No unused variables or imports.
-- Comment the WHY: the constraint, the workaround, the gotcha. The code states the what.
+- No comments in code. The only exceptions are a one-line docstring on an exported symbol and a one-line citation (URL, spec section, ADR or `docs/` path, issue number) for a constraint the code cannot express.
 - No emoji in logs or code.
 
 ## 3. Error Handling

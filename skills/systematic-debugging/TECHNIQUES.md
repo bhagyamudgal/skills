@@ -47,4 +47,4 @@ expect(getResult()).toBeDefined();
 
 `waitFor` is a poll loop: check the condition every ~10ms, return when truthy, and throw a descriptive error after a timeout. Every poll loop carries a timeout. Read fresh state inside the loop, not cached state from before it. Works for events, state machines, counts, file existence, compound conditions.
 
-An arbitrary timeout is only correct when (1) you first waited for the triggering condition, (2) the duration comes from a known interval (e.g., 2 ticks of a 100ms poller), and (3) a comment explains why.
+An arbitrary timeout is only correct when (1) you first waited for the triggering condition, (2) the duration comes from a known interval (e.g., 2 ticks of a 100ms poller), and (3) the code derives it from that interval's constant, such as `2 * POLL_INTERVAL_MS`, instead of a literal that needs a comment.
