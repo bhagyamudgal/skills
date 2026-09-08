@@ -11,7 +11,7 @@ I drive a real browser through the flow and I do not call it done until I watche
 2. Else, when Playwright MCP `browser_navigate` exists, I use the Playwright flow unchanged.
 3. Else, I use the `agent-browser` CLI (`open`, `snapshot -i`, `click @eN`, `fill @eN`). I report any evidence the CLI cannot produce as missing, never assume it.
 
-Playwright to T3 mapping: `browser_navigate` becomes `t3-code_preview_navigate`, `browser_snapshot` becomes `t3-code_preview_snapshot`, `browser_click` becomes `t3-code_preview_click`, `browser_type` becomes `t3-code_preview_type`, `browser_press` becomes `t3-code_preview_press`, `browser_wait_for` becomes `t3-code_preview_wait_for`. Screenshots come from `t3-code_preview_snapshot` with image output.
+Playwright to T3 mapping: `browser_navigate` becomes `t3-code_preview_navigate`, `browser_snapshot` becomes `t3-code_preview_snapshot`, `browser_click` becomes `t3-code_preview_click`, `browser_type` becomes `t3-code_preview_type`, `browser_press` becomes `t3-code_preview_press`, `browser_wait_for` becomes `t3-code_preview_wait_for`. Screenshots come from `t3-code_preview_snapshot` with `save=true`, which returns a `screenshotPath` to move into `.qa/`.
 
 ## Recording
 
@@ -47,7 +47,7 @@ I check whether the dev server is running with `curl -s -o /dev/null -w "%{http_
 
 I parse the user flow into numbered steps and launch a single subagent. The subagent uses the driver I picked in Step 2 and follows the driver priority above.
 
-On T3 the prompt template below runs with each Playwright call translated through the mapping above, and network and console evidence comes from `t3-code_preview_evaluate`. On Playwright MCP the template runs unchanged. On the `agent-browser` CLI fallback, `browser_navigate` becomes `open`, `browser_snapshot` becomes `snapshot -i`, interactions become `click @eN` and `fill @eN "text"`, and screenshots, network, and console evidence use the closest `agent-browser` equivalents from `agent-browser --help`. The evidence bar does not drop. Every step still needs its screenshot, and evidence the CLI cannot produce is reported missing, never assumed.
+On T3 the prompt template below runs with each Playwright call translated through the mapping above. T3 network and console evidence comes from collectors the subagent installs before the first step and baselines there, then reads after each API-triggering action. When the page blocks collector installation, that evidence type is reported unavailable, never faked. On Playwright MCP the template runs unchanged. On the `agent-browser` CLI fallback, `browser_navigate` becomes `open`, `browser_snapshot` becomes `snapshot -i`, interactions become `click @eN` and `fill @eN "text"`, and screenshots, network, and console evidence use the closest `agent-browser` equivalents from `agent-browser --help`. The evidence bar does not drop. Every step still needs its screenshot, and evidence the CLI cannot produce is reported missing, never assumed.
 
 ### Mutation preflight (main agent, before dispatch)
 
@@ -67,13 +67,15 @@ Local flows that touch only disposable data do not use this gate. I pass `not-ap
 >
 > That card is already authorized. Do not invoke `preflight-mutations` yourself, since you have no way to answer what it may ask. For every shared-state interaction, re-read and compare that target current guards immediately before the write. Continue under the card while they match. When a guard changed, stop the pending interaction and return the unexecuted remainder to the main agent for re-preflight instead of writing. After the write, run the card authoritative read-back, advance the guards from the observed state, and record the item as `landed`, `failed`, or `reconcile-required`. An ambiguous result is `reconcile-required`. Stop that item and report it for resolution from authoritative state. Never retry it yourself.
 >
-> For EACH step, take a snapshot first (`t3-code_preview_snapshot` on T3, `browser_snapshot` on Playwright, `snapshot -i` on the CLI). Refs go stale the instant the page changes, so re-snapshot before EVERY interaction. Execute the interaction through the same driver. Capture evidence as a screenshot to `.qa/<NN>-<step-name>.png` (on T3, the image output of `t3-code_preview_snapshot`), with a network check after any API-triggering action (`t3-code_preview_evaluate` on T3, `browser_network_requests` on Playwright) and a console check for new errors (`t3-code_preview_evaluate` on T3, `browser_console_messages` on Playwright). A step with no evidence is a FAIL.
+> For EACH step, take a snapshot first (`t3-code_preview_snapshot` on T3, `browser_snapshot` on Playwright, `snapshot -i` on the CLI). Refs go stale the instant the page changes, so re-snapshot before EVERY interaction. Execute the interaction through the same driver. Capture evidence as a screenshot file at `.qa/<NN>-<step-name>.png`: on T3 call `t3-code_preview_snapshot` with `save=true` and move the returned `screenshotPath` there; on Playwright call `browser_take_screenshot` with that filename; on the CLI use `screenshot`. Run a network check after any API-triggering action and a console check for new errors: on T3 read the pre-installed collectors through `t3-code_preview_evaluate`; on Playwright use `browser_network_requests` and `browser_console_messages`; on the CLI use `network requests` and `console`. When a driver cannot produce an evidence type, report it unavailable instead of faking it. A step with no evidence is a FAIL.
+>
+> Evidence collectors (T3 only). Before the first test step, install network and console collectors with `t3-code_preview_evaluate` by wrapping fetch and console output into page-global arrays, and record the pre-flow baseline. Every later network and console check reads those arrays.
 >
 > Recording. Start recording before the first test step and stop it after the last one, following the Recording section above. Report the result as `Recording: <path>` or, when the driver cannot record, `Recording: unavailable`.
 >
 > Report each step in the Step 4 format below. Every numbered step must appear with PASS or FAIL. A step you could not execute is FAIL, never omitted.
 >
-> Teardown. Stop the recording first when it is still running. On Playwright MCP, `browser_close`. On T3, leave the preview tab open so the user keeps what they watched.
+> Teardown. Stop the recording first when it is still running. On Playwright MCP, `browser_close`. On T3, leave the preview tab open so the user keeps what they watched. On the `agent-browser` CLI, run `agent-browser close` after `record stop`.
 
 ## Step 4: Report
 
