@@ -17,6 +17,8 @@ Playwright to T3 mapping: `browser_navigate` becomes `t3-code_preview_navigate`,
 
 I record every test flow run, not just the screenshots. On T3 I bracket the flow with `t3-code_preview_recording_start` before the first step and `t3-code_preview_recording_stop` after the last one, which saves a local evidence artifact. On the `agent-browser` CLI I bracket with `record start .qa/<flow-name>.webm` and `record stop`. Playwright MCP has no video tool, so there the screenshot sequence is the record and I report video as unavailable, never faked.
 
+Record at minimum 1920x1080, and hold 30 fps minimum on drivers that expose frame-rate control. On T3 I set the viewport with `t3-code_preview_resize` to at least that size before recording starts. On the CLI `record start` opens a fresh context at its own size, so a prior `set viewport` does not carry over: after `record stop` I check the artifact dimensions and report when the file misses the floor instead of claiming it. Neither driver exposes a frame-rate control, so I take the recorder default and report it when the file lands.
+
 ## Input
 
 - A natural language flow, for example "Create a recipe with 3 ingredients, verify nutrition calculates".
