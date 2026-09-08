@@ -473,8 +473,15 @@ After completing any UI work, review it against all 3 guideline sets below and a
 
 ## Browser automation
 
-Use Playwright MCP (`browser_navigate` → `browser_snapshot` → `browser_click`/`browser_type` → re-snapshot) for web automation and UI verification.
-Fallback when Playwright MCP is unavailable: `agent-browser` CLI (`open <url>` → `snapshot -i` → `click @e1` / `fill @e2 "text"` → re-snapshot; `agent-browser --help` for all commands).
+Driver priority for web automation and UI verification:
+
+1. When `t3-code_preview_snapshot` is in the tool list, use the T3 preview tools only. Open with `t3-code_preview_open`, go to the URL with `t3-code_preview_navigate`, then loop `t3-code_preview_snapshot` followed by `t3-code_preview_click` or `t3-code_preview_type`. Re-snapshot before every interaction because refs go stale. Keep `open=true` so the user sees the run.
+2. Else, when Playwright MCP `browser_navigate` exists, use Playwright MCP (`browser_navigate` → `browser_snapshot` → `browser_click`/`browser_type` → re-snapshot).
+3. Else, use the `agent-browser` CLI (`open <url>` → `snapshot -i` → `click @e1` / `fill @e2 "text"` → re-snapshot; `agent-browser --help` for all commands). Report any evidence the CLI cannot produce as missing, never assume it.
+
+Playwright to T3 mapping: `browser_navigate` becomes `t3-code_preview_navigate`, `browser_snapshot` becomes `t3-code_preview_snapshot`, `browser_click` becomes `t3-code_preview_click`, `browser_type` becomes `t3-code_preview_type`, `browser_press` becomes `t3-code_preview_press`, `browser_wait_for` becomes `t3-code_preview_wait_for`. Screenshots come from `t3-code_preview_snapshot` with image output.
+
+Record every UI verification run: bracket the flow with `t3-code_preview_recording_start` / `t3-code_preview_recording_stop` on T3, or `record start <path>` / `record stop` on the `agent-browser` CLI. Playwright MCP has no video tool, so there the screenshots are the record. When the change is UI-visible, the recording ships with the PR: `file-pr` attaches it at creation with `gh pr create --attach <path>`, and a recording that lands after the PR exists goes up with `gh pr comment --attach <path>`. Both need gh v2.99.0 or later.
 
 ## MCP server usage
 
