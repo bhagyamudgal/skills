@@ -178,6 +178,7 @@ def gather_github(user, org, start, end):
     ])
     if err:
         result["errors"].append(f"prs_reviewed: {err}")
+    review_lookup_failures = 0
     for pr in reviewed or []:
         author = (pr.get("author") or {}).get("login", "")
         if author == user:
@@ -185,19 +186,26 @@ def gather_github(user, org, start, end):
         repo = pr.get("repository", {}).get("name", "")
         num = pr.get("number")
         reviews, _ = gh_json([
-            "api", f"repos/{org}/{repo}/pulls/{num}/reviews",
+            "api", "--paginate", f"repos/{org}/{repo}/pulls/{num}/reviews",
             "--jq", f'[.[] | select(.user.login=="{user}") | .submitted_at]',
         ]) if org else (None, "no org")
-        my_review_in_window = any(in_window(stamp, start, end) for stamp in (reviews or []))
-        if reviews is None or my_review_in_window:
+        if reviews is None:
+            review_lookup_failures += 1
+            continue
+        if any(in_window(stamp, start, end) for stamp in reviews):
             result["prs_reviewed"].append({
                 "repo": repo,
                 "number": num,
                 "title": pr.get("title", ""),
                 "author": author,
                 "url": pr.get("url", ""),
-                "review_time_confirmed": bool(my_review_in_window),
+                "review_time_confirmed": True,
             })
+    if review_lookup_failures:
+        result["errors"].append(
+            f"prs_reviewed: {review_lookup_failures} review lookup(s) failed, "
+            "those PRs are omitted"
+        )
     return result
 
 
