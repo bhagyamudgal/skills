@@ -90,6 +90,23 @@ def gh_json(args):
         return None, str(exc)
 
 
+def gh_api_pages(args):
+    code, out, err = run(["gh", "api", "--paginate"] + args, timeout=90)
+    if code != 0:
+        return None, err.strip()
+    pages = []
+    decoder = json.JSONDecoder()
+    text = out.strip()
+    while text:
+        try:
+            doc, index = decoder.raw_decode(text)
+        except json.JSONDecodeError as exc:
+            return None, str(exc)
+        pages.append(doc)
+        text = text[index:].strip()
+    return pages, None
+
+
 def in_window(iso_str, start, end):
     if not iso_str:
         return False
@@ -185,14 +202,19 @@ def gather_github(user, org, start, end):
             continue
         repo = pr.get("repository", {}).get("name", "")
         num = pr.get("number")
-        reviews, _ = gh_json([
-            "api", "--paginate", f"repos/{org}/{repo}/pulls/{num}/reviews",
-            "--jq", f'[.[] | select(.user.login=="{user}") | .submitted_at]',
+        pages, _ = gh_api_pages([
+            f"repos/{org}/{repo}/pulls/{num}/reviews",
         ]) if org else (None, "no org")
-        if reviews is None:
+        if pages is None:
             review_lookup_failures += 1
             continue
-        if any(in_window(stamp, start, end) for stamp in reviews):
+        stamps = [
+            review.get("submitted_at")
+            for page in pages
+            for review in (page if isinstance(page, list) else [])
+            if isinstance(review, dict) and (review.get("user") or {}).get("login") == user
+        ]
+        if any(in_window(stamp, start, end) for stamp in stamps):
             result["prs_reviewed"].append({
                 "repo": repo,
                 "number": num,
