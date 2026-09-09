@@ -22,7 +22,7 @@ Ordering matters. Scope, then calibration, then judgment, then authorization, th
 
 ## 1. Resolve the board and the ledger's home
 
-**First I settle which board this is, because nothing else in section 1 can start without it.** An argument naming a project number, or a project URL, decides it outright. With no argument I list the boards linked to the repository I am running in and keep the open ones:
+**First I settle which board this is, because nothing else in section 1 can start without it.** A board is an owner plus a number: project numbers restart per owner, so a bare number names a different board under every account. An argument decides it only when it carries both, or is a URL I parse into both. With no argument I list the boards linked to the repository I am running in and keep the open ones:
 
 - exactly one open board, I take it and say which;
 - more than one, I ask, showing each number and title;

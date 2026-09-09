@@ -22,13 +22,38 @@ Three outcomes, not two. **0** clean, **1** truncated, **2** the input cannot an
 
 ## Resolve which board
 
-An argument naming a project number or URL settles this. Otherwise ask the repository which boards it is linked to, and keep the open ones:
+**A board is an owner plus a number, never a number alone.** Project numbers restart per owner, so `12` names a different board under every account. An argument must therefore carry both, or be a URL that yields both. Parse the URL before any lookup, since `gh project view` takes a number and not a URL:
 
 ```bash
-gh api graphql -f query='{repository(owner:"<OWNER>",name:"<REPO>"){projectsV2(first:20){totalCount nodes{id number title closed}}}}' | jq -r '.data.repository.projectsV2.nodes[] | select(.closed | not) | "\(.number)\t\(.title)\t\(.id)"'
+case "$ARG" in
+  https://github.com/orgs/*/projects/*|https://github.com/users/*/projects/*)
+    OWNER=$(printf '%s' "$ARG" | awk -F/ '{print $5}')
+    NUMBER=$(printf '%s' "$ARG" | awk -F/ '{print $7}' | tr -dc '0-9') ;;
+  *) OWNER="<OWNER>"; NUMBER="$ARG" ;;
+esac
+[ -n "$OWNER" ] && [ -n "$NUMBER" ] || { echo "need an owner and a project number" >&2; exit 1; }
 ```
 
-One row means one candidate. Several rows means ask, quoting the number and title of each. Expect several: a repository commonly carries a task board alongside a team or planning board, and picking the first would write to the wrong one.
+A bare number with no owner is not a usable argument. `gh project view 12` without `--owner` refuses outright when it is not attached to a terminal, reporting `owner is required when not running interactively`, so the failure is loud rather than a silent write to the wrong board. Ask for the owner instead of picking one.
+
+With no argument, ask the repository which boards it is linked to and keep the open ones. **Page the connection to the end.** `projectsV2(first:20)` returns one page, and a board on a later page is invisible to the one-versus-many decision, which is how a run auto-selects a sole first-page result and writes everywhere except where it meant to:
+
+```bash
+CUR=""; : > /tmp/boards.tsv
+while : ; do
+  [ -z "$CUR" ] && AF=null || AF="\"$CUR\""
+  R=$(gh api graphql -f query="{repository(owner:\"<OWNER>\",name:\"<REPO>\"){projectsV2(first:20, after:$AF){totalCount pageInfo{hasNextPage endCursor} nodes{id number title closed}}}}")
+  printf '%s' "$R" | jq -e '.data.repository.projectsV2.nodes' >/dev/null || { echo "board listing failed" >&2; exit 1; }
+  printf '%s' "$R" | jq -r '.data.repository.projectsV2.nodes[] | [.number,.title,.id,.closed] | @tsv' >> /tmp/boards.tsv
+  [ "$(printf '%s' "$R" | jq -r '.data.repository.projectsV2.pageInfo.hasNextPage')" = true ] || break
+  CUR=$(printf '%s' "$R" | jq -r '.data.repository.projectsV2.pageInfo.endCursor')
+  TOTAL=$(printf '%s' "$R" | jq -r '.data.repository.projectsV2.totalCount')
+done
+[ "$(wc -l < /tmp/boards.tsv)" -eq "${TOTAL:-$(wc -l < /tmp/boards.tsv)}" ] || { echo "short board listing" >&2; exit 1; }
+awk -F'\t' '$4=="false"' /tmp/boards.tsv
+```
+
+One open row means one candidate. Several means ask, quoting the number and title of each. Expect several: a repository commonly carries a task board alongside a team or planning board, and picking the first would write to the wrong one.
 
 When a board is owned by the organization and linked to no repository, that query returns nothing. Fall back to the owner's list, which is usually long enough that the number has to come from the requester:
 
