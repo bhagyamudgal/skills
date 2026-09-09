@@ -41,18 +41,18 @@ resolve_board_arg() {
   RAW=$1; ARG=${RAW%%[?#]*}
   case "$ARG" in
     https://github.com/orgs/*/projects/*|https://github.com/users/*/projects/*)
-      OWNER=$(printf '%s' "$ARG" | awk -F/ '{print $5}')
-      NUMBER=$(printf '%s' "$ARG" | awk -F/ '{print $7}') ;;
-    */*) OWNER=${ARG%%/*}; NUMBER=${ARG#*/} ;;
+      BOARD_OWNER=$(printf '%s' "$ARG" | awk -F/ '{print $5}')
+      BOARD_NUMBER=$(printf '%s' "$ARG" | awk -F/ '{print $7}') ;;
+    */*) BOARD_OWNER=${ARG%%/*}; BOARD_NUMBER=${ARG#*/} ;;
     *) echo "need <owner>/<number> or a project URL, got '$RAW'" >&2; return 1 ;;
   esac
-  case $NUMBER in ""|*[!0-9]*) echo "project number not numeric: '$NUMBER'" >&2; return 1 ;; esac
-  [ -n "$OWNER" ] || { echo "no owner in '$RAW'" >&2; return 1; }
+  case $BOARD_NUMBER in ""|*[!0-9]*) echo "project number not numeric: '$BOARD_NUMBER'" >&2; return 1 ;; esac
+  [ -n "$BOARD_OWNER" ] || { echo "no owner in '$RAW'" >&2; return 1; }
 }
 
 if [ -n "${ARG:-}" ]; then
   resolve_board_arg "$ARG" || exit 1
-  echo "board: $OWNER #$NUMBER"
+  echo "board: $BOARD_OWNER #$BOARD_NUMBER"
 else
   echo "no board argument, discovering from the repository" >&2
 fi
@@ -95,12 +95,12 @@ gh project list --owner <OWNER> --format json | jq -r '.projects[] | select(.clo
 Resolve the chosen number to its node ID before anything else, since every query below keys on it:
 
 ```bash
-PROJECT_ID=$(gh project view "$NUMBER" --owner "$OWNER" --format json | jq -r '.id')
-[ -n "$PROJECT_ID" ] && [ "$PROJECT_ID" != null ] || { echo "no board $OWNER #$NUMBER" >&2; exit 1; }
-echo "$PROJECT_ID"
+BOARD_ID=$(gh project view "$BOARD_NUMBER" --owner "$BOARD_OWNER" --format json | jq -r '.id')
+[ -n "$BOARD_ID" ] && [ "$BOARD_ID" != null ] || { echo "no board $BOARD_OWNER #$BOARD_NUMBER" >&2; exit 1; }
+echo "$BOARD_ID"
 ```
 
-`$OWNER` and `$NUMBER` are the ones `resolve_board_arg` set, or the pair the requester chose from the listing. The block prints the resolved id because that is what every `<PROJECT_ID>` below is: a paste token, not a shell variable. Two conventions run through this file and they do not mix. `$NAME` means an earlier block put it in this shell. `<NAME>` means you substitute it at the call site, because it varies per issue or per run and the single-quoted GraphQL strings would not expand it anyway. Defining that function is not the same as running it: call it and propagate its failure, or every lookup below runs against an unset owner and number.
+`$BOARD_OWNER` and `$BOARD_NUMBER` are the ones `resolve_board_arg` set, or the pair the requester chose from the listing. The block prints the resolved id because that is what every `<PROJECT_ID>` below is: a paste token, not a shell variable. Two conventions run through this file and they do not mix. `$NAME` means an earlier block put it in this shell. `<NAME>` means you substitute it at the call site, because it varies per issue or per run and the single-quoted GraphQL strings would not expand it anyway. Defining that function is not the same as running it: call it and propagate its failure, or every lookup below runs against an unset owner and number.
 
 ## Resolve the concepts
 

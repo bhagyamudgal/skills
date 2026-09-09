@@ -871,6 +871,145 @@ def _emit(label, items):
     print()
 
 
+
+# --- shell chain across bash fences (repo-wide, FAIL) ----------------------
+
+BASH_FENCE = re.compile(r"^(\s*)(`{3,})bash\s*$")
+ANY_FENCE_OPEN = re.compile(r"^\s*(`{3,})\S*\s*$")
+SHELL_BUILTINS = {
+    "IFS", "PATH", "HOME", "PWD", "OLDPWD", "SHELL", "USER", "PS1", "PS2",
+    "RANDOM", "REPLY", "SECONDS", "LINENO", "BASH_SOURCE", "FUNCNAME",
+    "GITHUB_TOKEN", "GH_TOKEN", "EDITOR", "TMPDIR", "LANG", "LC_ALL",
+}
+
+
+def _fenced_spans(lines):
+    """Yield (open_index, close_index, ticks, is_bash) for every fenced block.
+
+    A closing fence must be at least as long as the one that opened it, which is
+    what lets a four-backtick block legally contain three-backtick fences."""
+    out, i = [], 0
+    while i < len(lines):
+        m = ANY_FENCE_OPEN.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        ticks = m.group(1)
+        is_bash = bool(BASH_FENCE.match(lines[i]))
+        j = i + 1
+        while j < len(lines):
+            c = re.match(rf"^\s*{ticks[0]}{{{len(ticks)},}}\s*$", lines[j])
+            if c:
+                break
+            j += 1
+        out.append((i, min(j, len(lines)), ticks, is_bash))
+        i = j + 1
+    return out
+
+
+def _bash_blocks(lines):
+    """Yield (first_body_line_number, body_lines) for every bash fence.
+
+    The line number is 1-based and points at the first line of the body, not at
+    the fence, so a reported finding lands on the offending command."""
+    return [(o + 2, lines[o + 1:c]) for o, c, _t, is_bash in _fenced_spans(lines)
+            if is_bash]
+
+
+def check_placeholder_consistency():
+    """`$NAME` means an earlier block put it in this shell; `<NAME>` means the
+    reader substitutes it here. A name written both ways means one of the two
+    is dead, and nothing reports which. That is how a producer block can set a
+    variable no consumer ever reads while the document still looks wired up."""
+    for path in EVERY_MD:
+        lines = read(path) or []
+        shell, token = set(), set()
+        for _, body in _bash_blocks(lines):
+            text = "\n".join(body)
+            shell |= set(re.findall(r"\$\{?([A-Z][A-Z0-9_]{1,})\b", text))
+            token |= set(re.findall(r"<([A-Z][A-Z0-9_]{1,})>", text))
+        for name in sorted((shell & token) - SHELL_BUILTINS):
+            fail(rel(path),
+                 f"`{name}` is written as both `${name}` and `<{name}>` in bash "
+                 f"blocks. One form is dead: either the assignment has no reader "
+                 f"or the paste token has no producer. Pick one and say which in "
+                 f"prose")
+
+
+def check_bash_block_chain():
+    """Derived from the fence bodies, so there is no declaration to fall out of
+    date. Catches the three shapes that survived nine review rounds on
+    triage-board: a function defined and never called, and a variable read with
+    no assignment anywhere and no `:?` guard to fail loudly when it is unset.
+
+    A function named anywhere in the prose counts as called. review-pr defines
+    a cleanup helper and invokes it only from instruction text, which is a
+    legitimate shape in a document meant for an agent to follow.
+
+    A variable assigned and read inside one block is ordinary and is not
+    reported; requiring the read to land in a later block flagged 55 legitimate
+    uses across the repo and buried the three real findings.
+
+    The unset-read rule warns rather than fails. Several skills assign a value
+    in prose and read it in a fence, which is a real gap but an established
+    convention, and failing 15 pre-existing instances would gate every future
+    PR on other people's skills."""
+    for path in EVERY_MD:
+        lines = read(path) or []
+        blocks = _bash_blocks(lines)
+        if not blocks:
+            continue
+        assigned, read_at, guarded = {}, {}, {}
+        defined, called = {}, set()
+        for start, body in blocks:
+            text = "\n".join(body)
+            for offset, line in enumerate(body):
+                at = start + offset
+                for m in re.finditer(
+                        r"(?:^|[;&|]|\b(?:then|do|else)\s)\s*([A-Z][A-Z0-9_]{1,})=",
+                        line):
+                    assigned.setdefault(m.group(1), (at, m.start(1)))
+                for m in re.finditer(r"\$\{([A-Z][A-Z0-9_]{1,}):[?]", line):
+                    guarded.setdefault(m.group(1), (at, m.start(1)))
+                for m in re.finditer(r"\$\{?([A-Z][A-Z0-9_]{1,})\b", line):
+                    read_at.setdefault(m.group(1), (at, m.start(1)))
+            for m in re.finditer(r"^\s*([a-z_][a-z0-9_]*)\s*\(\)\s*\{", text, re.M):
+                defined.setdefault(m.group(1), start)
+            for line in text.split("\n"):
+                if re.match(r"^\s*[a-z_][a-z0-9_]*\s*\(\)", line):
+                    continue
+                m = re.match(r"^\s*([a-z_][a-z0-9_]*)\b", line)
+                if m:
+                    called.add(m.group(1))
+                called |= set(re.findall(r"[|&]{2}\s*([a-z_][a-z0-9_]*)\b", line))
+
+        for name, pos in sorted(read_at.items()):
+            if name in SHELL_BUILTINS:
+                continue
+            r_line = pos[0]
+            a = assigned.get(name)
+            g = guarded.get(name)
+            if (a is not None and a <= pos) or (g is not None and g <= pos):
+                continue
+            warn(rel(path),
+                 f"`${name}` is read at line {r_line} with no `{name}=` in any "
+                 f"bash block and no `${{{name}:?}}` guard. Unset it expands to "
+                 f"empty and the command runs against the wrong target instead "
+                 f"of failing. WARN rather than FAIL because several skills "
+                 f"assign in prose and read in a fence by convention")
+
+        fenced = set()
+        for o, c, _t, _b in _fenced_spans(lines):
+            fenced |= set(range(o, min(c, len(lines)) + 1))
+        prose = "\n".join(l for i, l in enumerate(lines) if i not in fenced)
+        for name, d_line in sorted(defined.items()):
+            if name in called or re.search(rf"\b{re.escape(name)}\b", prose):
+                continue
+            fail(rel(path),
+                 f"`{name}()` is defined at line {d_line} and never called. A "
+                 f"function nothing invokes is the defect this check exists for")
+
+
 def main():
     if not SKILLS:
         fail("setup", f"no skills found under {ROOT}")
@@ -898,6 +1037,8 @@ def main():
     check_cross_skill_duplication()
     check_near_duplicate_code_blocks()
     check_global_rules_mirror_drift()
+    check_placeholder_consistency()
+    check_bash_block_chain()
 
     check_status_values()
     check_banned_status_words()
