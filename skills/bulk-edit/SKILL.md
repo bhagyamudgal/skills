@@ -53,7 +53,9 @@ Whitespace and encoding drift will show up here as false mismatches. When a reco
 
 I hand the batch to `preflight-mutations` and do not write until its verdict is `ready`.
 
-I check the platform's own history before classifying reversibility. Many systems retain the prior value permanently and for free: an issue tracker that records renames, a table with an audit trigger, a filesystem with snapshots. Where that exists, a class of edit I would have called `compensating-only` is genuinely `reversible`, and the recovery path costs nothing to keep. I verify that retention on one real record rather than assuming it, and I record the exact query that reads the old value back.
+I check the platform's own history before planning recovery. Many systems retain the prior value permanently and for free: an issue tracker that records renames, a table with an audit trigger, a filesystem with snapshots. That retention hands me the captured prior value a restoration needs, so I verify it on one real record rather than assuming it and record the exact query that reads the old value back.
+
+Retention proves the compensation is possible. It does not change the reversibility class. `preflight-mutations` owns that classification, and an edit whose original event or downstream effects outlive the restoration stays `compensating-only` however cleanly the old value reads back. I supply the evidence and let that skill classify, because upgrading the class myself would skip the fresh confirmation it requires.
 
 I also write the restore path as a runnable script, not a described procedure. It reverts from the section 4 snapshot, and it refuses any record whose current value is neither my new value nor the original, so a colleague's later edit survives the rollback.
 

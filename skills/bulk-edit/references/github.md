@@ -8,18 +8,20 @@ Concrete costs and commands. Numbers verified on a 638-issue title rewrite, 2026
 
 | Bucket | Limit | Spent by |
 |---|---|---|
-| `graphql` | 5000 points/hr | `gh issue view`, `gh issue edit`, `gh project item-list` |
-| `search` | **30 requests/min** | `gh issue list` |
+| `graphql` | 5000 points/hr | `gh issue view`, `gh issue edit`, `gh issue list`, `gh project item-list` |
 | `core` (REST) | 5000/hr | `gh api repos/...` |
-| secondary / abuse | undocumented | rapid writes of any kind |
+| `search` | 30 requests/min | REST search endpoints, not the `gh issue` commands |
+| secondary / abuse | undocumented, invisible | rapid writes of any kind |
+
+The `gh issue` commands all go through the CLI's GraphQL client, and a GraphQL request always bills the `graphql` resource. Do not budget them against REST search.
 
 Three traps follow from that table.
 
 **A read-then-write-then-verify loop on `gh issue view` / `gh issue edit` costs 3 GraphQL points per record.** 638 issues exhausted the budget before the run finished. Read the whole population once up front instead, and write through REST.
 
-**`gh issue list` spends the search bucket, not GraphQL.** It is the first thing to fail on a bulk run and it reports the failure as `GraphQL: API rate limit already exceeded`, which points at the wrong bucket. It also serves a lagging index, so it is unsafe for verification regardless of quota.
+**`gh issue list` serves a lagging index, so it is unsafe for verification at any quota.** It reports a population as already-correct minutes before the writes appear, or as broken after they landed. Read objects through REST instead, as below.
 
-**The secondary limit is invisible.** After ~638 rapid writes, GraphQL rejected calls while `rate_limit` reported every bucket full. Do not trust `rate_limit` to explain a rejection. It clears on its own within minutes.
+**The secondary limit is invisible, and it lies about which bucket is exhausted.** After ~638 rapid writes, calls failed with `GraphQL: API rate limit already exceeded` while `gh api rate_limit` reported *every* bucket full, `graphql` at 5000/5000 included. The message names a primary bucket that is not the one refusing you. Do not re-plan a run around that string, and do not trust `rate_limit` to explain a rejection. It clears on its own within minutes. Pace writes so you never meet it.
 
 ## The cheap write path
 
@@ -72,11 +74,17 @@ for created_at, login in events:
 
 A weekly job shows up as consecutive same-weekday dates inside a narrow minute band, for example 01:03 to 01:26 across twelve consecutive Thursdays. Human maintenance scatters across weekdays and working hours.
 
-`.actor.type` distinguishes `User` from `Bot`. An automation running under a `User` account uses a personal token, so it will not appear in `.github/workflows/` and cannot be found by reading the repository.
+`.actor.type` distinguishes `User` from `Bot`, but it does not locate the job. A workflow can authenticate with a personal access token held as a repository secret, which attributes its writes to a `User` exactly as an off-platform cron does. Check both locations independently: grep `.github/workflows/` for the write, and ask the account owner where else it could run. Concluding "User, therefore external" will walk you straight past a producer sitting in the repository.
 
 ## Project board fields
 
-`gh project item-list N --owner OWNER --format json --limit 4000` returns every item with its field values and a `totalCount`, and it does not truncate silently. It is slow, around three minutes for 3100 items, so run it detached and wait on the file.
+`gh project item-list N --owner OWNER --format json --limit 4000` returns items with their field values plus a `totalCount`. It is slow, around three minutes for 3100 items, so run it detached and wait on the file.
+
+`--limit` is a maximum, not a promise. A board holding more items than the limit comes back cut short, and `totalCount` is the only thing that reveals it. Assert the two agree before treating the output as the whole population:
+
+```bash
+jq -e '(.items|length) == .totalCount' board.json || echo "INCOMPLETE: raise --limit or paginate"
+```
 
 Iteration fields return an object, not a string:
 
