@@ -22,7 +22,15 @@ Ordering matters. Scope, then calibration, then judgment, then authorization, th
 
 ## 1. Resolve the board and the ledger's home
 
-I read the project's fields, the repository's labels, the organization's issue types, and the login of the credential I am authenticated as, and record the stable ID of each. That login is the token's principal rather than the requester by definition, so I confirm the two are the same person before the ownership boundary keys on it; a bot or shared credential stops the run. I never carry an ID between runs; a board that gained a field or renamed an option would make a cached ID write to the wrong place.
+**First I settle which board this is, because nothing else in section 1 can start without it.** An argument naming a project number, or a project URL, decides it outright. With no argument I list the boards linked to the repository I am running in and keep the open ones:
+
+- exactly one open board, I take it and say which;
+- more than one, I ask, showing each number and title;
+- none, I ask for the owner and project number, since the board may be owned by the organization and linked to no repository.
+
+I never guess from the working directory or from a board I used before. Two open boards on one repository is the ordinary case, not the edge case, so the ask is a normal outcome rather than a failure.
+
+I then read the project's fields, the repository's labels, the organization's issue types, and the login of the credential I am authenticated as, and record the stable ID of each. That login is the token's principal rather than the requester by definition, so I confirm the two are the same person before the ownership boundary keys on it; a bot or shared credential stops the run. I never carry an ID between runs; a board that gained a field or renamed an option would make a cached ID write to the wrong place.
 
 Load `${CLAUDE_SKILL_DIR}/references/board-queries.md` now. It holds the exact queries, each with the assertion that proves it read everything.
 
@@ -40,7 +48,7 @@ The ledger carries one row per candidate **field**, not per candidate, and is th
 
 An excluded item is a ledger row too, and it is the one shape that does not carry a field. It takes `Field: none`, `Current` and `Proposed` empty, the exclusion reason in `Basis`, and `Status: excluded`, exactly one row per excluded item rather than four. Without that shape an interrupted run loses the reasons section 2 requires and reports a different exclusion count on resume than it did on the first pass.
 
-**Gate.** Every concept the run needs has a resolved ID, the requester's identity is known, and the ledger has an authorized home. Otherwise the run stops naming what is missing.
+**Gate.** The board is named rather than inferred, every concept the run needs has a resolved ID, the requester's identity is known, and the ledger has an authorized home. Otherwise the run stops naming what is missing.
 
 ## 2. Fix the scope
 

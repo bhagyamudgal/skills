@@ -20,6 +20,28 @@ assert_field_values() {
 
 Three outcomes, not two. **0** clean, **1** truncated, **2** the input cannot answer the question: missing, empty, unparseable, or carrying a row with no readable `fieldValues.totalCount`. That last case is why the shape is validated before the ceiling is tested. `nodes(ids:)` returns a bare `null` for an id it cannot resolve, and a predicate on a null row is simply false, so a row nobody read would otherwise pass as clean and its unread write would be recorded `failed` rather than `reconcile-required`. Collapsing 2 into either of the others is the trap here: a bare `jq -e` exits non-zero both when nothing is truncated and when the file does not exist, so treating every non-zero as clean lets absent data through the gate, while treating it as truncated stops a healthy run. On **2** the affected rows take `reconcile-required`, because nothing may be classified from data that was never read. The remaining ceilings (`labels(first:50)`, `assignees(first:20)`, `issueTypes(first:20)`) are judged safe only while the project stays under them; check that assumption on a new board.
 
+## Resolve which board
+
+An argument naming a project number or URL settles this. Otherwise ask the repository which boards it is linked to, and keep the open ones:
+
+```bash
+gh api graphql -f query='{repository(owner:"<OWNER>",name:"<REPO>"){projectsV2(first:20){totalCount nodes{id number title closed}}}}' | jq -r '.data.repository.projectsV2.nodes[] | select(.closed | not) | "\(.number)\t\(.title)\t\(.id)"'
+```
+
+One row means one candidate. Several rows means ask, quoting the number and title of each. Expect several: a repository commonly carries a task board alongside a team or planning board, and picking the first would write to the wrong one.
+
+When a board is owned by the organization and linked to no repository, that query returns nothing. Fall back to the owner's list, which is usually long enough that the number has to come from the requester:
+
+```bash
+gh project list --owner <OWNER> --format json | jq -r '.projects[] | select(.closed | not) | "\(.number)\t\(.title)"'
+```
+
+Resolve the chosen number to its node ID before anything else, since every query below keys on it:
+
+```bash
+gh project view <NUMBER> --owner <OWNER> --format json | jq -r '.id'
+```
+
 ## Resolve the concepts
 
 Every field, its type, and its options. Completed iterations sit in a separate list from live ones, so a scope argument naming a past release needs both.
