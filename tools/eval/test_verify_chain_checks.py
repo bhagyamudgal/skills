@@ -126,6 +126,21 @@ class UnsetRead(unittest.TestCase):
             got = run_checks(d, body)
         self.assertTrue(any("LATE" in m for m in got.warns), got.warns)
 
+    def test_read_then_assign_inside_one_fence_warns(self):
+        """Ordering is by line, not by fence. Comparing fence indexes scored a
+        read and a later assignment in the same block equal and stayed silent,
+        while the unsafe read still executes first."""
+        body = "```bash\necho \"$SAME/x\"\nSAME=/tmp\n```\n\n```bash\necho done\n```\n"
+        with tempfile.TemporaryDirectory() as d:
+            got = run_checks(d, body)
+        self.assertTrue(any("SAME" in m for m in got.warns), got.warns)
+
+    def test_assign_then_read_inside_one_fence_passes(self):
+        body = "```bash\nSAME=/tmp\necho \"$SAME/x\"\n```\n\n```bash\necho done\n```\n"
+        with tempfile.TemporaryDirectory() as d:
+            got = run_checks(d, body)
+        self.assertEqual([], [m for m in got.warns if "SAME" in m])
+
     def test_assignment_before_the_read_passes(self):
         body = "```bash\nEARLY=/tmp\n```\n\n```bash\necho \"$EARLY/x\"\n```\n"
         with tempfile.TemporaryDirectory() as d:
