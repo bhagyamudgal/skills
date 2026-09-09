@@ -37,6 +37,9 @@ resolve_board_arg() {
   case $NUMBER in ""|*[!0-9]*) echo "project number not numeric: '$NUMBER'" >&2; return 1 ;; esac
   [ -n "$OWNER" ] || { echo "no owner in '$RAW'" >&2; return 1; }
 }
+
+resolve_board_arg "$ARG" || exit 1
+echo "board: $OWNER #$NUMBER"
 ```
 
 Three details carry the weight. **Strip the query and fragment first**, because the URL people actually copy from the address bar carries one: without `${RAW%%[?#]*}`, digit-scraping turns `.../projects/12?view=3` into project `123` and writes to a board nobody named. **Require the number to be all digits**, so a malformed argument stops rather than reaching a lookup. **Reject a bare number outright**, since project numbers restart per owner and there is no safe default; `gh project view 12` without `--owner` refuses anyway when it is not attached to a terminal, reporting `owner is required when not running interactively`, and the skill should fail at the same point rather than one call later.
@@ -71,8 +74,12 @@ gh project list --owner <OWNER> --format json | jq -r '.projects[] | select(.clo
 Resolve the chosen number to its node ID before anything else, since every query below keys on it:
 
 ```bash
-gh project view <NUMBER> --owner <OWNER> --format json | jq -r '.id'
+PROJECT_ID=$(gh project view "$NUMBER" --owner "$OWNER" --format json | jq -r '.id')
+[ -n "$PROJECT_ID" ] && [ "$PROJECT_ID" != null ] || { echo "no board $OWNER #$NUMBER" >&2; exit 1; }
+echo "$PROJECT_ID"
 ```
+
+`$OWNER` and `$NUMBER` are the ones `resolve_board_arg` set, or the pair the requester chose from the listing. Defining that function is not the same as running it: call it and propagate its failure, or every lookup below runs against an unset owner and number.
 
 ## Resolve the concepts
 
