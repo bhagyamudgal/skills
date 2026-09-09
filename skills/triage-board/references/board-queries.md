@@ -9,13 +9,16 @@ The third matters most, because a truncated `fieldValues` makes a landed write l
 ```bash
 assert_field_values() {
   [ -s "$1" ] || { echo "assert_field_values: $1 missing or empty" >&2; return 2; }
-  OVER=$(jq -r 'select(.fieldValues.totalCount > 30) | .id' "$1") || {
+  BAD=$(jq -r 'select(type != "object" or (.fieldValues.totalCount | type) != "number")
+               | (.id // "unidentified")' "$1") || {
     echo "assert_field_values: cannot parse $1" >&2; return 2; }
+  [ -z "$BAD" ] || { echo "assert_field_values: no readable totalCount on: $BAD" >&2; return 2; }
+  OVER=$(jq -r 'select(.fieldValues.totalCount > 30) | .id' "$1")
   [ -z "$OVER" ] || { echo "fieldValues truncated for: $OVER" >&2; return 1; }
 }
 ```
 
-Three outcomes, not two. **0** clean, **1** truncated, **2** input missing, empty or unparseable. Collapsing 2 into either of the others is the trap here: a bare `jq -e` exits non-zero both when nothing is truncated and when the file does not exist, so treating every non-zero as clean lets absent data through the gate, while treating it as truncated stops a healthy run. On **2** the affected rows take `reconcile-required`, because nothing may be classified from data that was never read. The remaining ceilings (`labels(first:50)`, `assignees(first:20)`, `issueTypes(first:20)`) are judged safe only while the project stays under them; check that assumption on a new board.
+Three outcomes, not two. **0** clean, **1** truncated, **2** the input cannot answer the question: missing, empty, unparseable, or carrying a row with no readable `fieldValues.totalCount`. That last case is why the shape is validated before the ceiling is tested. `nodes(ids:)` returns a bare `null` for an id it cannot resolve, and a predicate on a null row is simply false, so a row nobody read would otherwise pass as clean and its unread write would be recorded `failed` rather than `reconcile-required`. Collapsing 2 into either of the others is the trap here: a bare `jq -e` exits non-zero both when nothing is truncated and when the file does not exist, so treating every non-zero as clean lets absent data through the gate, while treating it as truncated stops a healthy run. On **2** the affected rows take `reconcile-required`, because nothing may be classified from data that was never read. The remaining ceilings (`labels(first:50)`, `assignees(first:20)`, `issueTypes(first:20)`) are judged safe only while the project stays under them; check that assumption on a new board.
 
 ## Resolve the concepts
 

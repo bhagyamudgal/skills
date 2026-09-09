@@ -38,7 +38,7 @@ The ledger carries one row per candidate **field**, not per candidate, and is th
 | <item ID> | #<n> | <login> | leaf / umbrella | label / priority / estimate / type | <value> | <value> | <evidence> | candidate / pending / landed / failed / skipped / reconcile-required / conflicted / excluded |
 ```
 
-An excluded item is a ledger row too, and it is the one shape that does not carry a field. It takes `Field: none`, `Current`, `Proposed` and `Basis` empty, the reason in `Basis`, and `Status: excluded`, exactly one row per excluded item rather than four. Without that shape an interrupted run loses the reasons section 2 requires and reports a different exclusion count on resume than it did on the first pass.
+An excluded item is a ledger row too, and it is the one shape that does not carry a field. It takes `Field: none`, `Current` and `Proposed` empty, the exclusion reason in `Basis`, and `Status: excluded`, exactly one row per excluded item rather than four. Without that shape an interrupted run loses the reasons section 2 requires and reports a different exclusion count on resume than it did on the first pass.
 
 **Gate.** Every concept the run needs has a resolved ID, the requester's identity is known, and the ledger has an authorized home. Otherwise the run stops naming what is missing.
 
