@@ -1,0 +1,7 @@
+interface:
+  display_name: "Triage Board"
+  short_description: "Label, prioritize and estimate a board in one pass"
+  default_prompt: "Use $triage-board to triage a project board: find candidates, label them agent-ready or need-human, set priority and type, and calibrate estimates before shared-state writes."
+
+policy:
+  allow_implicit_invocation: false
