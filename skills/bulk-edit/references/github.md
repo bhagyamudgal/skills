@@ -55,7 +55,9 @@ gh api repos/OWNER/REPO/issues/N/timeline --paginate \
   -q '.[]|select(.event=="renamed")|"\(.created_at) \(.actor.login)  from: \(.rename.from)"'
 ```
 
-Verify this on one real record before classifying the batch as reversible. It also reconstructs the full edit history, which is what section 8 of the skill needs.
+Verify this on one real record before relying on it. It gives you the captured prior value a restoration needs, and it reconstructs the full edit history that section 8 of the skill uses to find the producer.
+
+It does not make the batch `reversible`. The rename event survives the restoration, so `preflight-mutations` classifies a history-backed undo as `compensating-only` and requires fresh confirmation for it. Hand the retained value over as evidence and let that skill assign the class.
 
 ## Detecting an automation behind the edits
 

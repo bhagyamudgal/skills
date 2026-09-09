@@ -95,7 +95,9 @@ I expect a small number of survivors that look like failures and are not, where 
 
 A field maintained by a recurring job regrows after I clean it. Before reporting the work as finished I ask what writes this field on an ongoing basis, and I test the answer rather than accepting it.
 
-Edit history carries the evidence. I pull the change events for a few representative records and cluster their timestamps by weekday and hour in the relevant timezone. A weekly job produces an unmistakable spike; human maintenance scatters. The account behind the writes is evidence too: a `User` account on a machine-regular schedule means an automation running on someone's personal token, which will not appear in the repository's own workflow configuration.
+Edit history carries the evidence. I pull the change events for a few representative records and cluster their timestamps by weekday and hour in the relevant timezone. A weekly job produces an unmistakable spike; human maintenance scatters.
+
+The account behind the writes tells me a job exists, not where it runs. A machine-regular schedule under an ordinary user account is consistent with an off-platform cron and equally consistent with a scheduled workflow authenticating as that user through a stored token. So I search the repository's own automation configuration and the hosts it could run on as two independent checks, and I rule out neither on the strength of the account type.
 
 When someone names the job's location, I verify the location separately from the schedule. Those two claims fail independently, and the schedule being right is not evidence that the path is. A recalled path from an unavailable memory system is a hypothesis.
 
