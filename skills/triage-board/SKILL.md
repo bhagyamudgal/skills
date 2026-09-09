@@ -38,6 +38,8 @@ The ledger carries one row per candidate **field**, not per candidate, and is th
 | <item ID> | #<n> | <login> | leaf / umbrella | label / priority / estimate / type | <value> | <value> | <evidence> | candidate / pending / landed / failed / skipped / reconcile-required / conflicted / excluded |
 ```
 
+An excluded item is a ledger row too, and it is the one shape that does not carry a field. It takes `Field: none`, `Current`, `Proposed` and `Basis` empty, the reason in `Basis`, and `Status: excluded`, exactly one row per excluded item rather than four. Without that shape an interrupted run loses the reasons section 2 requires and reports a different exclusion count on resume than it did on the first pass.
+
 **Gate.** Every concept the run needs has a resolved ID, the requester's identity is known, and the ledger has an authorized home. Otherwise the run stops naming what is missing.
 
 ## 2. Fix the scope
@@ -56,7 +58,7 @@ I ask **once**, in a single question, before judging the batch. `${CLAUDE_SKILL_
 
 The estimate unit defaults to **human active time**, which `${CLAUDE_SKILL_DIR}/references/calibration.md` defines and anchors.
 
-Approving a rubric is not the same as approving a number. So I then estimate **three to five real tickets** from this scope, covering the smallest, the typical, the largest, and any umbrella, and show those with their reasoning and their subtotal. Only after the requester approves that preview do ledger rows move from `candidate` to `pending`. Without it the first applied number they ever see arrives after every write has landed.
+Approving a rubric is not the same as approving a number. So I then estimate **three to five real tickets** from this scope, covering the smallest, the typical, the largest, and any umbrella, and show those with their reasoning and their subtotal. A scope holding fewer than three candidates previews every one of them instead, since the point is a number the requester has seen rather than a quota. A scope holding none skips the calibration, the judgement and every write, and goes straight to a report with zero totals and its exclusion list. Only after the requester approves that preview do ledger rows move from `candidate` to `pending`. Without it the first applied number they ever see arrives after every write has landed.
 
 A changed unit, scale, anchor, rubric, ownership boundary, or umbrella treatment invalidates every row not yet written.
 

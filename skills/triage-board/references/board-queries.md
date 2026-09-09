@@ -2,21 +2,20 @@
 
 GitHub Projects v2 recipes for this skill. Substitute the project number, owner and field IDs; nothing here is specific to one project. `<OWNER>/<REPO>` is per issue rather than per run, because a board can span repositories.
 
-Every paged selection below carries a `first:` ceiling, and a run whose data exceeds one is silently short. Three are asserted explicitly: the field count against `fields(first:50)`, the item count against `totalCount`, and each item's `fieldValues(first:30)` against the `totalCount` selected on that same connection. The third runs twice, once over the enumerated file and again over the read-back response, because a truncation in either place is invisible to a check on the other:
+Every paged selection below carries a `first:` ceiling, and a run whose data exceeds one is silently short. Three are asserted explicitly: the field count against `fields(first:50)`, the item count against `totalCount`, and each item's `fieldValues(first:30)` against the `totalCount` selected on that same connection.
+
+The third matters most, because a truncated `fieldValues` makes a landed write look absent and turns into a spurious `failed`. It applies to the two GraphQL selections only, the fallback loop and the read-back. `gh project item-list` returns no `fieldValues` connection at all; it flattens each field into its own named key, so there is no ceiling to breach on the preferred path. Define the check once and call it where each of those two files is finished, never before one exists:
 
 ```bash
 assert_field_values() {
-  if jq -e 'select(.fieldValues.totalCount > 30) | .id' "$1" >/dev/null; then
-    echo "fieldValues truncated in $1, enumeration unusable for read-back comparison" >&2
-    return 1
-  fi
+  [ -s "$1" ] || { echo "assert_field_values: $1 missing or empty" >&2; return 2; }
+  OVER=$(jq -r 'select(.fieldValues.totalCount > 30) | .id' "$1") || {
+    echo "assert_field_values: cannot parse $1" >&2; return 2; }
+  [ -z "$OVER" ] || { echo "fieldValues truncated for: $OVER" >&2; return 1; }
 }
-assert_field_values "$WORK/items.jsonl"
 ```
 
-Exit 0 means clean and non-zero means truncated, which is the opposite of what a bare `jq -e` reports: `jq -e` exits 0 when it finds a match and 4 when it finds none, so an unwrapped pipeline passes on truncated data and fails on safe data. A non-zero result here means the data cannot be compared, not that the query failed.
-
-The third matters most, because a truncated `fieldValues` makes a landed write look absent and turns into a spurious `failed`. The remaining ceilings (`labels(first:50)`, `assignees(first:20)`, `issueTypes(first:20)`) are judged safe only while the project stays under them; check that assumption on a new board.
+Three outcomes, not two. **0** clean, **1** truncated, **2** input missing, empty or unparseable. Collapsing 2 into either of the others is the trap here: a bare `jq -e` exits non-zero both when nothing is truncated and when the file does not exist, so treating every non-zero as clean lets absent data through the gate, while treating it as truncated stops a healthy run. On **2** the affected rows take `reconcile-required`, because nothing may be classified from data that was never read. The remaining ceilings (`labels(first:50)`, `assignees(first:20)`, `issueTypes(first:20)`) are judged safe only while the project stays under them; check that assumption on a new board.
 
 ## Resolve the concepts
 
@@ -136,6 +135,12 @@ Do not stop on the mere presence of `errors`. A board carrying items from a repo
 `repository{nameWithOwner}` is not optional. A board can hold issues from several repositories, and an issue number is only unique within one, so a number paired with the wrong owner and repository edits a different issue that happens to share it. Every `<OWNER>/<REPO>` below is the issue's own, never a single value fixed for the run: the two labels are resolved and created once per repository represented in the candidate set, and the aliased read-back is issued once per repository.
 
 `content{__typename}` is what separates an issue from a pull request or a draft on this path. Both non-issues return an empty `... on Issue` selection, so without the typename an exclusion cannot state its reason.
+
+Assert the field-value ceiling once the file is complete, after the loop rather than inside it:
+
+```bash
+assert_field_values "$WORK/items.jsonl"
+```
 
 `$WORK` is a temporary directory, never the repository being triaged.
 
