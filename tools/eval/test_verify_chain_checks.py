@@ -141,6 +141,29 @@ class UnsetRead(unittest.TestCase):
             got = run_checks(d, body)
         self.assertEqual([], [m for m in got.warns if "SAME" in m])
 
+    def test_assign_and_read_on_one_line_passes(self):
+        """`WORK=$(mktemp -d); echo "$WORK"` is the ordinary setup shape. A
+        strict line comparison rejected the assignment and warned falsely, which
+        is how fixing the within-fence false negative created a false positive."""
+        body = "```bash\nONELINE=$(mktemp -d); echo \"$ONELINE\"\n```\n\n```bash\necho done\n```\n"
+        with tempfile.TemporaryDirectory() as d:
+            got = run_checks(d, body)
+        self.assertEqual([], [m for m in got.warns if "ONELINE" in m])
+
+    def test_read_then_assign_on_one_line_warns(self):
+        body = "```bash\necho \"$ONELINE\"; ONELINE=v\n```\n\n```bash\necho done\n```\n"
+        with tempfile.TemporaryDirectory() as d:
+            got = run_checks(d, body)
+        self.assertTrue(any("ONELINE" in m for m in got.warns), got.warns)
+
+    def test_assignment_after_a_shell_operator_is_seen(self):
+        """`[ -z "$C" ] && MID=a || MID=b` assigns, but an `^\\s*` anchored
+        pattern never sees it and every later read warns falsely."""
+        body = "```bash\n[ -z \"$C\" ] && MID=a || MID=b\necho \"$MID\"\n```\n\n```bash\necho done\n```\n"
+        with tempfile.TemporaryDirectory() as d:
+            got = run_checks(d, body)
+        self.assertEqual([], [m for m in got.warns if "MID" in m])
+
     def test_assignment_before_the_read_passes(self):
         body = "```bash\nEARLY=/tmp\n```\n\n```bash\necho \"$EARLY/x\"\n```\n"
         with tempfile.TemporaryDirectory() as d:

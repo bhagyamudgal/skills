@@ -965,13 +965,14 @@ def check_bash_block_chain():
             text = "\n".join(body)
             for offset, line in enumerate(body):
                 at = start + offset
-                m = re.match(r"^\s*([A-Z][A-Z0-9_]{1,})=", line)
-                if m:
-                    assigned.setdefault(m.group(1), at)
-                for name in re.findall(r"\$\{([A-Z][A-Z0-9_]{1,}):[?]", line):
-                    guarded.setdefault(name, at)
-                for name in re.findall(r"\$\{?([A-Z][A-Z0-9_]{1,})\b", line):
-                    read_at.setdefault(name, at)
+                for m in re.finditer(
+                        r"(?:^|[;&|]|\b(?:then|do|else)\s)\s*([A-Z][A-Z0-9_]{1,})=",
+                        line):
+                    assigned.setdefault(m.group(1), (at, m.start(1)))
+                for m in re.finditer(r"\$\{([A-Z][A-Z0-9_]{1,}):[?]", line):
+                    guarded.setdefault(m.group(1), (at, m.start(1)))
+                for m in re.finditer(r"\$\{?([A-Z][A-Z0-9_]{1,})\b", line):
+                    read_at.setdefault(m.group(1), (at, m.start(1)))
             for m in re.finditer(r"^\s*([a-z_][a-z0-9_]*)\s*\(\)\s*\{", text, re.M):
                 defined.setdefault(m.group(1), start)
             for line in text.split("\n"):
@@ -982,12 +983,13 @@ def check_bash_block_chain():
                     called.add(m.group(1))
                 called |= set(re.findall(r"[|&]{2}\s*([a-z_][a-z0-9_]*)\b", line))
 
-        for name, r_line in sorted(read_at.items()):
+        for name, pos in sorted(read_at.items()):
             if name in SHELL_BUILTINS:
                 continue
+            r_line = pos[0]
             a = assigned.get(name)
             g = guarded.get(name)
-            if (a is not None and a < r_line) or (g is not None and g <= r_line):
+            if (a is not None and a <= pos) or (g is not None and g <= pos):
                 continue
             warn(rel(path),
                  f"`${name}` is read at line {r_line} with no `{name}=` in any "
