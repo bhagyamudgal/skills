@@ -20,6 +20,73 @@ assert_field_values() {
 
 Three outcomes, not two. **0** clean, **1** truncated, **2** the input cannot answer the question: missing, empty, unparseable, or carrying a row with no readable `fieldValues.totalCount`. That last case is why the shape is validated before the ceiling is tested. `nodes(ids:)` returns a bare `null` for an id it cannot resolve, and a predicate on a null row is simply false, so a row nobody read would otherwise pass as clean and its unread write would be recorded `failed` rather than `reconcile-required`. Collapsing 2 into either of the others is the trap here: a bare `jq -e` exits non-zero both when nothing is truncated and when the file does not exist, so treating every non-zero as clean lets absent data through the gate, while treating it as truncated stops a healthy run. On **2** the affected rows take `reconcile-required`, because nothing may be classified from data that was never read. The remaining ceilings (`labels(first:50)`, `assignees(first:20)`, `issueTypes(first:20)`) are judged safe only while the project stays under them; check that assumption on a new board.
 
+## Resolve which board
+
+**A board is an owner plus a number, never a number alone.** Project numbers restart per owner, so `12` names a different board under every account. An argument must therefore carry both, or be a URL that yields both. Parse the URL before any lookup, since `gh project view` takes a number and not a URL:
+
+```bash
+resolve_board_arg() {
+  RAW=$1; ARG=${RAW%%[?#]*}
+  case "$ARG" in
+    https://github.com/orgs/*/projects/*|https://github.com/users/*/projects/*)
+      OWNER=$(printf '%s' "$ARG" | awk -F/ '{print $5}')
+      NUMBER=$(printf '%s' "$ARG" | awk -F/ '{print $7}') ;;
+    */*) OWNER=${ARG%%/*}; NUMBER=${ARG#*/} ;;
+    *) echo "need <owner>/<number> or a project URL, got '$RAW'" >&2; return 1 ;;
+  esac
+  case $NUMBER in ""|*[!0-9]*) echo "project number not numeric: '$NUMBER'" >&2; return 1 ;; esac
+  [ -n "$OWNER" ] || { echo "no owner in '$RAW'" >&2; return 1; }
+}
+
+if [ -n "${ARG:-}" ]; then
+  resolve_board_arg "$ARG" || exit 1
+  echo "board: $OWNER #$NUMBER"
+else
+  echo "no board argument, discovering from the repository" >&2
+fi
+```
+
+The branch matters: the no-argument flow is the common one, and calling the parser unconditionally would reject an empty argument and stop the run before discovery ever ran.
+
+Three details carry the weight. **Strip the query and fragment first**, because the URL people actually copy from the address bar carries one: without `${RAW%%[?#]*}`, digit-scraping turns `.../projects/12?view=3` into project `123` and writes to a board nobody named. **Require the number to be all digits**, so a malformed argument stops rather than reaching a lookup. **Reject a bare number outright**, since project numbers restart per owner and there is no safe default; `gh project view 12` without `--owner` refuses anyway when it is not attached to a terminal, reporting `owner is required when not running interactively`, and the skill should fail at the same point rather than one call later.
+
+Ask for the owner rather than picking one.
+
+With no argument, ask the repository which boards it is linked to and keep the open ones. **Page the connection to the end.** `projectsV2(first:20)` returns one page, and a board on a later page is invisible to the one-versus-many decision, which is how a run auto-selects a sole first-page result and writes everywhere except where it meant to:
+
+```bash
+CUR=""; : > /tmp/boards.tsv
+while : ; do
+  [ -z "$CUR" ] && AF=null || AF="\"$CUR\""
+  R=$(gh api graphql -f query="{repository(owner:\"<OWNER>\",name:\"<REPO>\"){projectsV2(first:20, after:$AF){totalCount pageInfo{hasNextPage endCursor} nodes{id number title closed}}}}")
+  printf '%s' "$R" | jq -e '.data.repository.projectsV2.nodes' >/dev/null || { echo "board listing failed" >&2; exit 1; }
+  printf '%s' "$R" | jq -r '.data.repository.projectsV2.nodes[] | [.number,.title,.id,.closed] | @tsv' >> /tmp/boards.tsv
+  [ "$(printf '%s' "$R" | jq -r '.data.repository.projectsV2.pageInfo.hasNextPage')" = true ] || break
+  CUR=$(printf '%s' "$R" | jq -r '.data.repository.projectsV2.pageInfo.endCursor')
+  TOTAL=$(printf '%s' "$R" | jq -r '.data.repository.projectsV2.totalCount')
+done
+[ "$(wc -l < /tmp/boards.tsv)" -eq "${TOTAL:-$(wc -l < /tmp/boards.tsv)}" ] || { echo "short board listing" >&2; exit 1; }
+awk -F'\t' '$4=="false"' /tmp/boards.tsv
+```
+
+One open row means one candidate. Several means ask, quoting the number and title of each. Expect several: a repository commonly carries a task board alongside a team or planning board, and picking the first would write to the wrong one.
+
+When a board is owned by the organization and linked to no repository, that query returns nothing. Fall back to the owner's list, which is usually long enough that the number has to come from the requester:
+
+```bash
+gh project list --owner <OWNER> --format json | jq -r '.projects[] | select(.closed | not) | "\(.number)\t\(.title)"'
+```
+
+Resolve the chosen number to its node ID before anything else, since every query below keys on it:
+
+```bash
+PROJECT_ID=$(gh project view "$NUMBER" --owner "$OWNER" --format json | jq -r '.id')
+[ -n "$PROJECT_ID" ] && [ "$PROJECT_ID" != null ] || { echo "no board $OWNER #$NUMBER" >&2; exit 1; }
+echo "$PROJECT_ID"
+```
+
+`$OWNER` and `$NUMBER` are the ones `resolve_board_arg` set, or the pair the requester chose from the listing. Defining that function is not the same as running it: call it and propagate its failure, or every lookup below runs against an unset owner and number.
+
 ## Resolve the concepts
 
 Every field, its type, and its options. Completed iterations sit in a separate list from live ones, so a scope argument naming a past release needs both.
