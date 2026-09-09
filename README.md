@@ -79,6 +79,7 @@ npx skills add bhagyamudgal/skills
 | `file-pr` | Publish a PR from a current `ready-to-publish` card, verify the remote branch and PR, then return their evidence to `done` |
 | `file-issue` | File one issue an assignee can act on unaided, using two-vocabulary duplicate search, a title that survives a wrong diagnosis, and a body carrying observation, reproduction, expectation and a checkable done condition |
 | `openclaw-backup` | Verified restore point for an OpenClaw install, with an official archive, `VACUUM INTO` SQLite snapshots, a raw archive covering the session transcripts the official tool drops, a checksum manifest, and a per-install `RESTORE.md`. Manual-only via `disable-model-invocation`, so its description stays out of context until you invoke it |
+| `standup` | Daily standup update from real activity: GitHub PRs and commits, unpushed local work across worktrees, and Claude/Codex/OpenCode session history |
 
 Several skills use progressive disclosure. `SKILL.md` holds the spine, and branch-specific material sits in `references/` (or `modes/` for `design-director`), loaded only when that branch fires. Load instructions use `${CLAUDE_SKILL_DIR}/` so they resolve against the skill directory rather than the user's repo.
 
@@ -126,6 +127,7 @@ Several skills use progressive disclosure. `SKILL.md` holds the spine, and branc
 /file-pr             # Publish a current ready-to-publish card, then return evidence to done
 /file-issue          # File one actionable issue, with dedupe search and the same bars
 /openclaw-backup     # Verified restore point for an OpenClaw install
+/standup              # Daily standup update from real activity
 ```
 
 ## Reference
