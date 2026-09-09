@@ -19,3 +19,4 @@ jobs:
         with:
           python-version: "3.11"
       - run: python3 tools/verify_skills.py skills
+      - run: python3 -m unittest discover -s tools/eval

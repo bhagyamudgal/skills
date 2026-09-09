@@ -874,8 +874,8 @@ def _emit(label, items):
 
 # --- shell chain across bash fences (repo-wide, FAIL) ----------------------
 
-BASH_FENCE = re.compile(r"^```bash\s*$")
-FENCE_END = re.compile(r"^```\s*$")
+BASH_FENCE = re.compile(r"^(\s*)(`{3,})bash\s*$")
+ANY_FENCE_OPEN = re.compile(r"^\s*(`{3,})\S*\s*$")
 SHELL_BUILTINS = {
     "IFS", "PATH", "HOME", "PWD", "OLDPWD", "SHELL", "USER", "PS1", "PS2",
     "RANDOM", "REPLY", "SECONDS", "LINENO", "BASH_SOURCE", "FUNCNAME",
@@ -883,18 +883,37 @@ SHELL_BUILTINS = {
 }
 
 
-def _bash_blocks(lines):
-    """Yield (start_line, body_lines) for every ```bash fence in a file."""
+def _fenced_spans(lines):
+    """Yield (open_index, close_index, ticks, is_bash) for every fenced block.
+
+    A closing fence must be at least as long as the one that opened it, which is
+    what lets a four-backtick block legally contain three-backtick fences."""
     out, i = [], 0
     while i < len(lines):
-        if BASH_FENCE.match(lines[i]):
-            start, body, i = i + 1, [], i + 1
-            while i < len(lines) and not FENCE_END.match(lines[i]):
-                body.append(lines[i])
-                i += 1
-            out.append((start, body))
-        i += 1
+        m = ANY_FENCE_OPEN.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        ticks = m.group(1)
+        is_bash = bool(BASH_FENCE.match(lines[i]))
+        j = i + 1
+        while j < len(lines):
+            c = re.match(rf"^\s*{ticks[0]}{{{len(ticks)},}}\s*$", lines[j])
+            if c:
+                break
+            j += 1
+        out.append((i, min(j, len(lines)), ticks, is_bash))
+        i = j + 1
     return out
+
+
+def _bash_blocks(lines):
+    """Yield (first_body_line_number, body_lines) for every bash fence.
+
+    The line number is 1-based and points at the first line of the body, not at
+    the fence, so a reported finding lands on the offending command."""
+    return [(o + 2, lines[o + 1:c]) for o, c, _t, is_bash in _fenced_spans(lines)
+            if is_bash]
 
 
 def check_placeholder_consistency():
@@ -938,9 +957,9 @@ def check_bash_block_chain():
     for path in EVERY_MD:
         lines = read(path) or []
         blocks = _bash_blocks(lines)
-        if len(blocks) < 2:
+        if not blocks:
             continue
-        assigned, read_at, guarded = {}, {}, set()
+        assigned, read_at, guarded = {}, {}, {}
         defined, called = {}, set()
         for idx, (start, body) in enumerate(blocks):
             text = "\n".join(body)
@@ -948,7 +967,8 @@ def check_bash_block_chain():
                 assigned.setdefault(m.group(1), (idx, start))
             for name in re.findall(r"\$\{?([A-Z][A-Z0-9_]{1,})\b", text):
                 read_at.setdefault(name, (idx, start))
-            guarded |= set(re.findall(r"\$\{([A-Z][A-Z0-9_]{1,}):[?]", text))
+            for name in re.findall(r"\$\{([A-Z][A-Z0-9_]{1,}):[?]", text):
+                guarded.setdefault(name, idx)
             for m in re.finditer(r"^\s*([a-z_][a-z0-9_]*)\s*\(\)\s*\{", text, re.M):
                 defined.setdefault(m.group(1), start)
             for line in text.split("\n"):
@@ -960,7 +980,11 @@ def check_bash_block_chain():
                 called |= set(re.findall(r"[|&]{2}\s*([a-z_][a-z0-9_]*)\b", line))
 
         for name, (r_idx, r_line) in sorted(read_at.items()):
-            if name in SHELL_BUILTINS or name in assigned or name in guarded:
+            if name in SHELL_BUILTINS:
+                continue
+            a = assigned.get(name)
+            g = guarded.get(name)
+            if (a is not None and a[0] <= r_idx) or (g is not None and g <= r_idx):
                 continue
             warn(rel(path),
                  f"`${name}` is read at line {r_line} with no `{name}=` in any "
@@ -969,8 +993,10 @@ def check_bash_block_chain():
                  f"of failing. WARN rather than FAIL because several skills "
                  f"assign in prose and read in a fence by convention")
 
-        prose = "\n".join(l for i, l in enumerate(lines)
-                          if not any(st <= i + 1 < st + len(b) for st, b in blocks))
+        fenced = set()
+        for o, c, _t, _b in _fenced_spans(lines):
+            fenced |= set(range(o, min(c, len(lines)) + 1))
+        prose = "\n".join(l for i, l in enumerate(lines) if i not in fenced)
         for name, d_line in sorted(defined.items()):
             if name in called or re.search(rf"\b{re.escape(name)}\b", prose):
                 continue
