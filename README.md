@@ -69,7 +69,7 @@ npx skills add bhagyamudgal/skills
 | `systematic-debugging` | Four-phase root-cause loop for mid-debugging discipline, where no fix lands without an understood cause, every phase ends on a checkable bar, and bandaid budget is zero |
 | `verify-claims` | Gate inference-backed, decision-driving claims with a counter-hypothesis and paired evidence from their basis and user-facing acceptance boundary |
 | `preflight-mutations` | Resolve exact targets, authority, dependencies, reversibility, confirmation, and read-back before changing shared state |
-| `calibrate-board-mutations` | Calibrate board-estimate batches with anchors, representative previews, umbrella rules, and authoritative totals. Manual-only via `disable-model-invocation`, so its description stays out of context until you invoke it |
+| `triage-board` | Triage a project board in one pass: find candidates, label each agent-ready or need-human, set priority and issue type, and calibrate estimates in human active time against approved anchors. Manual-only via `disable-model-invocation`, so its description stays out of context until you invoke it |
 | `converge-reviews` | Reuse review evidence, track affected coverage, and cap stable review scopes at three rounds |
 | `manage-report-lifecycle` | Consolidate or supersede hosted analytical reports while preserving every source item, one canonical URL, and verifiable predecessor state. Manual-only via `disable-model-invocation`, so its description stays out of context until you invoke it |
 | `executing-tickets-with-subagents` | Orchestrate bundled tickets or explicit away/keep-going work through a durable ledger, with one mutation owner per task and a bounded unattended worker pool |
@@ -116,7 +116,7 @@ Several skills use progressive disclosure. `SKILL.md` holds the spine, and branc
 /systematic-debugging  # Root-cause loop once you're inside a debugging session
 /verify-claims         # Verify a consequential inference before relying on it
 /preflight-mutations   # Prepare or block a shared-state mutation before execution
-/calibrate-board-mutations  # Calibrate an estimate batch before board writes
+/triage-board          # Label, prioritize and estimate a board in one pass
 /converge-reviews      # Reconcile a review round and choose its bounded next action
 /manage-report-lifecycle  # Consolidate hosted reports into one verified canonical artifact
 /executing-tickets-with-subagents  # Run a bundled ticket end-to-end via subagents

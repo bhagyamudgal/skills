@@ -253,10 +253,10 @@ def check_orphan_model_invocation():
 
     Narrowing it by description shape was tried and abandoned. `Use when the
     user ...` opens project-discovery, which fires autonomously when the user
-    "seems unsure". Matching `only` scored 2/2 on the current tree and is an
-    accident: on calibrate-board-mutations it is matching inside `read-only`,
-    which is about data access, not invocation. A broad gate a human triages
-    beats a heuristic that demotes a skill silently."""
+    "seems unsure". Matching `only` scored 2/2 on the tree of the day and is an
+    accident: on the since-removed calibrate-board-mutations it matched inside
+    `read-only`, which is about data access, not invocation. A broad gate a
+    human triages beats a heuristic that demotes a skill silently."""
     corpus = _inbound_search_corpus()
     for skill in SKILLS:
         values = _frontmatter_values(skill)
