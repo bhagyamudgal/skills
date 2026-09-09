@@ -122,10 +122,11 @@ def gather_github(user, org, start, end):
     if err:
         result["errors"].append(f"commits: {err}")
     for entry in commits or []:
-        adate = entry.get("commit", {}).get("author", {}).get("date", "")
+        commit = entry.get("commit") or {}
+        adate = (commit.get("author") or {}).get("date", "")
         if not in_window(adate, start, end):
             continue
-        msg = entry.get("commit", {}).get("message", "").splitlines()[0]
+        msg = ((commit.get("message") or "").splitlines() or [""])[0]
         result["commits"].append({
             "repo": entry.get("repository", {}).get("name", ""),
             "sha": entry.get("sha", "")[:9],
@@ -181,13 +182,22 @@ def gather_github(user, org, start, end):
         author = (pr.get("author") or {}).get("login", "")
         if author == user:
             continue
-        result["prs_reviewed"].append({
-            "repo": pr.get("repository", {}).get("name", ""),
-            "number": pr.get("number"),
-            "title": pr.get("title", ""),
-            "author": author,
-            "url": pr.get("url", ""),
-        })
+        repo = pr.get("repository", {}).get("name", "")
+        num = pr.get("number")
+        reviews, _ = gh_json([
+            "api", f"repos/{org}/{repo}/pulls/{num}/reviews",
+            "--jq", f'[.[] | select(.user.login=="{user}") | .submitted_at]',
+        ]) if org else (None, "no org")
+        my_review_in_window = any(in_window(stamp, start, end) for stamp in (reviews or []))
+        if reviews is None or my_review_in_window:
+            result["prs_reviewed"].append({
+                "repo": repo,
+                "number": num,
+                "title": pr.get("title", ""),
+                "author": author,
+                "url": pr.get("url", ""),
+                "review_time_confirmed": bool(my_review_in_window),
+            })
     return result
 
 
@@ -259,7 +269,7 @@ def gather_claude_sessions(repo_basename, start, end, tz):
     found = []
     errors = []
     if not os.path.isdir(CLAUDE_PROJECTS_DIR):
-        return found, ["no Claude projects dir"]
+        return found, []
     for entry in os.listdir(CLAUDE_PROJECTS_DIR):
         if repo_basename.lower() not in entry.lower():
             continue
@@ -317,6 +327,15 @@ def codex_user_texts(doc):
     payload = doc.get("payload") if isinstance(doc.get("payload"), dict) else None
     if not payload:
         return texts
+    if payload.get("type") == "user_message":
+        message = payload.get("message")
+        if isinstance(message, str) and message.strip():
+            texts.append(message)
+        elif isinstance(message, list):
+            for block in message:
+                if isinstance(block, dict) and block.get("text", "").strip():
+                    texts.append(block.get("text", ""))
+        return texts
     item = payload.get("item") if isinstance(payload.get("item"), dict) else None
     if not item or item.get("type") != "UserMessage":
         return texts
@@ -363,7 +382,7 @@ def gather_codex_sessions(repo_basename, start, end, tz):
                                 prompts.append(text[:400])
             except OSError:
                 continue
-            if cwd and repo_basename.lower() not in cwd.lower():
+            if repo_basename.lower() not in (cwd or "").lower():
                 continue
             if prompts:
                 found.append({
@@ -460,6 +479,9 @@ def main():
     parser.add_argument("--no-local", action="store_true")
     parser.add_argument("--no-sessions", action="store_true")
     args = parser.parse_args()
+
+    if args.end and not args.start:
+        parser.error("--end requires --start")
 
     tz = local_tz()
     now = datetime.now(tz)

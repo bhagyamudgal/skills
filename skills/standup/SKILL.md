@@ -57,4 +57,4 @@ Reviewed
 
 Write each line as a short phrase, not a sentence. Lead with the ticket or feature, then a few words on what it was. Merge small related items onto one line rather than spending a bullet each.
 
-When `github.errors` is non-empty or a source was skipped, add one short note at the end so the user knows the picture is partial. Otherwise say nothing about plumbing. When everything is empty, say so in one line and suggest checking the org or repo root.
+When any of `github.errors`, `github.error`, `local.errors`, or `sessions.errors` is present, or a source was skipped, add one short note at the end so the user knows the picture is partial. Otherwise say nothing about plumbing. When everything is empty, say so in one line and suggest checking the org or repo root.
