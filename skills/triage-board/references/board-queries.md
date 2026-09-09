@@ -20,6 +20,18 @@ assert_field_values() {
 
 Three outcomes, not two. **0** clean, **1** truncated, **2** the input cannot answer the question: missing, empty, unparseable, or carrying a row with no readable `fieldValues.totalCount`. That last case is why the shape is validated before the ceiling is tested. `nodes(ids:)` returns a bare `null` for an id it cannot resolve, and a predicate on a null row is simply false, so a row nobody read would otherwise pass as clean and its unread write would be recorded `failed` rather than `reconcile-required`. Collapsing 2 into either of the others is the trap here: a bare `jq -e` exits non-zero both when nothing is truncated and when the file does not exist, so treating every non-zero as clean lets absent data through the gate, while treating it as truncated stops a healthy run. On **2** the affected rows take `reconcile-required`, because nothing may be classified from data that was never read. The remaining ceilings (`labels(first:50)`, `assignees(first:20)`, `issueTypes(first:20)`) are judged safe only while the project stays under them; check that assumption on a new board.
 
+Every block below writes under one `$WORK`, a temporary directory that is never the repository being triaged. Create it first:
+
+```bash
+WORK=$(mktemp -d); echo "$WORK"
+```
+
+**A runner that starts a fresh shell per block will not carry `$WORK` across.** The Claude Code Bash tool is one such runner: working directory persists, shell variables do not. So either substitute the printed path literally wherever `$WORK` appears, or re-assign it at the top of each block. Every block that touches `$WORK` opens with this guard, so an unset `$WORK` fails loudly instead of writing to the filesystem root:
+
+```bash
+: "${WORK:?set WORK to the directory printed above}"
+```
+
 ## Resolve which board
 
 **A board is an owner plus a number, never a number alone.** Project numbers restart per owner, so `12` names a different board under every account. An argument must therefore carry both, or be a URL that yields both. Parse the URL before any lookup, since `gh project view` takes a number and not a URL:
@@ -55,19 +67,22 @@ Ask for the owner rather than picking one.
 With no argument, ask the repository which boards it is linked to and keep the open ones. **Page the connection to the end.** `projectsV2(first:20)` returns one page, and a board on a later page is invisible to the one-versus-many decision, which is how a run auto-selects a sole first-page result and writes everywhere except where it meant to:
 
 ```bash
-CUR=""; : > /tmp/boards.tsv
+: "${WORK:?create the work directory first}"
+CUR=""; TOTAL=""; : > "$WORK/boards.tsv"
 while : ; do
   [ -z "$CUR" ] && AF=null || AF="\"$CUR\""
   R=$(gh api graphql -f query="{repository(owner:\"<OWNER>\",name:\"<REPO>\"){projectsV2(first:20, after:$AF){totalCount pageInfo{hasNextPage endCursor} nodes{id number title closed}}}}")
   printf '%s' "$R" | jq -e '.data.repository.projectsV2.nodes' >/dev/null || { echo "board listing failed" >&2; exit 1; }
-  printf '%s' "$R" | jq -r '.data.repository.projectsV2.nodes[] | [.number,.title,.id,.closed] | @tsv' >> /tmp/boards.tsv
+  TOTAL=$(printf '%s' "$R" | jq -r '.data.repository.projectsV2.totalCount')
+  printf '%s' "$R" | jq -r '.data.repository.projectsV2.nodes[] | [.number,.title,.id,.closed] | @tsv' >> "$WORK/boards.tsv"
   [ "$(printf '%s' "$R" | jq -r '.data.repository.projectsV2.pageInfo.hasNextPage')" = true ] || break
   CUR=$(printf '%s' "$R" | jq -r '.data.repository.projectsV2.pageInfo.endCursor')
-  TOTAL=$(printf '%s' "$R" | jq -r '.data.repository.projectsV2.totalCount')
 done
-[ "$(wc -l < /tmp/boards.tsv)" -eq "${TOTAL:-$(wc -l < /tmp/boards.tsv)}" ] || { echo "short board listing" >&2; exit 1; }
-awk -F'\t' '$4=="false"' /tmp/boards.tsv
+[ "$(wc -l < "$WORK/boards.tsv")" -eq "$TOTAL" ] || { echo "short board listing: got $(wc -l < "$WORK/boards.tsv") of $TOTAL" >&2; exit 1; }
+awk -F'\t' '$4=="false"' "$WORK/boards.tsv"
 ```
+
+`TOTAL` is read **inside** the loop, before the `break`, and it has no `:-` fallback. Assigned after the break it is never set on a single-page listing, which is the ordinary case, and `${TOTAL:-$(wc -l < ...)}` then compares the file against itself so the assertion cannot fail exactly where it is needed. An assertion that cannot fail is worse than none, because it reads as cover.
 
 One open row means one candidate. Several means ask, quoting the number and title of each. Expect several: a repository commonly carries a task board alongside a team or planning board, and picking the first would write to the wrong one.
 
@@ -85,23 +100,26 @@ PROJECT_ID=$(gh project view "$NUMBER" --owner "$OWNER" --format json | jq -r '.
 echo "$PROJECT_ID"
 ```
 
-`$OWNER` and `$NUMBER` are the ones `resolve_board_arg` set, or the pair the requester chose from the listing. Defining that function is not the same as running it: call it and propagate its failure, or every lookup below runs against an unset owner and number.
+`$OWNER` and `$NUMBER` are the ones `resolve_board_arg` set, or the pair the requester chose from the listing. The block prints the resolved id because that is what every `<PROJECT_ID>` below is: a paste token, not a shell variable. Two conventions run through this file and they do not mix. `$NAME` means an earlier block put it in this shell. `<NAME>` means you substitute it at the call site, because it varies per issue or per run and the single-quoted GraphQL strings would not expand it anyway. Defining that function is not the same as running it: call it and propagate its failure, or every lookup below runs against an unset owner and number.
 
 ## Resolve the concepts
 
 Every field, its type, and its options. Completed iterations sit in a separate list from live ones, so a scope argument naming a past release needs both.
 
 ```bash
-gh api graphql -f query='{node(id:"<PROJECT_ID>"){... on ProjectV2{fields(first:50){nodes{
+: "${WORK:?set WORK first}"
+gh api graphql -f query='{node(id:"<PROJECT_ID>"){... on ProjectV2{fields(first:50){totalCount nodes{
   ... on ProjectV2FieldCommon{id name dataType}
   ... on ProjectV2SingleSelectField{id name options{id name}}
   ... on ProjectV2IterationField{id name configuration{
       iterations{id title startDate duration}
       completedIterations{id title startDate duration}}}
-}}}}}'
+}}}}}' > "$WORK/fields.json"
+jq -e '.data.node.fields | .totalCount == (.nodes | length)' "$WORK/fields.json" >/dev/null \
+  || { echo "field list truncated: $(jq -r '.data.node.fields | "\(.nodes|length) of \(.totalCount)"' "$WORK/fields.json")" >&2; exit 1; }
 ```
 
-Assert the returned field count is below 50 before trusting it.
+The assertion sits in the same block as the query it checks, not in a later one, so there is no ordering to get wrong. `fields` exposes `totalCount` on the same connection, which makes this the same shape as the other two ceiling checks. A truncated field list silently drops a field the run then cannot resolve, and section 1's gate would pass with a concept missing.
 
 Issue types come from the organization, not the project:
 
@@ -117,21 +135,10 @@ gh api graphql -f query='{viewer{login}}'
 
 That is the token's principal, not automatically the person whose sole assignments define the scope. The section 1 gate is satisfied only once this login is confirmed to be the requester's. A bot or shared service credential stops the run rather than silently applying the ownership boundary to somebody else.
 
-Every block below writes under one `$WORK`, a temporary directory that is never the repository being triaged. Create it first:
-
-```bash
-WORK=$(mktemp -d); echo "$WORK"
-```
-
-**A runner that starts a fresh shell per block will not carry `$WORK` across.** The Claude Code Bash tool is one such runner: working directory persists, shell variables do not. So either substitute the printed path literally wherever `$WORK` appears, or re-assign it at the top of each block. Every block below opens with a guard so an unset `$WORK` fails loudly instead of writing to the filesystem root:
-
-```bash
-: "${WORK:?set WORK to the directory printed above}"
-```
-
 Labels come from the repository. Check **both** before creating either, because `gh label create` fails on one that already exists. `gh label list` defaults to 30 results, so raise it rather than trusting the default:
 
 ```bash
+: "${WORK:?set WORK first}"
 create_label() {
   gh label list --repo <OWNER>/<REPO> --limit 200 --json name -q '.[].name' | grep -qx "$1" && return 0
   gh label create "$1" --repo <OWNER>/<REPO> --color "$2" --description "$3" 2>&1 | tee -a "$WORK/writes.log"
@@ -209,6 +216,7 @@ Do not stop on the mere presence of `errors`. A board carrying items from a repo
 Assert the field-value ceiling once the file is complete, after the loop rather than inside it:
 
 ```bash
+: "${WORK:?set WORK first}"
 assert_field_values "$WORK/items.jsonl"
 ```
 
@@ -219,6 +227,7 @@ assert_field_values "$WORK/items.jsonl"
 Board fields, one item and one field per call. Tee every response to a log, because a malformed value fails a single row in the middle of a run that otherwise looks clean:
 
 ```bash
+: "${WORK:?set WORK first}"
 gh api graphql -f query='mutation{updateProjectV2ItemFieldValue(input:{projectId:"<PROJECT_ID>",itemId:"<ITEM_ID>",fieldId:"<FIELD_ID>",value:{singleSelectOptionId:"<OPTION_ID>"}}){projectV2Item{id}}}' 2>&1 | tee -a "$WORK/writes.log"
 gh api graphql -f query='mutation{updateProjectV2ItemFieldValue(input:{projectId:"<PROJECT_ID>",itemId:"<ITEM_ID>",fieldId:"<FIELD_ID>",value:{number:3}}){projectV2Item{id}}}' 2>&1 | tee -a "$WORK/writes.log"
 ```
@@ -226,12 +235,14 @@ gh api graphql -f query='mutation{updateProjectV2ItemFieldValue(input:{projectId
 Issue type is a different mutation, on the issue node rather than the board item:
 
 ```bash
+: "${WORK:?set WORK first}"
 gh api graphql -f query='mutation{updateIssue(input:{id:"<ISSUE_NODE_ID>",issueTypeId:"<TYPE_ID>"}){issue{id}}}' 2>&1 | tee -a "$WORK/writes.log"
 ```
 
 Labels are additive, and the opposite label has to come off in the same call. A verdict that flipped between runs otherwise leaves the issue carrying both, at which point neither means anything:
 
 ```bash
+: "${WORK:?set WORK first}"
 gh issue edit <N> --repo <OWNER>/<REPO> --add-label agent-ready --remove-label need-human 2>&1 | tee -a "$WORK/writes.log"
 ```
 
@@ -258,6 +269,7 @@ Each pipeline ends in `tee`, so it reports `tee`'s exit status and not `gh`'s. T
 Board items, batched by node ID. `nodes(ids:)` accepts at most 100. Select the issue's own `id` as well as its `number`: `updateIssue` keys on that node ID, and the project item's `id` is a different identifier that it will not accept. The iteration fragment is required: without it the release value returns as an empty object and the concurrent-editor check below silently sees nothing.
 
 ```bash
+: "${WORK:?set WORK first}"
 gh api graphql -f query='{nodes(ids:["<ITEM_ID_1>","<ITEM_ID_2>"]){... on ProjectV2Item{
   content{... on Issue{id number issueType{name}}}
   fieldValues(first:30){totalCount nodes{
