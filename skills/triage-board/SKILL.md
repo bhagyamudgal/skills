@@ -12,7 +12,7 @@ I work five concepts. I resolve each against the live board rather than assuming
 
 | Concept | Usual shape | Missing? |
 |---|---|---|
-| Triage label | Two repository labels, `agent-ready` and `need-human` | I show the name and color and ask once before creating |
+| Triage label | Two repository labels, `agent-ready` and `need-human` | I raise a label-bootstrap card before the gate, below |
 | Priority | A single-select board field | I stop and name it |
 | Estimate | A number board field | I stop and name it |
 | Type | An org-level issue type, not a board field | I stop and name it |
@@ -22,13 +22,15 @@ Ordering matters. Scope, then calibration, then judgment, then authorization, th
 
 ## 1. Resolve the board and the ledger's home
 
-I read the project's fields, the repository's labels, the organization's issue types, and the requester's own login, and record the stable ID of each. I never carry an ID between runs; a board that gained a field or renamed an option would make a cached ID write to the wrong place.
+I read the project's fields, the repository's labels, the organization's issue types, and the login of the credential I am authenticated as, and record the stable ID of each. That login is the token's principal rather than the requester by definition, so I confirm the two are the same person before the ownership boundary keys on it; a bot or shared credential stops the run. I never carry an ID between runs; a board that gained a field or renamed an option would make a cached ID write to the wrong place.
 
 Load `${CLAUDE_SKILL_DIR}/references/board-queries.md` now. It holds the exact queries, each with the assertion that proves it read everything.
 
+**A missing label is bootstrapped through its own card, not created on a bare yes.** Creating a repository label is a shared-state write, so it cannot happen ahead of the authorization step by asking politely. When either label is absent I raise a label-creation card through `preflight-mutations` naming both labels, their colors and every repository in scope, create only on a `ready` verdict, then re-read the repository's labels and record the resulting IDs. It is a separate card from the label edits in section 5: the target is the repository rather than an issue, and the reversibility differs.
+
 I also settle **where the ledger lives** before anything else, because `preflight-mutations` blocks a multi-batch run that has no already-authorized durable home and is forbidden from creating one. I name an existing artifact the requester has authorized this run to write, or I ask for one. I do not invent a file to clear the gate.
 
-The ledger carries one row per candidate and is the run's memory across interruption:
+The ledger carries one row per candidate **field**, not per candidate, and is the run's memory across interruption. Each candidate takes four writes across three independently failing action classes, so a single status per candidate would either hide a failed write or drop a landed estimate out of the landed-only totals. `Field` is the row discriminator, and each row carries its own current value, proposed value, basis and status. A partial run therefore keeps its landed field rows and re-cards only the pending ones, which is the resume shape `preflight-mutations` expects:
 
 ```markdown
 | Item ID | Issue | Owner | Kind | Field | Current | Proposed | Basis | Status |
@@ -40,7 +42,7 @@ The ledger carries one row per candidate and is the run's memory across interrup
 
 ## 2. Fix the scope
 
-With no argument I take every open issue where the requester is the **sole** assignee, on any iteration whose start date is later than today. An argument narrows that to one release, one status, or an explicit list of numbers.
+With no argument I take every open issue where the requester is the **sole** assignee, on any iteration in the board's live `iterations` list. That list holds the iteration currently running as well as every future one, so work already underway is triaged rather than skipped. A completed iteration sits in a separate list and is reached only by naming it. An argument narrows that to one release, one status, or an explicit list of numbers.
 
 I drop pull requests and draft items, which share the board with issues and carry none of the fields being set.
 

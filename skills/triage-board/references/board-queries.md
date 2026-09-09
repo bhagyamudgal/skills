@@ -1,13 +1,22 @@
 # Board queries
 
-GitHub Projects v2 recipes for this skill. Substitute the project number, owner, repository, and field IDs; nothing here is specific to one project.
+GitHub Projects v2 recipes for this skill. Substitute the project number, owner and field IDs; nothing here is specific to one project. `<OWNER>/<REPO>` is per issue rather than per run, because a board can span repositories.
 
-Every paged selection below carries a `first:` ceiling, and a run whose data exceeds one is silently short. Three are asserted explicitly: the field count against `fields(first:50)`, the item count against `totalCount`, and each item's `fieldValues(first:30)` against the `totalCount` selected on that same connection. Run the third against the enumerated file:
+Every paged selection below carries a `first:` ceiling, and a run whose data exceeds one is silently short. Three are asserted explicitly: the field count against `fields(first:50)`, the item count against `totalCount`, and each item's `fieldValues(first:30)` against the `totalCount` selected on that same connection. The third runs twice, once over the enumerated file and again over the read-back response, because a truncation in either place is invisible to a check on the other:
 
 ```bash
-jq -e 'select(.fieldValues.totalCount > 30) | .id' "$WORK/items.jsonl" && echo "fieldValues truncated above" >&2
+assert_field_values() {
+  if jq -e 'select(.fieldValues.totalCount > 30) | .id' "$1" >/dev/null; then
+    echo "fieldValues truncated in $1, enumeration unusable for read-back comparison" >&2
+    return 1
+  fi
+}
+assert_field_values "$WORK/items.jsonl"
 ```
- The third matters most, because a truncated `fieldValues` makes a landed write look absent and turns into a spurious `failed`. The remaining ceilings (`labels(first:50)`, `assignees(first:20)`, `issueTypes(first:20)`) are judged safe only while the project stays under them; check that assumption on a new board.
+
+Exit 0 means clean and non-zero means truncated, which is the opposite of what a bare `jq -e` reports: `jq -e` exits 0 when it finds a match and 4 when it finds none, so an unwrapped pipeline passes on truncated data and fails on safe data. A non-zero result here means the data cannot be compared, not that the query failed.
+
+The third matters most, because a truncated `fieldValues` makes a landed write look absent and turns into a spurious `failed`. The remaining ceilings (`labels(first:50)`, `assignees(first:20)`, `issueTypes(first:20)`) are judged safe only while the project stays under them; check that assumption on a new board.
 
 ## Resolve the concepts
 
@@ -31,11 +40,13 @@ Issue types come from the organization, not the project:
 gh api graphql -f query='{organization(login:"<ORG>"){issueTypes(first:20){nodes{id name}}}}'
 ```
 
-The requester's own login, which the default scope keys on:
+The login of the credential this run is authenticated as:
 
 ```bash
 gh api graphql -f query='{viewer{login}}'
 ```
+
+That is the token's principal, not automatically the person whose sole assignments define the scope. The section 1 gate is satisfied only once this login is confirmed to be the requester's. A bot or shared service credential stops the run rather than silently applying the ownership boundary to somebody else.
 
 Every block below writes under one `$WORK`, a temporary directory that is never the repository being triaged. Create it first:
 
@@ -67,12 +78,14 @@ Prefer `gh project item-list`. One call returns each item's `content.body`, `lab
 It does **not** return two things the scope step keys on, so resolve both explicitly:
 
 - **Issue state.** `content` carries `body`, `number`, `repository`, `title`, `type` and `url`, and no open or closed flag. Filter with `--query "is:issue is:open"`, or confirm state from the issue itself.
-- **Iteration start date.** Items carry the release, but treat only its title as reliable. Join that title against the `iterations` and `completedIterations` lists returned by the field-resolution query above, which carry `startDate` for both.
+- **The iteration's live state.** Items carry the release, but treat only its title as reliable. Join that title against the `iterations` list returned by the field-resolution query above. That list holds the running iteration and every future one, which is exactly the default scope. `completedIterations` is a separate list and is reachable only by naming a release explicitly.
 
 Two more gaps block the **write** step rather than the scope step, so close them before building any card:
 
-- **The issue node ID.** item-list gives the project item `id` and `content.number`, never `content.id`. The `updateIssue` call below needs the issue node ID, and the item ID will not be accepted. Fetch it by number alongside the labels read-back, or take the fallback loop, which selects it.
-- **The current issue type.** item-list returns no issue type, so the ledger's `Current` column for that row cannot be filled from this path. The fallback loop selects `issueType{name}`.
+- **The issue node ID.** item-list gives the project item `id` and `content.number`, never `content.id`. The `updateIssue` call below needs the issue node ID, and the item ID will not be accepted.
+- **The current issue type.** item-list returns no issue type, so the ledger's `Current` column for that row cannot be filled from this path.
+
+Both come from the aliased issue query in the read-back section, which therefore runs **twice**: once during scope resolution to supply the node ID and the current type before any card is built, and again after the writes as the labels read-back. Taking the fallback loop instead supplies both inline, since it selects them directly.
 
 ```bash
 : "${WORK:?set WORK first}"
@@ -100,6 +113,7 @@ while : ; do
   RESP=$(gh api graphql -f query="{node(id:\"<PROJECT_ID>\"){... on ProjectV2{items(first:100, after:$AFTER){
     pageInfo{hasNextPage endCursor}
     nodes{id content{__typename ... on Issue{id number title body state issueType{name}
+      repository{nameWithOwner}
       labels(first:50){nodes{name}} assignees(first:20){nodes{login}}}}
     fieldValues(first:30){totalCount nodes{
       ... on ProjectV2ItemFieldSingleSelectValue{name field{... on ProjectV2FieldCommon{name}}}
@@ -118,6 +132,8 @@ The command's own exit status is deliberately not tested. `gh api graphql` exits
 Stop on a **page-level** failure, where `.data.node.items.nodes` is absent. Without that check the page appends nothing, `hasNextPage` reads `null`, the loop breaks, and the run ends at exit 0 with a short file, which is the same undercount this section exists to prevent.
 
 Do not stop on the mere presence of `errors`. A board carrying items from a repository the viewer cannot read returns valid nodes **alongside** a `FORBIDDEN` entry, and a cross-repo board is exactly when this fallback runs. Record those per-node errors and keep the rows that resolved.
+
+`repository{nameWithOwner}` is not optional. A board can hold issues from several repositories, and an issue number is only unique within one, so a number paired with the wrong owner and repository edits a different issue that happens to share it. Every `<OWNER>/<REPO>` below is the issue's own, never a single value fixed for the run: the two labels are resolved and created once per repository represented in the candidate set, and the aliased read-back is issued once per repository.
 
 `content{__typename}` is what separates an issue from a pull request or a draft on this path. Both non-issues return an empty `... on Issue` selection, so without the typename an exclusion cannot state its reason.
 
@@ -172,16 +188,22 @@ gh api graphql -f query='{nodes(ids:["<ITEM_ID_1>","<ITEM_ID_2>"]){... on Projec
   fieldValues(first:30){totalCount nodes{
     ... on ProjectV2ItemFieldSingleSelectValue{name field{... on ProjectV2FieldCommon{name}}}
     ... on ProjectV2ItemFieldNumberValue{number field{... on ProjectV2FieldCommon{name}}}
-    ... on ProjectV2ItemFieldIterationValue{title startDate field{... on ProjectV2FieldCommon{name}}}}}}}}'
+    ... on ProjectV2ItemFieldIterationValue{title startDate field{... on ProjectV2FieldCommon{name}}}}}}}}' > "$WORK/readback.json"
+jq -c '.data.nodes[]' "$WORK/readback.json" > "$WORK/readback.jsonl"
+assert_field_values "$WORK/readback.jsonl"
 ```
+
+Run `assert_field_values` on the response before the field-by-field diff, not only on the enumeration. A board carrying more than thirty fields truncates here too, and an unread value is indistinguishable from an unwritten one, so the row would take `failed` for a write that persisted. On a non-zero result the affected rows take `reconcile-required` instead, which section 6 forbids retrying until an authoritative query settles them.
 
 **Read labels from the issue object, never from `gh issue list`.** Its label-filtered path is search-backed and caps at 1000 results, so on a repository with more matches it returns a short set with no warning, and it can disagree with a direct read of the same issue in the same second. Batch aliased issue reads, forty per call:
 
 ```bash
 gh api graphql -f query='{repository(owner:"<OWNER>",name:"<REPO>"){
-  a1: issue(number:101){number labels(first:50){nodes{name}}}
-  a2: issue(number:102){number labels(first:50){nodes{name}}}}}'
+  a1: issue(number:101){id number issueType{name} labels(first:50){nodes{name}}}
+  a2: issue(number:102){id number issueType{name} labels(first:50){nodes{name}}}}}'
 ```
+
+`id` and `issueType{name}` are here because the same query serves the scope step. Run it once before any card is built, to supply the issue node ID the type mutation needs and the current type the ledger's `Current` column records, and once after the writes as the labels read-back. Issue numbers are unique only within a repository, so group the candidates by `repository.nameWithOwner` and issue one call per repository rather than one call for the board.
 
 A number that does not exist returns a `NOT_FOUND` entry under `errors` **alongside** valid data for every other alias. Read `.data` for the aliases that resolved rather than discarding the whole response on the presence of an `errors` key.
 
