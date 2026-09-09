@@ -25,16 +25,23 @@ Three outcomes, not two. **0** clean, **1** truncated, **2** the input cannot an
 **A board is an owner plus a number, never a number alone.** Project numbers restart per owner, so `12` names a different board under every account. An argument must therefore carry both, or be a URL that yields both. Parse the URL before any lookup, since `gh project view` takes a number and not a URL:
 
 ```bash
-case "$ARG" in
-  https://github.com/orgs/*/projects/*|https://github.com/users/*/projects/*)
-    OWNER=$(printf '%s' "$ARG" | awk -F/ '{print $5}')
-    NUMBER=$(printf '%s' "$ARG" | awk -F/ '{print $7}' | tr -dc '0-9') ;;
-  *) OWNER="<OWNER>"; NUMBER="$ARG" ;;
-esac
-[ -n "$OWNER" ] && [ -n "$NUMBER" ] || { echo "need an owner and a project number" >&2; exit 1; }
+resolve_board_arg() {
+  RAW=$1; ARG=${RAW%%[?#]*}
+  case "$ARG" in
+    https://github.com/orgs/*/projects/*|https://github.com/users/*/projects/*)
+      OWNER=$(printf '%s' "$ARG" | awk -F/ '{print $5}')
+      NUMBER=$(printf '%s' "$ARG" | awk -F/ '{print $7}') ;;
+    */*) OWNER=${ARG%%/*}; NUMBER=${ARG#*/} ;;
+    *) echo "need <owner>/<number> or a project URL, got '$RAW'" >&2; return 1 ;;
+  esac
+  case $NUMBER in ""|*[!0-9]*) echo "project number not numeric: '$NUMBER'" >&2; return 1 ;; esac
+  [ -n "$OWNER" ] || { echo "no owner in '$RAW'" >&2; return 1; }
+}
 ```
 
-A bare number with no owner is not a usable argument. `gh project view 12` without `--owner` refuses outright when it is not attached to a terminal, reporting `owner is required when not running interactively`, so the failure is loud rather than a silent write to the wrong board. Ask for the owner instead of picking one.
+Three details carry the weight. **Strip the query and fragment first**, because the URL people actually copy from the address bar carries one: without `${RAW%%[?#]*}`, digit-scraping turns `.../projects/12?view=3` into project `123` and writes to a board nobody named. **Require the number to be all digits**, so a malformed argument stops rather than reaching a lookup. **Reject a bare number outright**, since project numbers restart per owner and there is no safe default; `gh project view 12` without `--owner` refuses anyway when it is not attached to a terminal, reporting `owner is required when not running interactively`, and the skill should fail at the same point rather than one call later.
+
+Ask for the owner rather than picking one.
 
 With no argument, ask the repository which boards it is linked to and keep the open ones. **Page the connection to the end.** `projectsV2(first:20)` returns one page, and a board on a later page is invisible to the one-versus-many decision, which is how a run auto-selects a sole first-page result and writes everywhere except where it meant to:
 
