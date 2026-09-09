@@ -38,9 +38,15 @@ resolve_board_arg() {
   [ -n "$OWNER" ] || { echo "no owner in '$RAW'" >&2; return 1; }
 }
 
-resolve_board_arg "$ARG" || exit 1
-echo "board: $OWNER #$NUMBER"
+if [ -n "${ARG:-}" ]; then
+  resolve_board_arg "$ARG" || exit 1
+  echo "board: $OWNER #$NUMBER"
+else
+  echo "no board argument, discovering from the repository" >&2
+fi
 ```
+
+The branch matters: the no-argument flow is the common one, and calling the parser unconditionally would reject an empty argument and stop the run before discovery ever ran.
 
 Three details carry the weight. **Strip the query and fragment first**, because the URL people actually copy from the address bar carries one: without `${RAW%%[?#]*}`, digit-scraping turns `.../projects/12?view=3` into project `123` and writes to a board nobody named. **Require the number to be all digits**, so a malformed argument stops rather than reaching a lookup. **Reject a bare number outright**, since project numbers restart per owner and there is no safe default; `gh project view 12` without `--owner` refuses anyway when it is not attached to a terminal, reporting `owner is required when not running interactively`, and the skill should fail at the same point rather than one call later.
 
