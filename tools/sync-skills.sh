@@ -6,6 +6,45 @@ SKILLS_SYNC_STATE_DIR="${SKILLS_SYNC_STATE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/
 SKILLS_SYNC_LOG="${SKILLS_SYNC_LOG:-$SKILLS_SYNC_STATE_DIR/sync.log}"
 SKILLS_SYNC_MARKER="${SKILLS_SYNC_MARKER:-$SKILLS_SYNC_STATE_DIR/last-success}"
 SKILLS_SYNC_MAX_AGE_SEC="${SKILLS_SYNC_MAX_AGE_SEC:-86400}"
+SKILLS_SYNC_LOCK_DIR="${SKILLS_SYNC_LOCK_DIR:-$SKILLS_SYNC_STATE_DIR/sync.lock}"
+
+prefer_tool_dirs() {
+  for bin_dir in /usr/local/bin /opt/homebrew/bin "$HOME/.local/bin" "$HOME/.nvm/versions/node/"*/bin; do
+    [ -d "$bin_dir" ] || continue
+    case ":$PATH:" in
+      *":$bin_dir:"*) ;;
+      *) PATH="$bin_dir:$PATH" ;;
+    esac
+  done
+  export PATH
+}
+
+acquire_lock() {
+  if mkdir "$SKILLS_SYNC_LOCK_DIR" 2>/dev/null; then
+    printf '%s' "$$" > "$SKILLS_SYNC_LOCK_DIR/pid"
+    return 0
+  fi
+  lock_pid=$(cat "$SKILLS_SYNC_LOCK_DIR/pid" 2>/dev/null || true)
+  case "$lock_pid" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  if kill -0 "$lock_pid" 2>/dev/null; then
+    return 1
+  fi
+  rm -rf "$SKILLS_SYNC_LOCK_DIR"
+  if mkdir "$SKILLS_SYNC_LOCK_DIR" 2>/dev/null; then
+    printf '%s' "$$" > "$SKILLS_SYNC_LOCK_DIR/pid"
+    return 0
+  fi
+  return 1
+}
+
+release_lock() {
+  lock_pid=$(cat "$SKILLS_SYNC_LOCK_DIR/pid" 2>/dev/null || true)
+  if [ "$lock_pid" = "$$" ]; then
+    rm -rf "$SKILLS_SYNC_LOCK_DIR"
+  fi
+}
 
 FORCE=0
 for arg in "$@"; do
@@ -25,6 +64,19 @@ for arg in "$@"; do
 done
 
 mkdir -p "$SKILLS_SYNC_STATE_DIR"
+prefer_tool_dirs
+
+if ! command -v npx >/dev/null 2>&1; then
+  printf '[%s] npx not found on PATH, sync skipped\n' "$(date -u +%FT%TZ)" >>"$SKILLS_SYNC_LOG" 2>&1
+  printf 'npx not found on PATH. Install Node or expose its bin directory via PATH.\n' >&2
+  exit 3
+fi
+
+if ! acquire_lock; then
+  printf '[%s] another sync holds the lock, skipping\n' "$(date -u +%FT%TZ)" >>"$SKILLS_SYNC_LOG" 2>&1
+  exit 0
+fi
+trap release_lock EXIT
 
 marker_fresh() {
   [ -f "$SKILLS_SYNC_MARKER" ] || return 1

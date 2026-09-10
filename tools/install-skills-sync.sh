@@ -6,6 +6,7 @@ SKILLS_SYNC_BIN="${SKILLS_SYNC_BIN:-$HOME/.local/bin/skills-sync.sh}"
 SKILLS_SYNC_HOOK_COMMAND='$HOME/.local/bin/skills-sync.sh'
 CLAUDE_SETTINGS="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
 PLIST_LABEL="com.bhagyamudgal.skills-sync"
+SKILLS_SYNC_CRON_TAG="bhagyamudgal-skills-sync"
 SKILLS_SYNC_LOG_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/skills-sync"
 
 MODE="install"
@@ -33,8 +34,11 @@ command = os.environ["HOOK_COMMAND"]
 try:
     with open(path) as handle:
         settings = json.load(handle)
-except (FileNotFoundError, json.JSONDecodeError):
+except FileNotFoundError:
     settings = {}
+except json.JSONDecodeError as decode_error:
+    print(f"refusing to touch malformed settings file {path}: {decode_error}", file=sys.stderr)
+    sys.exit(3)
 starts = settings.setdefault("hooks", {}).setdefault("SessionStart", [])
 entry = {"matcher": "", "hooks": [{"type": "command", "command": command}]}
 present = any(item.get("hooks") == entry["hooks"] for item in starts if isinstance(item, dict))
@@ -58,7 +62,7 @@ remove_cron() {
     return 0
   fi
   current=$(crontab -l 2>/dev/null || true)
-  filtered=$(printf '%s\n' "$current" | grep -v 'skills-sync.sh' || true)
+  filtered=$(printf '%s\n' "$current" | grep -v "$SKILLS_SYNC_CRON_TAG" || true)
   if [ -z "$filtered" ]; then
     crontab -r 2>/dev/null || true
   else
@@ -95,8 +99,8 @@ if [ "$(uname)" = "Darwin" ]; then
 else
   if command -v crontab >/dev/null 2>&1; then
     current=$(crontab -l 2>/dev/null || true)
-    if ! printf '%s\n' "$current" | grep -q 'skills-sync.sh'; then
-      (printf '%s\n' "$current"; printf '0 9 * * * %s\n' "$SKILLS_SYNC_BIN") | crontab -
+    if ! printf '%s\n' "$current" | grep -q "$SKILLS_SYNC_CRON_TAG"; then
+      (printf '%s\n' "$current"; printf '0 9 * * * %s # %s\n' "$SKILLS_SYNC_BIN" "$SKILLS_SYNC_CRON_TAG") | crontab -
     fi
     printf 'scheduler: cron daily at 09:00\n'
   else
