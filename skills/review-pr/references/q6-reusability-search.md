@@ -106,7 +106,7 @@ reusability_searches:
 - If STEP A was empty, write EXACTLY:
   `reusability_searches: N/A (no new definitions in diff)`
 
-If `repo_map_exports` is the cross-repo `N/A` marker, load `${CLAUDE_SKILL_DIR}/references/q6-cross-repo.md` before searching. There is no local tree on a cross-repo run.
+Cross-repo runs load `${CLAUDE_SKILL_DIR}/references/q6-cross-repo.md` first.
 
 ---
 

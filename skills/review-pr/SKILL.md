@@ -577,7 +577,7 @@ An explicit `/review-pr <PR URL>` invocation is fresh authorization to submit th
 
 Load `${CLAUDE_SKILL_DIR}/references/github-posting.md` now: summary body, per-finding comments, hunk validation, Phases A through C, and the write-back. Also load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` when a prior `/review-pr` review or cache entry exists for this PR, and `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` if any posting phase fails.
 
-Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, `IS_SELF_REVIEW`, summary body content, the complete surviving finding list (line-level + file-level), `PRIOR_STATE` (Step 0c compares against it), `$CACHE_FILE` path, `$STATE_FILE` path, and the `/review-pr` invocation as the posting authorization source.
+Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, `IS_SELF_REVIEW`, summary body content, the complete surviving finding list (line-level + file-level), `PRIOR_STATE` (Step 0c in the rerun file compares against it), `$CACHE_FILE` path, `$STATE_FILE` path, and the `/review-pr` invocation as the posting authorization source.
 
 ### Convergence handoff
 

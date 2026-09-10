@@ -11,28 +11,7 @@ Every review posted by `/review-pr` includes a hidden marker comment in the body
 <!-- review-pr:run sha=<head_sha_at_post_time> round=<round_number> -->
 ```
 
-Before posting, map the semantic verdict to its normal event and required GitHub state, then override both for a self-review:
-
-```bash
-case "$verdict" in
-  approve) REVIEW_EVENT=APPROVE; REQUIRED_REVIEW_STATE=APPROVED ;;
-  request-changes) REVIEW_EVENT=REQUEST_CHANGES; REQUIRED_REVIEW_STATE=CHANGES_REQUESTED ;;
-  *) echo "Unsupported review verdict: $verdict" >&2; exit 1 ;;
-esac
-
-if [ "$IS_SELF_REVIEW" = "true" ]; then
-  REVIEW_EVENT=COMMENT
-  REQUIRED_REVIEW_STATE=COMMENTED
-fi
-
-case "$REVIEW_EVENT" in
-  APPROVE) REVIEW_FLAG=--approve ;;
-  REQUEST_CHANGES) REVIEW_FLAG=--request-changes ;;
-  COMMENT) REVIEW_FLAG=--comment ;;
-esac
-```
-
-Query for prior tagged reviews:
+Every posting run maps the semantic verdict first, per "Event mapping" in `${CLAUDE_SKILL_DIR}/references/github-posting.md`. Then query for prior tagged reviews:
 
 ```bash
 PRIOR_REVIEW_NODE_ID=$(gh api graphql -f query='
@@ -168,7 +147,7 @@ For `FRESH_REVIEW_FALLBACK=true`, refresh the PR and review guards and treat the
 
 ### 8d. Resolve threads for findings now in `status: resolved`
 
-For each finding transitioning to `resolved` this round (a fix shipped between rounds and the state file records it; see the writer caveat in `references/finding-state-schema.md`; that transition is currently made by hand), first refresh the current PR head, review ID/state/body, and every target thread's exact `isResolved` value and complete comment-ID set. Invoke `preflight-mutations` immediately before this resolution batch with those current guards, exact thread IDs, prior/current finding states, and the posting authorization. This is a fresh card: Steps 4-6 changed publication and review state, so the posting card is stale.
+For each finding transitioning to `resolved` this round (a fix shipped between rounds and the state file records it; see the writer caveat in `${CLAUDE_SKILL_DIR}/references/finding-state-phase4.md`; that transition is currently made by hand), first refresh the current PR head, review ID/state/body, and every target thread's exact `isResolved` value and complete comment-ID set. Invoke `preflight-mutations` immediately before this resolution batch with those current guards, exact thread IDs, prior/current finding states, and the posting authorization. This is a fresh card: Steps 4-6 changed publication and review state, so the posting card is stale.
 
 Immediately before each resolution write, refresh the PR head and thread. If `isResolved: true`, record the thread as resolved from that authoritative read-back, skip the mutation, retire the current card, and preflight the remaining items without this thread before the next write. Otherwise compare the current guards with the fresh card and re-run preflight for the pending remainder when a guard changed. Then call:
 

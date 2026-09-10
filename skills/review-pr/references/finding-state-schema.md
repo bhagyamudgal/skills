@@ -12,7 +12,7 @@ This document defines both of `/review-pr`'s per-PR persistence files, the state
 
 | File | Holds | Written by |
 |---|---|---|
-| `.claude/review-state/<pr-number>.yml` | Per-finding lifecycle: `active` / `resolved` / `dismissed` / `wontfix` / `regression`, plus the cascade fields | Phase 4 write-back: the only automated writer (see the writer caveat at the end of "Phase 4: write back") |
+| `.claude/review-state/<pr-number>.yml` | Per-finding lifecycle: `active` / `resolved` / `dismissed` / `wontfix` / `regression`, plus the cascade fields | Phase 4 write-back: the only automated writer (see the writer caveat at the end of "Phase 4: write back" in `finding-state-phase4.md`) |
 | `$HOME/.claude/skills/review-pr/cache/<owner>_<repo>_<pr-number>.json` | Per-run and per-comment GitHub facts: last reviewed SHA, last posted review IDs, and `posted_comments` (for `resolveReviewThread` + dedup against re-posting) | End of Phase 4, independent of GitHub state |
 
 `posted_comments` works alongside the state file: the cache holds per-comment GitHub IDs, the state file holds per-finding lifecycle. Both are necessary; neither is sufficient alone. The state file is the schema described first below; the cache follows under "Run-over-run cache".
@@ -167,7 +167,7 @@ One id, not a list: the single *nearest* cause. When several closed findings cou
    is void and the finding reopens as active)
 ```
 
-- **`resolved`**: subagent saw the fix in the diff between `commit_sha_resolved` and the prior round's HEAD, **and** every `class_sites` entry is `handled: true`. A fix that lands on the cited site while a sibling site stays unhandled leaves the finding `active`. No automated writer sets this today. See the writer caveat at the end of "Phase 4: write back".
+- **`resolved`**: subagent saw the fix in the diff between `commit_sha_resolved` and the prior round's HEAD, **and** every `class_sites` entry is `handled: true`. A fix that lands on the cited site while a sibling site stays unhandled leaves the finding `active`. No automated writer sets this today. See the writer caveat at the end of "Phase 4: write back" in `finding-state-phase4.md`.
 - **`dismissed`**: an explicit disposition imported from prior state or a downstream triage workflow. `dismissal_reason` is required. `/review-pr` never creates this status by deselecting a finding.
 - **`wontfix`**: user rejected the finding as wrong / out-of-scope. `dismissal_reason` is required (e.g., "intentional design, see the linked design issue").
 - **`regression`**: subagent emits a finding whose `id` matches an existing `resolved` entry, AND the diff shows the resolving code was reverted/edited. Treat as a fresh active finding but keep the history.

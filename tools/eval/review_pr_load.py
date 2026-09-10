@@ -108,6 +108,7 @@ SUBAGENT_1_COND = [
     "class-sweep-and-inverse-risk.md",
     "schema-design-checks.md",
 ]
+SUBAGENT_1_XREPO_EXTRA = ["q6-cross-repo.md"]
 
 
 def hunter_prompt_bytes():
@@ -146,11 +147,16 @@ def main_loads(mode, worst=False, round2=False, step6_reload=False, monorepo=Tru
 
 
 def subagent_loads(chunks, hunter=True, worst=True):
-    """role -> ordered reference list. Chunk reviewers share one shape."""
+    """role -> ordered reference list. Chunk reviewers share one shape; the
+    xrepo-worst row adds the cross-repo Q6 block a cross-repository run
+    loads on top of the local worst case."""
     cond = SUBAGENT_1_COND if worst else []
     out = {}
     for i in range(chunks):
         out[f"chunk-reviewer-{i + 1}"] = SUBAGENT_1_ALWAYS + cond
+    if worst:
+        out["chunk-reviewer-xrepo-worst"] = (SUBAGENT_1_ALWAYS + cond
+                                             + SUBAGENT_1_XREPO_EXTRA)
     if hunter:
         out["silent-failure-hunter"] = []
     out["cross-cutting"] = ["cross-cutting-prompt.md", "finding-output-format.md"]

@@ -1,11 +1,6 @@
-
 # Q6a cross-repo search
 
-Subagent 1 loads this only when `repo_map_exports` is the cross-repo `N/A` marker. The STEP A enumeration, local search algorithm, and audit format stay in `${CLAUDE_SKILL_DIR}/references/q6-reusability-search.md`, already loaded.
-
-## Cross-repo mode
-
-If `repo_map_exports` is the cross-repo `N/A` marker, there is no local tree:
+Subagent 1 loads this only when `repo_map_exports` is the cross-repo `N/A` marker; STEP A, the local algorithm, and the audit format stay in `q6-reusability-search.md`. There is no local tree here:
 `Grep`/`Glob` against `packages/` or `apps/` prove nothing. Phase 1 sets this
 marker on every cross-repo run regardless of the local cwd layout, so its
 presence is the whole trigger. Run the same three searches against the reviewed

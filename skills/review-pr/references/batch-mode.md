@@ -50,7 +50,7 @@ The run continues unattended through the WHOLE list. The user may be away in bat
 
 After every subagent returns, post each completed review in list order through the single-PR GitHub posting flow. For another author's PR, post all surviving findings with `REQUEST_CHANGES` and a clean review with `APPROVE`. For a self-review, post the complete result with `COMMENT`. Invoke `preflight-mutations` separately for each PR immediately before its first mutation, using the batch `/review-pr` request as the authorization source. Reconcile and record each result before moving to the next PR.
 
-A posting failure never asks immediately. Record the exact partial GitHub state and the recovery choices from `github-posting.md` as `recovery-pending`, then continue with every untouched PR.
+A posting failure never asks immediately. Record the exact partial GitHub state and the recovery choices from `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` as `recovery-pending`, then continue with every untouched PR.
 
 ---
 
@@ -78,6 +78,6 @@ After automatic posting has attempted every completed review and recorded each c
 
 ## Deferred posting recovery
 
-After the report exists, walk every `recovery-pending` PR in list order through `github-posting.md` Step 7. Ask only the recovery question supported by that PR's recorded partial state. Reconcile the chosen action before advancing.
+After the report exists, walk every `recovery-pending` PR in list order through `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` Step 7. Ask only the recovery question supported by that PR's recorded partial state. Reconcile the chosen action before advancing.
 
 After all recovery choices settle, regenerate the same report path from the final reconciled results and print it once more. If the user leaves a recovery unanswered, preserve `recovery-pending` with the exact next action; later PRs and their posting evidence remain complete.

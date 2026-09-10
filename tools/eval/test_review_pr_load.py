@@ -20,21 +20,22 @@ import unittest
 import review_pr_load
 import review_pr_tokens
 
-CORPUS_CEILING = 182067
+CORPUS_CEILING = 182792
 CEILINGS = {
-    "solo-main/best": (120378, 120378, 18),
-    "solo-main/worst": (146415, 146415, 18),
-    "parallel-standard/round-1": (125842, 125842, 20),
-    "parallel-chunked/round-1": (127218, 127218, 25),
-    "parallel-standard/with-step6-reload": (125842, 134446, 20),
+    "solo-main/best": (121720, 121720, 18),
+    "solo-main/worst": (147664, 147664, 18),
+    "parallel-standard/round-1": (127184, 127184, 20),
+    "parallel-chunked/round-1": (128560, 128560, 25),
+    "parallel-standard/with-step6-reload": (127184, 135788, 20),
 }
 DELTA_CEILINGS = {"delta_distinct": 5772, "delta_with_repeats": 5772,
                   "network": 0}
-CHUNK_REVIEWER_CEILING = (30025, 30025)
+CHUNK_REVIEWER_CEILING = (29932, 29932)
 SUBAGENT_CEILINGS = {
     "silent-failure-hunter": (0, 0),
     "cross-cutting": (5779, 5779),
 }
+XREPO_REVIEWER_CEILING = (32550, 32550)
 PROMPT_CEILINGS = {
     "chunk-reviewer-prompt": 9452,
     "silent-failure-hunter-prompt": 383,
@@ -86,7 +87,13 @@ class LoadCeilingTest(unittest.TestCase):
     def test_no_unceilinged_subagent(self):
         self.assertEqual(set(self.rep["subagent_refs"]),
                          {"chunk-reviewer-1", "chunk-reviewer-2",
-                          "chunk-reviewer-3"} | set(SUBAGENT_CEILINGS))
+                          "chunk-reviewer-3", "chunk-reviewer-xrepo-worst"}
+                         | set(SUBAGENT_CEILINGS))
+
+    def test_xrepo_reviewer_within_ceiling(self):
+        got = self.rep["subagent_refs"]["chunk-reviewer-xrepo-worst"]
+        self.assertLessEqual(got[0], XREPO_REVIEWER_CEILING[0])
+        self.assertLessEqual(got[1], XREPO_REVIEWER_CEILING[1])
 
     def test_chunk_reviewers_share_one_ceiling(self):
         for index in (1, 2, 3):

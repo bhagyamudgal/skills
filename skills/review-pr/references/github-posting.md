@@ -4,6 +4,31 @@ Main loads this in Phase 4 for every completed review. It owns the fresh-review 
 
 ---
 
+## Event mapping
+
+Before posting, map the semantic verdict to its normal event and required GitHub state, then override both for a self-review:
+
+```bash
+case "$verdict" in
+  approve) REVIEW_EVENT=APPROVE; REQUIRED_REVIEW_STATE=APPROVED ;;
+  request-changes) REVIEW_EVENT=REQUEST_CHANGES; REQUIRED_REVIEW_STATE=CHANGES_REQUESTED ;;
+  *) echo "Unsupported review verdict: $verdict" >&2; exit 1 ;;
+esac
+
+if [ "$IS_SELF_REVIEW" = "true" ]; then
+  REVIEW_EVENT=COMMENT
+  REQUIRED_REVIEW_STATE=COMMENTED
+fi
+
+case "$REVIEW_EVENT" in
+  APPROVE) REVIEW_FLAG=--approve ;;
+  REQUEST_CHANGES) REVIEW_FLAG=--request-changes ;;
+  COMMENT) REVIEW_FLAG=--comment ;;
+esac
+```
+
+---
+
 ## Why two APIs (READ BEFORE EDITING)
 
 **DO NOT regress this to a single REST call with `subject_type: "file"` comments.** That shape is rejected by GitHub:
@@ -119,7 +144,7 @@ Parse each `patch`: each `@@ -<oldStart>,<oldLen> +<newStart>,<newLen> @@` heade
 
 For each line-level finding: is `line` present on `path`'s post-image counter? If yes → keep. If no → demote to file-level + log the demotion.
 
-With routing now exact, render the complete summary body, canonical ordered line-comment set `(path, line, side, body)`, canonical ordered file-level set `(finding ID, path, body)`, and monolithic recovery body to files and freeze their SHA-256 digests. The file-level set is the posting ledger: Phase B posts and reconciles each exact frozen entry rather than rebuilding a path/body from live findings. Refresh the PR URL, base and current head SHA, and any prior review's ID, state, body, author, and submitted time. Invoke `preflight-mutations` immediately before Step 4 or Step 4-rolling performs the posting batch's first mutation. Pass those target guards, all frozen payload paths and digests, every surviving finding ID, the semantic verdict, `IS_SELF_REVIEW`, `REVIEW_EVENT`, line/file targets, prior review ID or new-review action, subsequent add/submit/resolve targets, and the originating `/review-pr` request as the authorization source. Apply its result contract before continuing.
+With routing now exact, render the complete summary body, canonical ordered line-comment set `(path, line, side, body)`, canonical ordered file-level set `(finding ID, path, body)`, and monolithic recovery body to files and freeze their SHA-256 digests. The file-level set is the posting ledger: Phase B posts and reconciles each exact frozen entry rather than rebuilding a path/body from live findings. Refresh the PR URL, base and current head SHA, and any prior review's ID, state, body, author, and submitted time. Invoke `preflight-mutations` immediately before Step 4 or Step 4-rolling (in `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md`) performs the posting batch's first mutation. Pass those target guards, all frozen payload paths and digests, every surviving finding ID, the semantic verdict, `IS_SELF_REVIEW`, `REVIEW_EVENT`, line/file targets, prior review ID or new-review action, subsequent add/submit/resolve targets, and the originating `/review-pr` request as the authorization source. Apply its result contract before continuing.
 
 ---
 
@@ -151,7 +176,7 @@ REVIEW_DB_ID=$(echo "$REVIEW_RESP" | jq -r '.id // empty')
 if [ -z "$REVIEW_NODE_ID" ] || [ -z "$REVIEW_DB_ID" ]; then
   echo "Phase A returned no node_id/id. Full response:" >&2
   echo "$REVIEW_RESP" >&2
-  # → reconcile the create before Step 7
+  # → reconcile the create before Step 7 in `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md`
 fi
 
 ATTACHED_THREADS=0
@@ -159,7 +184,7 @@ ATTACHED_THREADS=0
 
 Capture BOTH IDs: `node_id` (GraphQL) for Phases B/C, `id` (integer) for caching. Read the review and its review comments back by ID and require its author, `PENDING` state, complete summary body, head SHA, and complete canonical line-comment set to match the frozen create before Phase B.
 
-A timeout, interrupted response, or missing ID is `reconcile-required`, not proof that creation failed. Query the PR's reviews authoritatively, fetch every current-author `PENDING` review and all of its review comments, then compare author, exact frozen summary body, exact head SHA, and complete canonical line-comment set. One exact match restores both review IDs and continues Phase B. One candidate that matches the head and summary but has a different line-comment set preserves its IDs and enters Step 7's pending-review branch. If any other current-author pending review exists, preserve all candidate IDs and block for reconciliation; a nonmatching body or head is still external state, not evidence that no pending review exists. Set `NO_PENDING_REVIEW=true` only after a complete query proves there are zero current-author pending reviews on the PR. Multiple exact or partial candidates, or an inconclusive query, block the run. Never create or fall back to another review while any pending create remains unresolved.
+A timeout, interrupted response, or missing ID is `reconcile-required`, not proof that creation failed. Query the PR's reviews authoritatively, fetch every current-author `PENDING` review and all of its review comments, then compare author, exact frozen summary body, exact head SHA, and complete canonical line-comment set. One exact match restores both review IDs and continues Phase B. One candidate that matches the head and summary but has a different line-comment set preserves its IDs and enters Step 7 in `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md`'s pending-review branch. If any other current-author pending review exists, preserve all candidate IDs and block for reconciliation; a nonmatching body or head is still external state, not evidence that no pending review exists. Set `NO_PENDING_REVIEW=true` only after a complete query proves there are zero current-author pending reviews on the PR. Multiple exact or partial candidates, or an inconclusive query, block the run. Never create or fall back to another review while any pending create remains unresolved.
 
 ---
 
@@ -188,7 +213,7 @@ THREAD_COMMENT_ID=$(echo "$THREAD_RESP" | jq -r '.data.addPullRequestReviewThrea
 if echo "$THREAD_RESP" | jq -e '.errors' >/dev/null \
    || [ -z "$THREAD_NODE_ID" ] || [ -z "$THREAD_COMMENT_ID" ]; then
   echo "Phase B failed on thread $((ATTACHED_THREADS + 1)). Response: $THREAD_RESP" >&2
-  # → reconcile the thread before Step 7
+  # → reconcile the thread before Step 7 in `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md`
 else
   ATTACHED_THREADS=$((ATTACHED_THREADS + 1))
 fi
@@ -196,7 +221,7 @@ fi
 
 Loop **sequentially, not in parallel**: thread order in the submitted review follows call order. Capture each returned `thread.id` and `comments.nodes[0].databaseId` for caching.
 
-An ambiguous thread result stops the sequential loop and requires an authoritative query of that review's threads for the exact review ID, path, and frozen comment body. Reconcile the result back to the one frozen `(finding ID, path, body)` ledger entry; do not substitute another finding merely because its path matches. One exact match captures its IDs against that finding ID, increments `ATTACHED_THREADS`, and resumes the loop. Confirmed absence permits Step 7 without incrementing; multiple matches or inconclusive state blocks posting. Never retry the thread or enter recovery while its placement is unresolved.
+An ambiguous thread result stops the sequential loop and requires an authoritative query of that review's threads for the exact review ID, path, and frozen comment body. Reconcile the result back to the one frozen `(finding ID, path, body)` ledger entry; do not substitute another finding merely because its path matches. One exact match captures its IDs against that finding ID, increments `ATTACHED_THREADS`, and resumes the loop. Confirmed absence permits Step 7 in `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` without incrementing; multiple matches or inconclusive state blocks posting. Never retry the thread or enter recovery while its placement is unresolved.
 
 ## Step 6, Phase C: submit the review (GraphQL)
 
@@ -231,7 +256,7 @@ if echo "$SUBMIT_READBACK" | jq -e '.errors' >/dev/null \
    || { [ -n "$SUBMIT_RESPONSE_ID" ] && [ "$SUBMIT_RESPONSE_ID" != "$REVIEW_DB_ID" ]; } \
    || { [ -n "$SUBMIT_RESPONSE_STATE" ] && [ "$SUBMIT_RESPONSE_STATE" != "$REQUIRED_REVIEW_STATE" ]; }; then
   echo "Phase C read-back did not confirm $REQUIRED_REVIEW_STATE. Response: $SUBMIT_READBACK" >&2
-  # → reconcile review state before Step 7
+  # → reconcile review state before Step 7 in `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md`
 elif [ "$SUBMIT_RESPONSE_HAS_ERRORS" = "true" ] \
    || [ -z "$SUBMIT_RESPONSE_ID" ] \
    || [ -z "$SUBMIT_RESPONSE_STATE" ]; then
@@ -243,11 +268,13 @@ fi
 
 A Phase C failure is the worst case: pending review has all threads but is never submitted, lingering as a draft.
 
-Phase C succeeds when the authoritative read-back equals `REQUIRED_REVIEW_STATE` and no explicit response field contradicts it. A missing or error response is settled by that read-back. An exact `PENDING` read-back permits Step 7; another state, a response/read-back contradiction, or an inconclusive read-back is `reconcile-required` and blocks recovery. Do not submit again.
+Phase C succeeds when the authoritative read-back equals `REQUIRED_REVIEW_STATE` and no explicit response field contradicts it. A missing or error response is settled by that read-back. An exact `PENDING` read-back permits Step 7 in `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md`; another state, a response/read-back contradiction, or an inconclusive read-back is `reconcile-required` and blocks recovery. Do not submit again.
 
 ---
 
 ## Quick-reference: rolling-review decision tree
+
+Step 0 and Step 4-rolling live in `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md`; the rest is here.
 
 ```
                     Step 0: rolling eligibility
@@ -282,7 +309,7 @@ Net effect: only a thread-complete body update reuses a submitted review. A new 
 
 ## Step 8: Cache + state write-back
 
-After successful Phase C or Step 4-rolling:
+After successful Phase C or Step 4-rolling (rerun file):
 
 ### 8a. Update `posted_comments` in `$CACHE_FILE`
 
@@ -323,7 +350,7 @@ Match each line-level comment's `databaseId` (from REST `.comments[].id`) to a t
 
 ### 8c. Update `.claude/review-state/<pr>.yml`
 
-`references/finding-state-schema.md` is the single source of truth for what Phase 4 writes: the full entry shape, which fields are required, and every status transition. Follow its "Phase 4: write back" section; do NOT reconstruct the entry shape from this file. An entry written without `file`, `enclosing_symbol`, and `rule_class` breaks the next round's ID computation, and one written without the cascade fields silently disables the next round's regression sweep.
+`references/finding-state-phase4.md` is the single source of truth for what Phase 4 writes: the full entry shape, which fields are required, and every status transition. Follow its "Phase 4: write back" section; do NOT reconstruct the entry shape from this file. An entry written without `file`, `enclosing_symbol`, and `rule_class` breaks the next round's ID computation, and one written without the cascade fields silently disables the next round's regression sweep.
 
 The only part specific to posting: `github_thread_id` (from 8b) and `github_comment_id` (REST `databaseId`) are written onto the entry of each finding posted this round.
 
