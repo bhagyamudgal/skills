@@ -62,6 +62,13 @@ class LoadCeilingTest(unittest.TestCase):
     def test_no_unceilinged_path(self):
         self.assertEqual(set(self.rep["paths"]),
                          set(CEILINGS) | {"any/round-2-delta"})
+        for name in CEILINGS:
+            with self.subTest(path=name):
+                self.assertEqual(set(self.rep["paths"][name]),
+                                 {"main_distinct", "main_with_repeats",
+                                  "network"})
+        self.assertEqual(set(self.rep["paths"]["any/round-2-delta"]),
+                         set(DELTA_CEILINGS))
 
     def test_round2_row_is_a_delta(self):
         cells = self.rep["paths"]["any/round-2-delta"]
@@ -213,7 +220,10 @@ class TokensParserTest(unittest.TestCase):
         result = json.dumps({"type": "result", "subtype": "success",
                              "is_error": False, "result": "done",
                              "duration_ms": 5000, "total_cost_usd": 0.01,
-                             "usage": {}})
+                             "usage": {"input_tokens": 1000,
+                                       "output_tokens": 200,
+                                       "cache_creation_input_tokens": 0,
+                                       "cache_read_input_tokens": 0}})
         with tempfile.TemporaryDirectory() as tmp:
             parent = pathlib.Path(tmp) / "parent.jsonl"
             parent.write_text(main_event + "\n" + sub_event + "\n" + result + "\n")
@@ -228,6 +238,7 @@ class TokensParserTest(unittest.TestCase):
         self.assertFalse(rep["subagents"][0]["truncated"])
         self.assertEqual(rep["subagents"][0]["duration_ms"], 0)
         self.assertEqual(rep["total"]["input_tokens"], 50)
+        self.assertEqual(rep["main"]["duration_ms"], 5000)
         self.assertTrue(carved_main.endswith("main.jsonl"))
 
 

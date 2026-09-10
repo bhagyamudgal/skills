@@ -16,7 +16,10 @@ A single parent capture works too. With --forward-subagent-text the stream
 carries each subagent's messages tagged by parent_tool_use_id, and --split
 carves one file per agent out of it. Token cells then reflect only the usage
 events present on each group's messages; a group with none reports zero
-rather than an estimate.
+rather than an estimate. The parent result event is used for wall time and
+run cost only, never for tokens: it can aggregate the whole subagent tree,
+and folding it into main would count those tokens twice. Cost therefore
+stays on the main row in split mode.
 
 Usage:
     python3 tools/eval/review_pr_tokens.py main.jsonl [sub1.jsonl ...] [--json]
@@ -34,11 +37,14 @@ USAGE_KEYS = ("input_tokens", "output_tokens", "cache_creation_input_tokens",
               "cache_read_input_tokens")
 
 
-def summarize(path, require_result=True):
+def summarize(path, require_result=True, use_result_usage=True):
     """Return token sums, wall time, cost, and truncation flag for one file.
 
     Carved subagent streams hold no result event, so their callers pass
-    require_result=False and read truncated/error as stream health only."""
+    require_result=False and read truncated/error as stream health only.
+    Carved parents pass use_result_usage=False: the sole result event can
+    aggregate the whole subagent tree, and maxing it into main would count
+    those tokens twice once the subagent groups add their own."""
     text = pathlib.Path(path).read_text(encoding="utf-8")
     totals = {key: 0 for key in USAGE_KEYS}
     duration_ms, cost_usd, saw_result, turns = 0, 0.0, False, 0
@@ -51,7 +57,7 @@ def summarize(path, require_result=True):
             saw_result = True
             duration_ms = event.get("duration_ms", 0) or 0
             cost_usd = event.get("total_cost_usd", 0.0) or 0.0
-            usage = event.get("usage") or {}
+            usage = (event.get("usage") or {}) if use_result_usage else {}
             for key in USAGE_KEYS:
                 totals[key] = max(totals[key], usage.get(key, 0) or 0)
             turns = event.get("num_turns", 0) or 0
@@ -92,7 +98,7 @@ def split_parent(path, outdir):
 def report_parent(path, outdir):
     """Split one parent stream, then report across the carved files."""
     carved_main, carved_subs = split_parent(path, outdir)
-    agents = {"main": summarize(carved_main)}
+    agents = {"main": summarize(carved_main, use_result_usage=False)}
     agents["subagents"] = [summarize(sub, require_result=False)
                            for sub in carved_subs]
     total = {key: agents["main"][key] + sum(s[key] for s in agents["subagents"])
