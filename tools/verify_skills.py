@@ -835,6 +835,12 @@ def check_skill_registry():
                 fail("registry", f"`skills/{name}/` has a SKILL.md, so it is an "
                                  f"installable skill, but the README lists it as "
                                  f"bundled tooling")
+        for name in sorted(set(re.findall(r"^\|\s*`([a-z0-9-]+)/`",
+                                          tooling_section, re.M))):
+            if not (ROOT.parent / name).is_dir():
+                fail("registry", f"README Bundled-tooling table lists `{name}/` "
+                                 f"but it does not exist at the repo root. The "
+                                 f"bootstrap documentation points at nothing")
 
     note("registry", f"{len(installable)} installable skills "
                      f"({', '.join(sorted(installable))}); "
