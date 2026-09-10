@@ -46,6 +46,20 @@ npx skills remove bhagyamudgal/skills -s '*' -y
 npx skills add bhagyamudgal/skills
 ```
 
+## Automatic updates (opt-in)
+
+One paste installs a daily auto-sync: all skills, global scope, every detected agent. It runs `add --all` (so new skills arrive too, which plain `update` never picks up) followed by `update`, at most once per 24 hours. It wires two triggers: a Claude Code `SessionStart` hook for session starts and an OS scheduler (`launchd` on macOS, `cron` on Linux) for background runs.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bhagyamudgal/skills/main/tools/install-skills-sync.sh | bash
+```
+
+Force a sync any time with `~/.local/bin/skills-sync.sh --force`. The log lives at `${XDG_CACHE_HOME:-$HOME/.cache}/skills-sync/sync.log`. Opt out with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bhagyamudgal/skills/main/tools/install-skills-sync.sh | bash -s -- --uninstall
+```
+
 ## Skills (slash commands)
 
 | Skill | Description |
