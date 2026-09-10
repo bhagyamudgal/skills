@@ -93,13 +93,20 @@ class SkillRegistry(unittest.TestCase):
                         f"no internal failure in {fails}")
 
     def test_truthy_spellings_fail(self):
-        for spelling in ["true", "True", "TRUE", "yes", "on"]:
+        for spelling in ["true", "True", "TRUE"]:
             with self.subTest(spelling=spelling):
                 _write(self.root,
                        extra=f"metadata:\n  internal: {spelling}\n")
                 fails = _run(self.root)
                 self.assertTrue(any("internal" in f for f in fails),
                                 f"{spelling} produced no failure")
+
+    def test_yaml12_strings_pass(self):
+        for spelling in ["yes", "on", "tRuE", "Yes", "On"]:
+            with self.subTest(spelling=spelling):
+                _write(self.root,
+                       extra=f"metadata:\n  internal: {spelling}\n")
+                self.assertEqual([], _run(self.root))
 
     def test_quoted_true_is_a_string_and_passes(self):
         _write(self.root, extra='metadata:\n  internal: "true"\n')

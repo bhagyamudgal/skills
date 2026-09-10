@@ -799,8 +799,8 @@ def check_skill_registry():
             end = next((i for i, line in enumerate(lines[1:], 1)
                         if line.strip() == "---"), None)
             frontmatter = "\n".join(lines[1:end]) if end else ""
-        if re.search(r"^\s*internal:\s*(true|yes|on)\b\s*(#.*)?$",
-                      frontmatter, re.M | re.I):
+        if re.search(r"^\s*internal:\s*(true|True|TRUE)\b\s*(#.*)?$",
+                      frontmatter, re.M):
             fail("registry", f"`{skill.name}` sets a truthy `metadata.internal`, "
                              f"so the default installer listing hides it while "
                              f"the README table shows it. This repo supports "
