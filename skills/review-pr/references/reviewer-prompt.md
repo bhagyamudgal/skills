@@ -1,13 +1,6 @@
 # Subagent 1: Claude reviewer prompt
 
-Loaded by **main** at the Phase 2 dispatch, on every `SIZE_MODE` branch: dispatched once
-under `parallel-standard`, once per chunk under `parallel-chunked`,
-and run inline in main context under `solo-main`.
-
-Substitute `<SKILL_DIR>`, `<PROMPT_PREAMBLE>` and `<GROUND_TRUTH>` before the prompt is
-used. All three are defined in `<SKILL_DIR>/references/dispatch-prompts.md`, pointed at from
-SKILL.md Phase 2 under "Subagent 1: Claude reviewer".
-The remaining `<placeholders>` take their Phase 1 values.
+Loaded by **main** at the Phase 2 dispatch on every `SIZE_MODE` branch. Substitute `<SKILL_DIR>`, `<PROMPT_PREAMBLE>` and `<GROUND_TRUTH>` before use; all three are defined in `<SKILL_DIR>/references/dispatch-prompts.md`. The remaining `<placeholders>` take their Phase 1 values.
 
 ## Prompt
 

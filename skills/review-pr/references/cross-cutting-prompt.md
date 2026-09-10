@@ -1,11 +1,6 @@
 # Subagent 3: cross-cutting reviewer prompt
 
-Loaded by **main** at the Phase 2 dispatch when `SIZE_MODE` is `parallel-chunked`.
-In the unchunked modes Subagent 3 is never dispatched and this
-file stays unread.
-
-Substitute `<SKILL_DIR>` and `<PROMPT_PREAMBLE>` before dispatching. Both are defined in
-`<SKILL_DIR>/references/dispatch-prompts.md`, pointed at from SKILL.md Phase 2 under "Subagent 1: Claude reviewer".
+Loaded by **main** at the Phase 2 dispatch when `SIZE_MODE` is `parallel-chunked`. Substitute `<SKILL_DIR>` and `<PROMPT_PREAMBLE>` before dispatching, both defined in `<SKILL_DIR>/references/dispatch-prompts.md`.
 
 ```
 You are reviewing a GitHub PR at <url> for CROSS-FILE patterns ONLY. Other reviewers cover
