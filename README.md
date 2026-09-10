@@ -62,6 +62,8 @@ curl -fsSL https://raw.githubusercontent.com/bhagyamudgal/skills/main/tools/inst
 
 ## Skills (slash commands)
 
+Every row below is one installable skill (`skills/<name>/SKILL.md`, which is what `npx skills add` discovers). Non-skill material lives outside `skills/` and is listed under Bundled tooling below, so a folder count and the installer always agree.
+
 | Skill | Description |
 |-------|-------------|
 | `done` | MANDATORY readiness verification. Map every request item to implementation, verify six acceptance lanes and five evidence facets, and issue final readiness only after required publication evidence exists |
@@ -102,7 +104,7 @@ Several skills use progressive disclosure. `SKILL.md` holds the spine, and branc
 
 | Folder | Purpose |
 |---|---|
-| `skills/coderabbit-config/` | `.coderabbit.yaml` template + persistent-learnings sidecar. Copy into a repo so CodeRabbit absorbs style + convention findings before `/review-pr` runs. See [`skills/coderabbit-config/README.md`](skills/coderabbit-config/README.md) for bootstrap instructions. |
+| `coderabbit-config/` | `.coderabbit.yaml` template + persistent-learnings sidecar. Copy into a repo so CodeRabbit absorbs style + convention findings before `/review-pr` runs. See [`coderabbit-config/README.md`](coderabbit-config/README.md) for bootstrap instructions. |
 | `tools/verify_skills.py` | Structural verifier across all skills. It covers frontmatter, code fences, pointer form, severity-ladder consistency, dangling and orphan references, and cross-skill duplication. Plus produce → validate → consume dataflow checks scoped to `review-pr` and `fix-pr-review`. Run `python3 tools/verify_skills.py ./skills`; exits non-zero on failure. |
 | `tools/eval/run_verify_claims.py` | Fresh-session behavioral evaluator for `verify-claims` across code, external mutation, configuration, data, missing evidence, contradiction, and material reversal. Raw streams and final cards are saved under `.eval-results/`. |
 | `tools/eval/run_triggers.py` | Routing eval. Runs each utterance in a fresh session and records which skill fires first, so a description change can be checked against 54 cases. Skills that a standing instruction fires in every session, `unslop` among them, are passed over rather than recorded as the answer. |
@@ -154,4 +156,4 @@ Several skills use progressive disclosure. `SKILL.md` holds the spine, and branc
 
 **CodeRabbit is the sieve; `/review-pr` is the critic-pass.** The sieve catches style, convention, and standard-pattern findings so the critic-pass only ever sees what needs judgement, which is intent grounding, codebase-wide reusability (Q6a), multi-round state, and anti-slop filtering on the merged findings.
 
-Adopting `coderabbit-config` per-repo is what makes `/review-pr` runs tight. See [`skills/coderabbit-config/README.md`](skills/coderabbit-config/README.md) for the per-repo bootstrap.
+Adopting `coderabbit-config` per-repo is what makes `/review-pr` runs tight. See [`coderabbit-config/README.md`](coderabbit-config/README.md) for the per-repo bootstrap.

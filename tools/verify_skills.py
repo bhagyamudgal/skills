@@ -754,6 +754,95 @@ def check_dangling_refs():
                     fail(rel(path), f"line {i}: points at skill `{m.group(1)}` (not installed)")
 
 
+# --- skill registry consistency (FAIL) -------------------------------------
+
+def check_skill_registry():
+    """`npx skills add` discovers `skills/<name>/SKILL.md` with `name` and
+    `description` frontmatter, so a directory without one is invisible to the
+    installer: a bare folder count then disagrees with `npx skills add -l`
+    and nothing says why. Non-skill material lives outside `skills/` and is
+    listed in the README Bundled-tooling table, so anything SKILL.md-less
+    left directly under `skills/` is a packing error and fails here. This
+    check keeps the registries in agreement so the next addition, rename, or
+    removal cannot reintroduce the confusion silently: the SKILL.md set
+    against the README Skills table and Usage block, with every non-skill
+    directory under `skills/` accounted for in the Bundled-tooling table."""
+    readme_path = ROOT.parent / "README.md"
+    try:
+        readme = readme_path.read_text(encoding="utf-8")
+    except OSError:
+        fail("registry", f"{readme_path} is unreadable, cannot check the skill registry")
+        return
+    installable = {p.name for p in ROOT.iterdir()
+                   if p.is_dir() and (p / "SKILL.md").exists()}
+    present = {p.name for p in ROOT.iterdir() if p.is_dir()}
+    tooling = present - installable
+
+    def _section(head):
+        start = readme.find(head)
+        if start < 0:
+            return None
+        body = readme[start + len(head):]
+        nxt = body.find("\n## ")
+        return body[:nxt] if nxt >= 0 else body
+
+    table_section = _section("## Skills (slash commands)")
+    if table_section is None:
+        fail("registry", "README has no `## Skills (slash commands)` section")
+    else:
+        table = set(re.findall(r"^\|\s*`([a-z0-9-]+)`", table_section, re.M))
+        for name in sorted(installable - table):
+            fail("registry", f"`{name}` has a SKILL.md but no row in the README "
+                             f"Skills table, so the README undercounts what "
+                             f"`npx skills add` installs")
+        for name in sorted(table - installable):
+            fail("registry", f"README Skills table lists `{name}` but "
+                             f"`skills/{name}/SKILL.md` does not exist, so the "
+                             f"README overcounts what `npx skills add` installs")
+
+    usage_section = _section("## Usage")
+    if usage_section is None:
+        warn("registry", "README has no `## Usage` section")
+    else:
+        commands = set(re.findall(r"^/([a-z0-9-]+)\b", usage_section, re.M))
+        for name in sorted(installable - commands):
+            warn("registry", f"`{name}` has a SKILL.md but no `/`-command line "
+                             f"in the README Usage block")
+        for name in sorted(commands - installable):
+            warn("registry", f"README Usage block lists `/{name}` but "
+                             f"`skills/{name}/SKILL.md` does not exist")
+
+    tooling_section = _section("## Bundled tooling")
+    if tooling_section is None:
+        if tooling:
+            fail("registry", f"README has no `## Bundled tooling` section for "
+                             f"{sorted(tooling)}")
+    else:
+        refs = set(re.findall(r"skills/([a-z0-9-]+)/?", tooling_section))
+        for name in sorted(tooling):
+            if name not in refs:
+                fail("registry", f"`skills/{name}/` has no SKILL.md, so `npx skills "
+                                 f"add` never lists it, but the README Bundled-tooling "
+                                 f"table does not account for it either. A bare folder "
+                                 f"count then disagrees with the installer with no "
+                                 f"explanation. List it under `## Bundled tooling` or "
+                                 f"give it a SKILL.md")
+        for name in sorted(refs):
+            if name not in present:
+                fail("registry", f"README Bundled-tooling table points at "
+                                 f"`skills/{name}/`, which does not exist")
+            elif name in installable:
+                fail("registry", f"`skills/{name}/` has a SKILL.md, so it is an "
+                                 f"installable skill, but the README lists it as "
+                                 f"bundled tooling")
+
+    note("registry", f"{len(installable)} installable skills "
+                     f"({', '.join(sorted(installable))}); "
+                     f"{len(tooling)} bundled-tooling director"
+                     f"{'ies' if len(tooling) != 1 else 'y'} "
+                     f"({', '.join(sorted(tooling)) or 'none'})")
+
+
 def check_subagent_relative_paths():
     """A `references/...` path inside a fenced block is subagent-facing. Subagents
     inherit the user's repo as cwd, so a bare relative path silently resolves to
@@ -1034,6 +1123,7 @@ def main():
     check_orphan_reference_files()
     check_reference_files_exist()
     check_dangling_refs()
+    check_skill_registry()
     check_cross_skill_duplication()
     check_near_duplicate_code_blocks()
     check_global_rules_mirror_drift()

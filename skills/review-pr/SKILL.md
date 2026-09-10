@@ -182,7 +182,7 @@ gh api "repos/<owner>/<repo>/contents/.coderabbit.yaml" >/dev/null 2>&1 \
 
 If `CR_CONFIG_PRESENT=false` AND this is the first run of `/review-pr` against this repo in the current session, hint once after Phase 4 output:
 
-> No `.coderabbit.yaml` in `<owner>/<repo>`. Adding one pushes style + convention checks into CodeRabbit. The `coderabbit-config` skill carries a template (`npx skills add bhagyamudgal/skills@coderabbit-config`). Future `/review-pr` runs in this repo will be tighter.
+> No `.coderabbit.yaml` in `<owner>/<repo>`. Adding one pushes style + convention checks into CodeRabbit. Copy the template at `https://raw.githubusercontent.com/bhagyamudgal/skills/main/coderabbit-config/coderabbit.yaml.template` to `<repo>/.coderabbit.yaml` (bootstrap steps in that repo's `coderabbit-config/README.md`). Future `/review-pr` runs in this repo will be tighter.
 
 The hint is informational. It never gates posting.
 

@@ -13,7 +13,7 @@ The seam between them: rules that attach to a file glob live in the yaml; rules 
 
 ```bash
 # this folder is bundled tooling, not an installable skill. Clone or copy the file directly
-cp <path-to>/skills/coderabbit-config/coderabbit.yaml.template <repo>/.coderabbit.yaml
+cp <path-to>/coderabbit-config/coderabbit.yaml.template <repo>/.coderabbit.yaml
 cd <repo>
 # Customize: comment out path_instructions blocks that don't apply (e.g., remove migrations block for non-SQL projects)
 git add .coderabbit.yaml
