@@ -62,7 +62,7 @@ curl -fsSL https://raw.githubusercontent.com/bhagyamudgal/skills/main/tools/inst
 
 ## Skills (slash commands)
 
-Every row below is one installable skill (`skills/<name>/SKILL.md`, which is what `npx skills add` discovers). Non-skill material lives outside `skills/` and is listed under Bundled tooling below, so a folder count and the installer always agree.
+Every row below is one installable skill (`skills/<name>/SKILL.md`, which is what `npx skills add` discovers). Non-skill material lives outside `skills/` and is listed under Bundled tooling below, so a folder count and the installer always agree. Only flat, public skills are supported: no root or nested `SKILL.md`, no `metadata.internal` hidden skills. The verifier rejects those forms.
 
 | Skill | Description |
 |-------|-------------|

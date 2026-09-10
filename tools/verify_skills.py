@@ -766,7 +766,10 @@ def check_skill_registry():
     check keeps the registries in agreement so the next addition, rename, or
     removal cannot reintroduce the confusion silently: the SKILL.md set
     against the README Skills table and Usage block, with every non-skill
-    directory under `skills/` accounted for in the Bundled-tooling table."""
+    directory under `skills/` accounted for in the Bundled-tooling table.
+    Only flat, public skills are supported: a root SKILL.md, a nested one, or
+    a `metadata.internal` hidden skill fails outright instead of slipping
+    past the comparison."""
     readme_path = ROOT.parent / "README.md"
     try:
         readme = readme_path.read_text(encoding="utf-8")
@@ -777,6 +780,30 @@ def check_skill_registry():
                    if p.is_dir() and (p / "SKILL.md").exists()}
     present = {p.name for p in ROOT.iterdir() if p.is_dir()}
     tooling = present - installable
+
+    if (ROOT.parent / "SKILL.md").exists():
+        fail("registry", "a root SKILL.md exists. The installer discovers it, "
+                         "but the README Skills table cannot name it and no "
+                         "skill directory owns it. This repo supports only "
+                         "flat skills under skills/")
+    for path in sorted(ROOT.rglob("SKILL.md")):
+        if path.parent.parent != ROOT:
+            fail("registry", f"`{rel(path)}` is nested. The installer walks "
+                             f"catalog layouts the README table does not "
+                             f"model. This repo supports only flat "
+                             f"`skills/<name>/SKILL.md` skills")
+    for skill in SKILLS:
+        lines = read(skill / "SKILL.md") or []
+        frontmatter = ""
+        if len(lines) > 1 and lines[0].strip() == "---":
+            end = next((i for i, l in enumerate(lines[1:], 1)
+                        if l.strip() == "---"), None)
+            frontmatter = "\n".join(lines[1:end]) if end else ""
+        if re.search(r"^\s*internal:\s*true\s*$", frontmatter, re.M | re.I):
+            fail("registry", f"`{skill.name}` sets `metadata.internal: true`, "
+                             f"so the default installer listing hides it while "
+                             f"the README table shows it. This repo supports "
+                             f"only public skills")
 
     def _section(head):
         start = readme.find(head)
@@ -802,15 +829,18 @@ def check_skill_registry():
 
     usage_section = _section("## Usage")
     if usage_section is None:
-        warn("registry", "README has no `## Usage` section")
+        fail("registry", "README has no `## Usage` section, so the "
+                         "slash-command index is missing entirely")
     else:
         commands = set(re.findall(r"^/([a-z0-9-]+)\b", usage_section, re.M))
         for name in sorted(installable - commands):
-            warn("registry", f"`{name}` has a SKILL.md but no `/`-command line "
-                             f"in the README Usage block")
+            fail("registry", f"`{name}` has a SKILL.md but no `/`-command line "
+                             f"in the README Usage block, so an installed skill "
+                             f"has no documented invocation")
         for name in sorted(commands - installable):
-            warn("registry", f"README Usage block lists `/{name}` but "
-                             f"`skills/{name}/SKILL.md` does not exist")
+            fail("registry", f"README Usage block lists `/{name}` but "
+                             f"`skills/{name}/SKILL.md` does not exist, so the "
+                             f"documented command installs nothing")
 
     tooling_section = _section("## Bundled tooling")
     if tooling_section is None:
