@@ -1,6 +1,6 @@
 ---
 name: standup
-description: Generate the user's daily standup update from real activity: GitHub PRs and commits, unpushed local work across worktrees, and Claude/Codex/OpenCode session history. Use when the user says /standup, give me my standup, what did I do yesterday, or wants a status summary.
+description: "Generate the user's daily standup update from real activity: GitHub PRs and commits, unpushed local work across worktrees, and Claude/Codex/OpenCode session history. Use when the user says /standup, give me my standup, what did I do yesterday, or wants a status summary."
 ---
 
 # Standup
