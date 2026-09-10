@@ -118,13 +118,19 @@ def main_loads(mode, worst=False, round2=False, step6_reload=False, monorepo=Tru
     """Ordered file list main loads, repeats kept. Solo-main runs the Subagent
     1 prompt inline, so the reviewer references land in main: best case the
     diff has no DB/API payload, no new definitions, and no code-change
-    finding, worst case all three plus schema checks. The trailing schema
-    entry is the Phase 4 write-back re-read; the critic-verify entry is the
-    step-6 reload for findings routed back through 4.55/4.56."""
+    finding, worst case all three plus schema checks. The cross-cutting
+    prompt loads only in parallel-chunked, the only mode that dispatches
+    Subagent 3. The trailing schema entry is the Phase 4 write-back re-read;
+    the critic-verify entry is the step-6 reload for findings routed back
+    through 4.55/4.56."""
     loads = [f for f in MAIN_ALWAYS if monorepo or f != "repo-map.md"]
+    if mode == "parallel-chunked":
+        loads += ["cross-cutting-prompt.md"]
     if mode == "solo-main" and worst:
         loads += SOLO_INLINE_WORST
-    loads += MAIN_IF_FINDINGS + MAIN_IF_CODE_CHANGE_FINDINGS
+    loads += MAIN_IF_FINDINGS
+    if mode != "solo-main" or worst:
+        loads += MAIN_IF_CODE_CHANGE_FINDINGS
     loads += ["finding-state-schema.md"]
     if step6_reload:
         loads += ["critic-verify.md"]
@@ -147,15 +153,18 @@ def subagent_loads(chunks, hunter=True, worst=True):
 
 def network_calls(mode, chunks=1, hunter=True, linked_issues=0,
                   file_level_findings=0, cross_repo=True):
-    """Prescribed gh calls. Phase 1 is view, diff, viewer, author, threads and
-    coderabbit-config, plus the tree fetch and suppressions read when
-    cross-repo, plus one fetch per linked issue. Subagent fetches counted:
-    every chunk reviewer runs `gh pr diff` plus `gh pr view --json files`,
-    the hunter and cross-cutting reviewer each fetch the diff. Phase 4 is
-    the REST create-with-comments plus submit, and one GraphQL call per
-    file-level thread. Evidence fetches inside V1/V2/V3 and the Phase 4
-    garbage sweep are unbounded by the text and reported separately."""
-    phase1 = 8 if cross_repo else 6
+    """Prescribed gh calls. Phase 1 is view, diff, the post-diff OID re-read,
+    viewer, author, cwd repo lookup, threads and coderabbit-config, plus the
+    tree fetch and suppressions read when cross-repo, plus one fetch per
+    linked issue. Subagent fetches counted: every chunk reviewer runs
+    `gh pr diff` plus `gh pr view --json files`, the hunter and
+    cross-cutting reviewer each fetch the diff, and Subagent 3 dispatches
+    only in parallel-chunked. Phase 4 is the prior-review query, the hunk
+    fetch, create, the create read-backs, submit, the submit read-back, and
+    one GraphQL call per file-level thread. Evidence fetches inside
+    V1/V2/V3, re-run thread resolution, and the Phase 4 garbage sweep are
+    unbounded by the text and reported separately."""
+    phase1 = 10 if cross_repo else 8
     phase1 += linked_issues
     if mode == "solo-main":
         phase2 = (1 if hunter else 0)
@@ -163,7 +172,7 @@ def network_calls(mode, chunks=1, hunter=True, linked_issues=0,
         phase2 = 2 + (1 if hunter else 0)
     else:
         phase2 = 2 * chunks + (1 if hunter else 0) + 1
-    phase4 = 2 + file_level_findings
+    phase4 = 7 + file_level_findings
     return {"phase1": phase1, "phase2": phase2, "phase4": phase4,
             "total": phase1 + phase2 + phase4}
 
@@ -198,8 +207,11 @@ def report(chunks=3, monorepo=True):
         "network": network_calls("parallel-standard", chunks=1)["total"],
     }
     r2 = main_loads("parallel-chunked", worst=True, round2=True, monorepo=monorepo)
+    r1 = main_loads("parallel-chunked", worst=True, round2=False, monorepo=monorepo)
     d2, r2s = sums(r2)
-    paths["any/round-2-delta"] = {"main_distinct": d2, "main_with_repeats": r2s, "network": 0}
+    d1, r1s = sums(r1)
+    paths["any/round-2-delta"] = {"delta_distinct": d2 - d1,
+                                  "delta_with_repeats": r2s - r1s, "network": 0}
 
     subs = subagent_loads(chunks)
     sub_bytes = {role: sums(loads) for role, loads in subs.items()}
@@ -228,7 +240,12 @@ def main():
     print(f"{'path':42} {'main distinct':>14} {'with repeats':>13} {'network':>8}")
     for name, cells in rep["paths"].items():
         net = cells["network"] or "-"
-        print(f"{name:42} {cells['main_distinct']:>14,} {cells['main_with_repeats']:>13,} {net:>8}")
+        if "delta_distinct" in cells:
+            print(f"{name:42} {cells['delta_distinct']:>14,} "
+                  f"{cells['delta_with_repeats']:>13,} {net:>8}")
+        else:
+            print(f"{name:42} {cells['main_distinct']:>14,} "
+                  f"{cells['main_with_repeats']:>13,} {net:>8}")
     print("\nper-subagent references (distinct, with repeats):")
     for role, (d, r) in rep["subagent_refs"].items():
         print(f"  {role:24} {d:>8,} {r:>8,}")

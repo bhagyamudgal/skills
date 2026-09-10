@@ -42,19 +42,37 @@ done
 
 ## Collecting transcripts
 
-Run each variant with stream-json logging, one file per agent. Subagent
-tokens never appear in the main transcript, so a single log undercounts the
-run by every reviewer dispatched. Save the main transcript plus one file per
-subagent the run reports in its Phase 4 header.
+Run each variant with stream-json logging into its own directory. The two
+variants must never share a directory: the parser reads every file it is
+given, so one shared glob folds both variants' subagent transcripts into
+each report and the paired totals go invalid.
 
 ```bash
-claude -p "/review-pr https://github.com/$OWNER/$REPO/pull/<N>" \
-  --output-format stream-json --verbose \
-  --tee main-old.jsonl
-# repeat for the new variant -> main-new.jsonl, plus each subagent log
-python3 tools/eval/review_pr_tokens.py main-old.jsonl sub-*.jsonl
-python3 tools/eval/review_pr_tokens.py main-new.jsonl sub-*.jsonl --json
+mkdir -p runs/old runs/new
+claude -p "/review-pr https://github.com/$OWNER/$REPO/pull/<OLD-N>" \
+  --output-format stream-json --verbose --forward-subagent-text \
+  --tee runs/old/parent.jsonl
+claude -p "/review-pr https://github.com/$OWNER/$REPO/pull/<NEW-N>" \
+  --output-format stream-json --verbose --forward-subagent-text \
+  --tee runs/new/parent.jsonl
 ```
+
+`--forward-subagent-text` (Claude Code v2.1.211+) tags each subagent message
+with its spawning tool call in `parent_tool_use_id`, which is what makes the
+split below possible. Without it the parent stream carries only each
+subagent's tool calls and results, and per-agent attribution has nothing to
+group on.
+
+```bash
+python3 tools/eval/review_pr_tokens.py --split runs/old/agents runs/old/parent.jsonl
+python3 tools/eval/review_pr_tokens.py --split runs/new/agents runs/new/parent.jsonl --json
+```
+
+`--split` carves one file per agent out of the parent stream and reports
+across them. Token cells reflect only the usage events present on each
+group's messages; a subagent group with none reports zero rather than an
+estimate, and carved groups show no wall time because the parent stream
+holds a single result event. The run wall time is the main duration.
 
 ## Comparing
 

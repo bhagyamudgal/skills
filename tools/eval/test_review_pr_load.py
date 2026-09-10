@@ -22,17 +22,18 @@ import review_pr_tokens
 
 CORPUS_CEILING = 182987
 CEILINGS = {
-    "solo-main/best": (147344, 174138, 11),
-    "solo-main/worst": (170242, 197036, 11),
-    "parallel-standard/round-1": (147344, 174138, 13),
-    "parallel-chunked/round-1": (147344, 174138, 18),
-    "parallel-standard/with-step6-reload": (147344, 182742, 13),
-    "any/round-2-delta": (153116, 179910, 0),
+    "solo-main/best": (141590, 168384, 18),
+    "solo-main/worst": (170242, 197036, 18),
+    "parallel-standard/round-1": (147344, 174138, 20),
+    "parallel-chunked/round-1": (148877, 175671, 25),
+    "parallel-standard/with-step6-reload": (147344, 182742, 20),
 }
+DELTA_CEILINGS = {"delta_distinct": 5772, "delta_with_repeats": 5772,
+                  "network": 0}
+CHUNK_REVIEWER_CEILING = (32571, 32571)
 SUBAGENT_CEILINGS = {
-    "chunk-reviewer-1": (32571, 32571),
-    "cross-cutting": (5936, 5936),
     "silent-failure-hunter": (0, 0),
+    "cross-cutting": (5936, 5936),
 }
 PROMPT_CEILINGS = {
     "chunk-reviewer-prompt": 9673,
@@ -58,6 +59,16 @@ class LoadCeilingTest(unittest.TestCase):
                 self.assertLessEqual(cells["main_with_repeats"], repeated)
                 self.assertLessEqual(cells["network"], network)
 
+    def test_no_unceilinged_path(self):
+        self.assertEqual(set(self.rep["paths"]),
+                         set(CEILINGS) | {"any/round-2-delta"})
+
+    def test_round2_row_is_a_delta(self):
+        cells = self.rep["paths"]["any/round-2-delta"]
+        for metric, ceiling in DELTA_CEILINGS.items():
+            with self.subTest(metric=metric):
+                self.assertLessEqual(cells[metric], ceiling)
+
     def test_subagent_refs_within_ceilings(self):
         for role, (distinct, repeated) in SUBAGENT_CEILINGS.items():
             with self.subTest(role=role):
@@ -65,7 +76,20 @@ class LoadCeilingTest(unittest.TestCase):
                 self.assertLessEqual(got_distinct, distinct)
                 self.assertLessEqual(got_repeated, repeated)
 
+    def test_no_unceilinged_subagent(self):
+        self.assertEqual(set(self.rep["subagent_refs"]),
+                         {"chunk-reviewer-1", "chunk-reviewer-2",
+                          "chunk-reviewer-3"} | set(SUBAGENT_CEILINGS))
+
+    def test_chunk_reviewers_share_one_ceiling(self):
+        for index in (1, 2, 3):
+            with self.subTest(role=f"chunk-reviewer-{index}"):
+                got = self.rep["subagent_refs"][f"chunk-reviewer-{index}"]
+                self.assertLessEqual(got[0], CHUNK_REVIEWER_CEILING[0])
+                self.assertLessEqual(got[1], CHUNK_REVIEWER_CEILING[1])
+
     def test_subagent_prompts_within_ceilings(self):
+        self.assertEqual(set(self.rep["subagent_prompts"]), set(PROMPT_CEILINGS))
         for role, ceiling in PROMPT_CEILINGS.items():
             with self.subTest(role=role):
                 self.assertLessEqual(self.rep["subagent_prompts"][role], ceiling)
@@ -78,20 +102,17 @@ class LoadCeilingTest(unittest.TestCase):
         self.assertEqual(json.dumps(self.rep, sort_keys=True),
                          json.dumps(again, sort_keys=True))
 
-    def test_every_modeled_file_exists(self):
-        for name in review_pr_load.FILES:
-            with self.subTest(file=name):
-                base = (review_pr_load.SKILL_DIR if name == "SKILL.md"
-                        else review_pr_load.REF)
-                self.assertTrue((base / name).exists(),
-                                f"{name} is in the model but not on disk. A "
-                                f"load pointer that resolves to nothing fails "
-                                f"silently at review time")
+    def test_model_covers_every_skill_file(self):
+        on_disk = {"SKILL.md"} | {path.name for path in
+                                  (review_pr_load.SKILL_DIR / "references").glob("*.md")}
+        self.assertEqual(set(review_pr_load.FILES), on_disk)
 
     def test_round2_delta_is_critic_round2(self):
-        delta = (self.rep["paths"]["any/round-2-delta"]["main_distinct"]
-                 - self.rep["paths"]["parallel-chunked/round-1"]["main_distinct"])
-        self.assertEqual(delta, self.rep["sizes"]["critic-round2.md"])
+        cells = self.rep["paths"]["any/round-2-delta"]
+        self.assertEqual(cells["delta_distinct"],
+                         self.rep["sizes"]["critic-round2.md"])
+        self.assertEqual(cells["delta_with_repeats"],
+                         self.rep["sizes"]["critic-round2.md"])
 
     def test_step6_reload_is_critic_verify(self):
         delta = (self.rep["paths"]["parallel-standard/with-step6-reload"]["main_with_repeats"]
@@ -139,6 +160,75 @@ class TokensParserTest(unittest.TestCase):
         got = review_pr_tokens.summarize(path)
         self.assertTrue(got["truncated"])
         pathlib.Path(path).unlink()
+
+    def test_completed_error_is_kept(self):
+        import tempfile
+        failed = SYNTHETIC.splitlines()[1].replace('"is_error": false',
+                                                   '"is_error": true')
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl",
+                                         delete=False) as handle:
+            handle.write(SYNTHETIC.splitlines()[0] + "\n" + failed)
+            path = handle.name
+        got = review_pr_tokens.summarize(path)
+        self.assertFalse(got["truncated"])
+        self.assertIsNotNone(got["error"])
+        pathlib.Path(path).unlink()
+
+    def test_error_flag_prints(self):
+        import io
+        from contextlib import redirect_stdout
+        rep = {"main": {"file": "m", "input_tokens": 1, "output_tokens": 1,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0, "duration_ms": 1000,
+                        "cost_usd": 0.0, "truncated": False,
+                        "error": "api error 500"},
+               "subagents": [],
+               "total": {"input_tokens": 1, "output_tokens": 1,
+                         "cache_creation_input_tokens": 0,
+                         "cache_read_input_tokens": 0, "cost_usd": 0.0}}
+        out = io.StringIO()
+        with redirect_stdout(out):
+            review_pr_tokens.print_report(rep)
+        self.assertIn("ERROR", out.getvalue())
+        self.assertNotIn("TRUNCATED", out.getvalue())
+
+    def test_split_groups_by_parent_tool_use_id(self):
+        import tempfile
+        main_event = json.dumps({"type": "assistant",
+                                 "parent_tool_use_id": None,
+                                 "message": {"content": [{"type": "text",
+                                                          "text": "go"}],
+                                             "usage": {"input_tokens": 10,
+                                                       "output_tokens": 2,
+                                                       "cache_creation_input_tokens": 0,
+                                                       "cache_read_input_tokens": 0}}})
+        sub_event = json.dumps({"type": "assistant",
+                                "parent_tool_use_id": "toolu_1",
+                                "message": {"content": [{"type": "text",
+                                                         "text": "found"}],
+                                            "usage": {"input_tokens": 40,
+                                                      "output_tokens": 5,
+                                                      "cache_creation_input_tokens": 0,
+                                                      "cache_read_input_tokens": 0}}})
+        result = json.dumps({"type": "result", "subtype": "success",
+                             "is_error": False, "result": "done",
+                             "duration_ms": 5000, "total_cost_usd": 0.01,
+                             "usage": {}})
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = pathlib.Path(tmp) / "parent.jsonl"
+            parent.write_text(main_event + "\n" + sub_event + "\n" + result + "\n")
+            carved_main, carved_subs = review_pr_tokens.split_parent(
+                str(parent), str(pathlib.Path(tmp) / "agents"))
+            self.assertEqual(len(carved_subs), 1)
+            rep = review_pr_tokens.report_parent(str(parent),
+                                                 str(pathlib.Path(tmp) / "agents"))
+        self.assertEqual(rep["main"]["input_tokens"], 10)
+        self.assertEqual(len(rep["subagents"]), 1)
+        self.assertEqual(rep["subagents"][0]["input_tokens"], 40)
+        self.assertFalse(rep["subagents"][0]["truncated"])
+        self.assertEqual(rep["subagents"][0]["duration_ms"], 0)
+        self.assertEqual(rep["total"]["input_tokens"], 50)
+        self.assertTrue(carved_main.endswith("main.jsonl"))
 
 
 if __name__ == "__main__":
