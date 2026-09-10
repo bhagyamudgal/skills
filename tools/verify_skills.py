@@ -796,8 +796,8 @@ def check_skill_registry():
         lines = read(skill / "SKILL.md") or []
         frontmatter = ""
         if len(lines) > 1 and lines[0].strip() == "---":
-            end = next((i for i, l in enumerate(lines[1:], 1)
-                        if l.strip() == "---"), None)
+            end = next((i for i, line in enumerate(lines[1:], 1)
+                        if line.strip() == "---"), None)
             frontmatter = "\n".join(lines[1:end]) if end else ""
         if re.search(r"^\s*internal:\s*true\s*$", frontmatter, re.M | re.I):
             fail("registry", f"`{skill.name}` sets `metadata.internal: true`, "
