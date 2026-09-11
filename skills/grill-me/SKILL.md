@@ -21,7 +21,7 @@ Always use the AskUserQuestion tool for every question you present to me. Every 
 - If my answer is non-committal, something like "not sure" or "whatever you think" or "both", do not record it. Restate the trade-off in one sentence and re-ask the same decision once. Record the second answer either way.
 - When an answer contradicts an earlier one or leaves a dependency unresolved, say which one and re-ask before moving on.
 - If you can answer a question by exploring the codebase, explore it instead of asking me. Use Grep, Glob, Read, or Agent to verify assumptions before grilling me on them.
-- If I say "enough" or "done" or "stop" or "skip the rest", post per the issue rule below with the decisions captured so far, then announce "Grill complete." and exit.
+- If I say "enough" or "done" or "stop" or "skip the rest", append per the file rule and post per the issue rule below with the decisions captured so far, then announce "Grill complete." and exit.
 - When every numbered decision has a recorded answer and no answer has opened a new one, move to the verification pass below instead of closing out. If an answer opens a new decision, append it to the list and say so.
 
 ## Verification pass
@@ -34,3 +34,4 @@ The decisions are settled. Now prove the plan is true before I code.
 - Never ask me to confirm a fact you could have checked. Never batch questions.
 - If I invoked you with a file path, append the numbered decisions and the verified corrections under a `## Decisions` heading in that file before announcing "Grill complete."
 - If a GitHub issue was provided in context as a URL, number, or issue body, post an issue comment for tracking before announcing "Grill complete." The body holds the numbered decisions and the verified corrections followed by the full plan, or whatever is captured so far on early exit. Comment on the exact issue from context with `gh issue comment <url> --body`. When context holds only a number, resolve its repository first instead of assuming the checkout.
+- When every claim is verified or answered, announce "Grill complete." with the numbered decisions and the corrections.

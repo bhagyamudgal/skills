@@ -162,8 +162,8 @@ def check_frontmatter():
 
 # --- always-loaded context budget (repo-wide, WARN) ------------------------
 
-# 360 is the repo's real ceiling today. discover-product-domain
-# landed at 506 — 41% past the previous worst — and nothing caught it at review.
+# 360 is the repo's real ceiling today (review-pr, 345). discover-product-domain
+# landed at 506 — 47% past the previous worst — and nothing caught it at review.
 MAX_DESCRIPTION_CHARS = 360
 
 # Set from the repo's own distribution: two skills sit past 10 KB with the
@@ -429,8 +429,9 @@ MIN_PROSE_RUN_LINES = 5
 # Skills install independently and cannot import a shared file, so some copies
 # are irreducible. Every entry MUST name its reason; an unexplained entry is
 # indistinguishable from a silenced bug. Example of the shape:
-#   "0123456789ab": "review-pr Phase 1 repo-map bash, copied into fix-pr-review —
-#                    the two skills install separately and cannot share a file",
+#   "0123456789ab": "<skill-a> Phase 1 shell, copied into <skill-b> because
+#                    the two install separately and the loader cannot reach
+#                    across skill directories",
 DUPLICATE_ALLOWLIST = {}
 
 
