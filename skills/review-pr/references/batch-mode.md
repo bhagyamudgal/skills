@@ -8,7 +8,7 @@ For "all open PRs", enumerate via `gh pr list --json number,url,title --limit 50
 
 ## Orchestration
 
-- Main context is the **orchestrator**: oversight only. It never reviews a PR inline, regardless of `SIZE_MODE` (solo-main routing applies inside each subagent, not in main).
+- Main context is the **orchestrator**: oversight only. It never reviews a PR inline, regardless of `SIZE_MODE` (size routing applies inside each subagent, not in main).
 - Spawn **ONE `general-purpose` subagent PER PR**. Each subagent runs the single-PR flow (Phases 1-3) independently against its own PR and returns its Phase 4 terminal block as its result. Dispatch in parallel batches of 3-4.
 - Subagents NEVER post to GitHub and NEVER ask questions. They return the complete surviving finding set, semantic verdict, and `IS_SELF_REVIEW` value to the orchestrator, which posts each review after every subagent has returned.
 

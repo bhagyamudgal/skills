@@ -92,15 +92,6 @@ MAIN_ALWAYS = [
 MAIN_IF_FINDINGS = ["false-positive-rules.md"]
 MAIN_IF_CODE_CHANGE_FINDINGS = ["verification-subagents.md"]
 
-SOLO_INLINE_BEST = []
-SOLO_INLINE_WORST = [
-    "q5-type-coercion.md",
-    "q6-reusability-search.md",
-    "class-sweep-and-inverse-risk.md",
-    "finding-output-format.md",
-    "schema-design-checks.md",
-]
-
 SUBAGENT_1_ALWAYS = ["reviewer-prompt.md", "finding-output-format.md"]
 SUBAGENT_1_COND = [
     "q5-type-coercion.md",
@@ -119,25 +110,19 @@ def hunter_prompt_bytes():
     return len(text[fence + 3:close].encode("utf-8"))
 
 
-def main_loads(mode, worst=False, round2=False, step6_reload=False, monorepo=True):
-    """Ordered file list main loads, repeats kept. Solo-main runs the Subagent
-    1 prompt inline, so the reviewer references land in main: best case the
-    diff has no DB/API payload, no new definitions, and no code-change
-    finding, worst case all three plus schema checks. The cross-cutting
-    prompt loads only in parallel-chunked, the only mode that dispatches
-    Subagent 3. The trailing phase4 entry is the Phase 4 write-back file,
-    loaded after posting; the rerun and recovery posting files load only on
-    re-runs and failures and stay out of the fresh-run paths. The
-    critic-verify entry is the step-6 reload for findings routed back
-    through 4.55/4.56."""
+def main_loads(mode, round2=False, step6_reload=False, monorepo=True):
+    """Ordered file list main loads, repeats kept. Subagent 1 always
+    dispatches, so the reviewer references never land in main. The
+    cross-cutting prompt loads only in parallel-chunked, the only mode that
+    dispatches Subagent 3. The trailing phase4 entry is the Phase 4
+    write-back file, loaded after posting; the rerun and recovery posting
+    files load only on re-runs and failures and stay out of the fresh-run
+    paths. The critic-verify entry is the step-6 reload for findings routed
+    back through 4.55/4.56."""
     loads = [f for f in MAIN_ALWAYS if monorepo or f != "repo-map.md"]
     if mode == "parallel-chunked":
         loads += ["cross-cutting-prompt.md"]
-    if mode == "solo-main" and worst:
-        loads += SOLO_INLINE_WORST
-    loads += MAIN_IF_FINDINGS
-    if mode != "solo-main" or worst:
-        loads += MAIN_IF_CODE_CHANGE_FINDINGS
+    loads += MAIN_IF_FINDINGS + MAIN_IF_CODE_CHANGE_FINDINGS
     loads += ["finding-state-phase4.md"]
     if step6_reload:
         loads += ["critic-verify.md"]
@@ -168,22 +153,16 @@ def network_calls(mode, chunks=1, hunter=True, linked_issues=0,
     """Prescribed gh calls. Phase 1 is view, diff, the post-diff OID re-read,
     viewer, author, cwd repo lookup, threads and coderabbit-config, plus the
     tree fetch and suppressions read when cross-repo, plus one fetch per
-    linked issue. Subagent fetches counted: every chunk reviewer runs
-    `gh pr diff` plus `gh pr view --json files`, the hunter and
-    cross-cutting reviewer each fetch the diff, and Subagent 3 dispatches
-    only in parallel-chunked. Phase 4 is the prior-review query, the hunk
-    fetch, create, the create read-backs, submit, the submit read-back, and
-    one GraphQL call per file-level thread. Evidence fetches inside
-    V1/V2/V3, re-run thread resolution, and the Phase 4 garbage sweep are
-    unbounded by the text and reported separately."""
+    linked issue. Phase 2 dispatches subagents through the Agent tool with
+    staged files, so it costs zero gh calls in every mode: no reviewer
+    fetches the diff or the file list itself. Phase 4 is the prior-review
+    query, the hunk fetch, create, the create read-backs, submit, the submit
+    read-back, and one GraphQL call per file-level thread. Evidence fetches
+    inside V1/V2/V3, re-run thread resolution, and the Phase 4 garbage sweep
+    are unbounded by the text and reported separately."""
     phase1 = 10 if cross_repo else 8
     phase1 += linked_issues
-    if mode == "solo-main":
-        phase2 = (1 if hunter else 0)
-    elif mode == "parallel-standard":
-        phase2 = 2 + (1 if hunter else 0)
-    else:
-        phase2 = 2 * chunks + (1 if hunter else 0) + 1
+    phase2 = 0
     phase4 = 7 + file_level_findings
     return {"phase1": phase1, "phase2": phase2, "phase4": phase4,
             "total": phase1 + phase2 + phase4}
@@ -198,28 +177,21 @@ def report(chunks=3, monorepo=True):
         return distinct, repeated
 
     paths = {}
-    for mode in ("solo-main", "parallel-standard", "parallel-chunked"):
-        n = chunks if mode == "parallel-chunked" else (1 if mode == "parallel-standard" else 0)
-        for variant, kw in (
-            ("best", {"worst": False}),
-            ("worst", {"worst": True}),
-        ):
-            if mode != "solo-main" and variant == "best":
-                continue
-            loads = main_loads(mode, round2=False, monorepo=monorepo, **kw)
-            d, r = sums(loads)
-            net = network_calls(mode, chunks=n or 1)
-            paths[f"{mode}/{variant if mode == 'solo-main' else 'round-1'}"] = {
-                "main_distinct": d, "main_with_repeats": r, "network": net["total"],
-            }
+    for mode in ("parallel-standard", "parallel-chunked"):
+        loads = main_loads(mode, round2=False, monorepo=monorepo)
+        d, r = sums(loads)
+        net = network_calls(mode, chunks=chunks)
+        paths[f"{mode}/round-1"] = {
+            "main_distinct": d, "main_with_repeats": r, "network": net["total"],
+        }
     std = main_loads("parallel-standard", monorepo=monorepo)
     d, r = sums(std + ["critic-verify.md"])
     paths["parallel-standard/with-step6-reload"] = {
         "main_distinct": sums(std)[0], "main_with_repeats": r,
         "network": network_calls("parallel-standard", chunks=1)["total"],
     }
-    r2 = main_loads("parallel-chunked", worst=True, round2=True, monorepo=monorepo)
-    r1 = main_loads("parallel-chunked", worst=True, round2=False, monorepo=monorepo)
+    r2 = main_loads("parallel-chunked", round2=True, monorepo=monorepo)
+    r1 = main_loads("parallel-chunked", round2=False, monorepo=monorepo)
     d2, r2s = sums(r2)
     d1, r1s = sums(r1)
     paths["any/round-2-delta"] = {"delta_distinct": d2 - d1,
