@@ -51,10 +51,10 @@ each report and the paired totals go invalid.
 mkdir -p runs/old runs/new
 claude -p "/review-pr https://github.com/$OWNER/$REPO/pull/<OLD-N>" \
   --output-format stream-json --verbose --forward-subagent-text \
-  --tee runs/old/parent.jsonl
+  > runs/old/parent.jsonl
 claude -p "/review-pr https://github.com/$OWNER/$REPO/pull/<NEW-N>" \
   --output-format stream-json --verbose --forward-subagent-text \
-  --tee runs/new/parent.jsonl
+  > runs/new/parent.jsonl
 ```
 
 `--forward-subagent-text` (Claude Code v2.1.211+) tags each subagent message
@@ -73,6 +73,10 @@ across them. Token cells reflect only the usage events present on each
 group's messages; a subagent group with none reports zero rather than an
 estimate, and carved groups show no wall time because the parent stream
 holds a single result event. The run wall time is the main duration.
+Treat split cells as directional only: this CLI version emits one result
+event per agent with that agent's totals, so the authoritative run numbers
+are wall time, cost, and output tokens from the main result event, and the
+finding-set comparison carries more weight than any token delta.
 
 ## Comparing
 
