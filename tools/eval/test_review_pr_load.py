@@ -204,8 +204,24 @@ class TokensParserTest(unittest.TestCase):
         self.assertIn("ERROR", out.getvalue())
         self.assertNotIn("TRUNCATED", out.getvalue())
 
-    def test_split_groups_by_parent_tool_use_id(self):
+    def test_split_reads_result_events(self):
         import tempfile
+
+        def result(out, dur, text):
+            return json.dumps({"type": "result", "subtype": "success",
+                               "is_error": False, "result": text,
+                               "duration_ms": dur, "total_cost_usd": 0.03,
+                               "num_turns": 2,
+                               "usage": {"input_tokens": 7,
+                                         "output_tokens": out,
+                                         "cache_creation_input_tokens": 0,
+                                         "cache_read_input_tokens": 0},
+                               "modelUsage": {"m": {"inputTokens": 70,
+                                                    "outputTokens": 90,
+                                                    "cacheCreationInputTokens": 0,
+                                                    "cacheReadInputTokens": 0}},
+                               "subagent_stats": {"completed": 1}})
+
         main_event = json.dumps({"type": "assistant",
                                  "parent_tool_use_id": None,
                                  "message": {"content": [{"type": "text",
@@ -222,29 +238,40 @@ class TokensParserTest(unittest.TestCase):
                                                       "output_tokens": 5,
                                                       "cache_creation_input_tokens": 0,
                                                       "cache_read_input_tokens": 0}}})
-        result = json.dumps({"type": "result", "subtype": "success",
-                             "is_error": False, "result": "done",
-                             "duration_ms": 5000, "total_cost_usd": 0.01,
-                             "usage": {"input_tokens": 1000,
-                                       "output_tokens": 200,
-                                       "cache_creation_input_tokens": 0,
-                                       "cache_read_input_tokens": 0}})
         with tempfile.TemporaryDirectory() as tmp:
             parent = pathlib.Path(tmp) / "parent.jsonl"
-            parent.write_text(main_event + "\n" + sub_event + "\n" + result + "\n")
+            parent.write_text("\n".join(
+                [main_event, sub_event, result(5, 2000, "sub done"),
+                 result(200, 5000, "main done")]) + "\n")
             carved_main, carved_subs = review_pr_tokens.split_parent(
                 str(parent), str(pathlib.Path(tmp) / "agents"))
             self.assertEqual(len(carved_subs), 1)
             rep = review_pr_tokens.report_parent(str(parent),
                                                  str(pathlib.Path(tmp) / "agents"))
-        self.assertEqual(rep["main"]["input_tokens"], 10)
-        self.assertEqual(len(rep["subagents"]), 1)
-        self.assertEqual(rep["subagents"][0]["input_tokens"], 40)
-        self.assertFalse(rep["subagents"][0]["truncated"])
-        self.assertEqual(rep["subagents"][0]["duration_ms"], 0)
-        self.assertEqual(rep["total"]["input_tokens"], 50)
+        self.assertEqual(rep["main"]["output_tokens"], 200)
         self.assertEqual(rep["main"]["duration_ms"], 5000)
-        self.assertTrue(carved_main.endswith("main.jsonl"))
+        self.assertEqual(len(rep["subagents"]), 1)
+        self.assertEqual(rep["subagents"][0]["output_tokens"], 5)
+        self.assertEqual(rep["subagents"][0]["duration_ms"], 2000)
+        self.assertEqual(rep["total"]["output_tokens"], 90)
+        self.assertEqual(rep["total"]["cost_usd"], 0.03)
+        self.assertNotIn("coverage_note", rep)
+
+    def test_split_flags_subagent_count_mismatch(self):
+        import tempfile
+        result = json.dumps({"type": "result", "subtype": "success",
+                             "is_error": False, "result": "done",
+                             "duration_ms": 5000, "total_cost_usd": 0.01,
+                             "usage": {"input_tokens": 1, "output_tokens": 2,
+                                       "cache_creation_input_tokens": 0,
+                                       "cache_read_input_tokens": 0},
+                             "subagent_stats": {"completed": 2}})
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = pathlib.Path(tmp) / "parent.jsonl"
+            parent.write_text(result + "\n")
+            rep = review_pr_tokens.report_parent(str(parent),
+                                                 str(pathlib.Path(tmp) / "agents"))
+        self.assertIn("coverage_note", rep)
 
 
 if __name__ == "__main__":

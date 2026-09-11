@@ -68,15 +68,15 @@ python3 tools/eval/review_pr_tokens.py --split runs/old/agents runs/old/parent.j
 python3 tools/eval/review_pr_tokens.py --split runs/new/agents runs/new/parent.jsonl --json
 ```
 
-`--split` carves one file per agent out of the parent stream and reports
-across them. Token cells reflect only the usage events present on each
-group's messages; a subagent group with none reports zero rather than an
-estimate, and carved groups show no wall time because the parent stream
-holds a single result event. The run wall time is the main duration.
-Treat split cells as directional only: this CLI version emits one result
-event per agent with that agent's totals, so the authoritative run numbers
-are wall time, cost, and output tokens from the main result event, and the
-finding-set comparison carries more weight than any token delta.
+`--split` carves one file per agent out of the parent stream for
+inspection, grouped by `parent_tool_use_id`. The numbers come from the
+stream's result events, of which there is one per subagent completion plus
+the terminal main result, all sharing the run: the terminal event gives
+main wall time and tokens, each earlier event gives one subagent's wall
+time and tokens in completion order, and its `modelUsage` plus cost give
+run totals. Per-agent cost is unattributable, so it sits on the TOTAL row
+only. When the subagent result count disagrees with the completed count in
+`subagent_stats`, the report says so instead of silently attributing.
 
 ## Comparing
 

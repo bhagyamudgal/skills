@@ -12,14 +12,14 @@ is why the run procedure (docs/review_pr_fixture_runs.md) captures one stream
 per agent. Wall times overlap: subagents run in parallel, so the run wall
 time is the main duration while the summed durations are CPU.
 
-A single parent capture works too. With --forward-subagent-text the stream
-carries each subagent's messages tagged by parent_tool_use_id, and --split
-carves one file per agent out of it. Token cells then reflect only the usage
-events present on each group's messages; a group with none reports zero
-rather than an estimate. The parent result event is used for wall time and
-run cost only, never for tokens: it can aggregate the whole subagent tree,
-and folding it into main would count those tokens twice. Cost therefore
-stays on the main row in split mode.
+A single parent capture works too. The stream carries one result event per
+subagent completion plus the terminal main result, in completion order, so
+per-agent numbers come from those events rather than from adding up message
+usage. `--split` still carves one file per agent out of the parent stream
+for inspection, grouped by `parent_tool_use_id` with `--forward-subagent-text`.
+The authoritative run numbers are the terminal result (main wall time and
+tokens) and its `modelUsage` plus cost (run totals). Subagent token cells
+reflect only what each completion event reports.
 
 Usage:
     python3 tools/eval/review_pr_tokens.py main.jsonl [sub1.jsonl ...] [--json]
@@ -95,17 +95,58 @@ def split_parent(path, outdir):
     return written.get("main", ""), subs
 
 
+def parent_results(path):
+    """Result events in stream order. The terminal one is the main run;
+    earlier ones are subagent completions."""
+    return [event for event in harness.iter_events(
+        pathlib.Path(path).read_text(encoding="utf-8"))
+        if event.get("type") == "result"]
+
+
+def result_cells(event, file=""):
+    """One report row from one result event. Per-agent cost is
+    unattributable: every event carries the run total, so rows show zero
+    and the TOTAL row carries it."""
+    usage = event.get("usage") or {}
+    return {"file": file,
+            "truncated": False,
+            "error": harness.format_result_error(event),
+            "turns": event.get("num_turns", 0) or 0,
+            "duration_ms": event.get("duration_ms", 0) or 0,
+            "cost_usd": 0.0,
+            **{key: usage.get(key, 0) or 0 for key in USAGE_KEYS}}
+
+
 def report_parent(path, outdir):
-    """Split one parent stream, then report across the carved files."""
+    """Split one parent stream for inspection, then report from its result
+    events: terminal for main, earlier ones for subagents in completion
+    order, `modelUsage` plus cost for run totals."""
     carved_main, carved_subs = split_parent(path, outdir)
-    agents = {"main": summarize(carved_main, use_result_usage=False)}
-    agents["subagents"] = [summarize(sub, require_result=False)
-                           for sub in carved_subs]
-    total = {key: agents["main"][key] + sum(s[key] for s in agents["subagents"])
-             for key in USAGE_KEYS}
-    total["cost_usd"] = round(agents["main"]["cost_usd"]
-                              + sum(s["cost_usd"] for s in agents["subagents"]), 4)
-    agents["total"] = total
+    results = parent_results(path)
+    if not results:
+        agents = {"main": summarize(carved_main or path)}
+        agents["subagents"] = []
+        agents["total"] = {key: 0 for key in USAGE_KEYS}
+        agents["total"]["cost_usd"] = 0.0
+        agents["carved"] = {"main": carved_main, "subagents": carved_subs}
+        return agents
+    terminal, subs = results[-1], results[:-1]
+    model = terminal.get("modelUsage") or {}
+    flat = next(iter(model.values()), {}) if model else {}
+    agents = {"main": result_cells(terminal, carved_main)}
+    agents["subagents"] = [result_cells(event) for event in subs]
+    agents["total"] = {"input_tokens": flat.get("inputTokens", 0) or 0,
+                       "output_tokens": flat.get("outputTokens", 0) or 0,
+                       "cache_creation_input_tokens":
+                           flat.get("cacheCreationInputTokens", 0) or 0,
+                       "cache_read_input_tokens":
+                           flat.get("cacheReadInputTokens", 0) or 0,
+                       "cost_usd": terminal.get("total_cost_usd", 0.0) or 0.0}
+    stats = terminal.get("subagent_stats") or {}
+    if stats and stats.get("completed") != len(subs):
+        agents["coverage_note"] = (
+            f"{len(subs)} subagent results for "
+            f"{stats.get('completed')} completed subagents")
     agents["carved"] = {"main": carved_main, "subagents": carved_subs}
     return agents
 
@@ -125,8 +166,10 @@ def print_report(rep):
     """Shared text table. A completed run that still carries a parse error
     gets an ERROR marker: without it a failed run reads as valid and can
     enter a baseline comparison."""
-    rows = [("main", rep["main"])] + [(f"sub/{pathlib.Path(s['file']).stem}", s)
-                                      for s in rep["subagents"]]
+    rows = [("main", rep["main"])]
+    for index, s in enumerate(rep["subagents"], 1):
+        rows.append((f"sub/{pathlib.Path(s['file']).stem}" if s["file"]
+                     else f"sub-{index}", s))
     print(f"{'agent':28} {'in':>9} {'out':>9} {'cache-new':>9} "
           f"{'cache-read':>10} {'wall-s':>7} {'usd':>7}")
     for name, s in rows:
@@ -142,7 +185,10 @@ def print_report(rep):
               f"{wall} {s['cost_usd']:>7.2f}{flag}")
     t = rep["total"]
     print(f"{'TOTAL':28} {t['input_tokens']:>9,} {t['output_tokens']:>9,} "
-          f"{t['cache_creation_input_tokens']:>9,} {t['cache_read_input_tokens']:>10,}")
+          f"{t['cache_creation_input_tokens']:>9,} {t['cache_read_input_tokens']:>10,} "
+          f"{'':>7} {t['cost_usd']:>7.2f}")
+    if rep.get("coverage_note"):
+        print(f"NOTE: {rep['coverage_note']}")
 
 
 def main():
