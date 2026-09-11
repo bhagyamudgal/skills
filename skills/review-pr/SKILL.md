@@ -499,6 +499,7 @@ Every Phase 4 path reaches **Convergence handoff** after main submits the GitHub
 **Reviewers**: <list, with "(unavailable)" marker for any failed subagent>
 **Round**: <CURRENT_ROUND> (<active>/<resolved>/<dismissed> findings carried across rounds)
 **Convergence**: <N> new · <C> caused by earlier fixes · <R> regressions reopened · <F> carried
+**Thread coverage**: <threaded>/<surviving> findings as review threads<; reason when below full>
 <trend line, omit at round 1>
 
 ## Summary
@@ -532,6 +533,10 @@ Every Phase 4 path reaches **Convergence handoff** after main submits the GitHub
 **Severity headers**: Critical → 🔴 · Serious → 🟠 · Moderate → 🟡 · Minor → 🔵
 
 Terminal output must include Filtered out. It shows when the critic over-filters. Include multi-round status when `PRIOR_STATE.findings` is non-empty.
+
+### Thread coverage
+
+Threaded findings over surviving findings, printed after the posting/recovery outcome is known: the line reports that outcome, not the planned payload. Line-level and file-level threads both count; body-fallback findings count as surviving, not threaded. Name the reason whenever threaded < surviving: body fallback, recovery fallback, a blocked or aborted phase, or no threaded posting at all (batch subagent; the orchestrator posts). A run that blocks or aborts before posting still prints the block with the reason. Zero surviving findings prints `0/0`.
 
 ### Cascade check
 
@@ -573,6 +578,7 @@ An explicit `/review-pr <PR URL>` invocation is fresh authorization to submit th
 - When `IS_SELF_REVIEW=false`, submit every surviving finding as an individual review comment with `REQUEST_CHANGES`; submit a clean review with `APPROVE` and no review comments.
 - When `IS_SELF_REVIEW=true`, submit the same complete finding set or clean summary with `COMMENT`. Keep the semantic verdict in the body and terminal output.
 - Preserve every item in `Filtered out` as terminal-only audit output. Filtered items never enter the GitHub payload.
+- Every surviving finding ships as a review thread, or the Thread coverage line states plainly that it did not ship and why. The terminal report is never pasted as an issue comment.
 
 Load `${CLAUDE_SKILL_DIR}/references/github-posting.md` now: summary body, per-finding comments, hunk validation, Phases A through C, and the write-back. Also load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` when a prior `/review-pr` review or cache entry exists for this PR, and `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` if any posting phase fails.
 
