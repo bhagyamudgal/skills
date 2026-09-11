@@ -22,3 +22,4 @@ Always use the AskUserQuestion tool for every question you present to me. Every 
 - If I say "enough" or "done" or "stop" or "skip the rest", announce "Grill complete." with the decisions captured so far and exit.
 - When every numbered decision has a recorded answer and no answer has opened a new one, announce "Grill complete." with the numbered summary. If an answer opens a new decision, append it to the list and say so.
 - If I invoked you with a file path, append the numbered decisions under a `## Decisions` heading in that file before announcing "Grill complete."
+- If a GitHub issue was provided in context as a URL, number, or issue body, post the numbered decisions as an issue comment for tracking before announcing "Grill complete." Use `gh issue comment <number> --body` with the same numbered list.
