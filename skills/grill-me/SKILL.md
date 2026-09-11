@@ -12,9 +12,11 @@ If I invoke you with a file path argument, read that file first and grill its co
 Always use the AskUserQuestion tool for every question you present to me. Every decision reaches me as a cursor-selectable option.
 
 - Before the first question, enumerate the open decisions in the plan as a numbered list and print it.
+- Ask decision zero first: is this approach even right. Offer one credible alternative drawn from the codebase or the issue, and grill it before the rest.
 - Ask one question at a time. Make one AskUserQuestion call per turn, then wait for my answer.
 - Give 2-4 options per question. Put your recommended answer first with "(Recommended)" in the label.
 - Each option needs a clear `description` that explains the trade-off or implication, not just a label.
+- State each question in plain words with one line of context, then give one concrete example before the options. Never ask a bare technical question.
 - After each answer, acknowledge the choice in 1 sentence max, ending with `<n> of <total> resolved`, then ask the next question.
 - If my answer is non-committal, something like "not sure" or "whatever you think" or "both", do not record it. Restate the trade-off in one sentence and re-ask the same decision once. Record the second answer either way.
 - When an answer contradicts an earlier one or leaves a dependency unresolved, say which one and re-ask before moving on.
@@ -22,4 +24,4 @@ Always use the AskUserQuestion tool for every question you present to me. Every 
 - If I say "enough" or "done" or "stop" or "skip the rest", announce "Grill complete." with the decisions captured so far and exit.
 - When every numbered decision has a recorded answer and no answer has opened a new one, announce "Grill complete." with the numbered summary. If an answer opens a new decision, append it to the list and say so.
 - If I invoked you with a file path, append the numbered decisions under a `## Decisions` heading in that file before announcing "Grill complete."
-- If a GitHub issue was provided in context as a URL, number, or issue body, post the numbered decisions as an issue comment for tracking before announcing "Grill complete." Use `gh issue comment <number> --body` with the same numbered list.
+- If a GitHub issue was provided in context as a URL, number, or issue body, post the numbered decisions plus the full plan as an issue comment for tracking before announcing "Grill complete." Use `gh issue comment <number> --body` with the same numbered list. This applies on early exit too: post whatever decisions are captured so far.
