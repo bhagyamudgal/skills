@@ -53,6 +53,10 @@
       "expect": "grill-me",
       "why": "verification-pass wording; must not route to verify-claims, which gates inference-backed claims rather than plan facts" },
 
+    { "utterance": "verify this plan against the codebase",
+      "expect": "grill-me",
+      "why": "explicit verify wording; must not collide with verify-claims" },
+
     { "utterance": "audit this ticket",
       "expect": "audit-ticket",
       "why": "five triggers collapsed to two; explicit form" },
