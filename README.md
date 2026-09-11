@@ -74,8 +74,7 @@ Every row below is one installable skill (`skills/<name>/SKILL.md`, which is wha
 | `fix-pr-review` | Triage and fix CodeRabbit / `review-pr` findings, then reply + resolve PR conversations |
 | `audit-ticket` | Audit a stale GitHub issue against current code, giving per-requirement verdicts with file:line evidence that is re-checked before printing, then update, sunset, or split it |
 | `fix-ts-errors` | Fix TypeScript errors and loop the **workspace** type-check until it exits 0. A file whose squiggles cleared is not green |
-| `harden-plan` | Pre-code quality gate. It grounds a written plan against the real codebase and runs 11 category checks before any code exists |
-| `grill-me` | Interview-style stress-test of a plan, one decision at a time, against an enumerated list. No "grill complete" until every decision has an answer |
+| `grill-me` | Interview-style stress-test of a plan, one decision at a time, then verification of every factual claim against the codebase. No "grill complete" until every decision has an answer and every claim is checked |
 | `project-discovery` | Discovery interview before writing code on a new project. Interrogate requirements and stack, then emit `CLAUDE.md`, `PATTERNS.md` and the `lib/` scaffolding |
 | `discover-product-domain` | Generate through independent naming lenses, remix with the user, and verify their exact standard-price `.com` domains |
 | `design-director` | Senior creative-director direction. Eight modes cover brief simplification, staged logo work, layout, typography, color, critique, brand identity, and production asset finalization |
@@ -107,7 +106,7 @@ Several skills use progressive disclosure. `SKILL.md` holds the spine, and branc
 | `coderabbit-config/` | `.coderabbit.yaml` template + persistent-learnings sidecar. Copy into a repo so CodeRabbit absorbs style + convention findings before `/review-pr` runs. See [`coderabbit-config/README.md`](coderabbit-config/README.md) for bootstrap instructions. |
 | `tools/verify_skills.py` | Structural verifier across all skills. It covers frontmatter, code fences, pointer form, severity-ladder consistency, dangling and orphan references, and cross-skill duplication. Plus produce → validate → consume dataflow checks scoped to `review-pr` and `fix-pr-review`. Run `python3 tools/verify_skills.py ./skills`; exits non-zero on failure. |
 | `tools/eval/run_verify_claims.py` | Fresh-session behavioral evaluator for `verify-claims` across code, external mutation, configuration, data, missing evidence, contradiction, and material reversal. Raw streams and final cards are saved under `.eval-results/`. |
-| `tools/eval/run_triggers.py` | Routing eval. Runs each utterance in a fresh session and records which skill fires first, so a description change can be checked against 54 cases. Skills that a standing instruction fires in every session, `unslop` among them, are passed over rather than recorded as the answer. |
+| `tools/eval/run_triggers.py` | Routing eval. Runs each utterance in a fresh session and records which skill fires first, so a description change can be checked against every case in `tools/eval/triggers.json`. Skills that a standing instruction fires in every session, `unslop` among them, are passed over rather than recorded as the answer. |
 | `tools/eval/run_register.py` | Register eval for issue #37. Scores prose emitted under a staged skill with `slop_score.py`. Use `--baseline` and `--variant` for isolated trees. `--runner codex` requires Codex CLI 0.152.1 and a pinned `--model`, pins high reasoning, ignores mutable user config in an isolated Codex home, and verifies the effective skill catalog before each sample. Summaries record pair-balanced arm order, the normalized Codex context, and `protocol_sha256` over the parsers, cases, scorer, rules, and fixture; never combine results from different protocols. |
 | `tools/eval/slop_score.py` | Scores prose for the AI tells `unslop` names, plus sentence-length uniformity and nominalisation density. Rules are vendored in `slop_rules.json`; `--check-drift` compares them against the live user-local `unslop` skill. |
 | `tools/eval/harness.py` | Sandbox construction, transcript parsing and process cleanup shared by the three evaluators. Covered by `python3 -m unittest discover -s tools/eval`, which runs fully offline. |
@@ -124,8 +123,7 @@ Several skills use progressive disclosure. `SKILL.md` holds the spine, and branc
 /audit-ticket <n>    # Audit a stale issue against current code, then update or sunset it
 /fix-ts-errors       # Fix TypeScript errors, loop until the workspace check is green
 /browser-qa          # Drive a UI flow in a real browser
-/harden-plan         # Stress-test a written plan before coding
-/grill-me            # Interview-style plan/design refinement
+/grill-me            # Interview-style plan/design refinement, then fact-check against the codebase
 /project-discovery   # Plan a new project
 /discover-product-domain  # Generate, remix, and verify product .com names
 /design-director     # Design + branding direction
