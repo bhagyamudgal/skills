@@ -131,14 +131,7 @@ line is not.
 
 ## Step 3: Pre-posting hunk validation
 
-Before Phase A (or rolling-review path), fetch hunks once and verify each line-level comment's `(path, line)` is on the post-image side. Demote mismatches to file-level (Phase B).
-
-```bash
-gh api "repos/<owner>/<repo>/pulls/<number>/files" --paginate \
-  --jq '.[] | {filename, patch}'
-```
-
-**Output format**: `--paginate` with `--jq` emits NDJSON (one `{filename, patch}` per line across pages), NOT a JSON array. Process line-by-line; do NOT pipe to another `jq '.[]'` expecting an array. Fails on page 2.
+Before Phase A (or rolling-review path), reuse the staged `diff.full.patch` from Phase 1. No fetch: the OID check and posting guards already cover movement since Phase 1. Verify each line-level comment's `(path, line)` is on the post-image side. Demote mismatches to file-level (Phase B).
 
 Parse each `patch`: each `@@ -<oldStart>,<oldLen> +<newStart>,<newLen> @@` header starts a new hunk. Within the hunk, `+` lines and space-prefixed context lines advance the post-image counter (start at `newStart`); `-` lines do not. A line is "in the diff" only if it matches a counter value on some hunk for that file.
 

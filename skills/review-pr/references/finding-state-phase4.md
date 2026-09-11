@@ -41,21 +41,12 @@ Until it lands, set the transition by hand: edit the YAML, flip `status` to `res
 
 ## Garbage collection
 
-On Phase 1 startup, scan `.claude/review-state/*.yml`:
+Once `$STATE_FILE` is defined, remove state files untouched for 30 days. Age on disk is the whole signal, so this makes no network calls: a PR untouched that long is merged, closed, or abandoned, and a fresh run rebuilds state from the cache and GitHub threads.
 
 ```bash
-for f in .claude/review-state/*.yml; do
-  pr_num=$(yq '.pr' "$f")
-  repo=$(yq '.repo' "$f")
-  state=$(gh pr view "$pr_num" --repo "$repo" --json state,closedAt -q '.')
-  if [[ "$(jq -r .state <<<"$state")" =~ ^(CLOSED|MERGED)$ ]]; then
-    closed_at=$(jq -r .closedAt <<<"$state")
-    if older-than-30-days "$closed_at"; then
-      rm "$f"
-    fi
-  fi
-done
+find "$STATE_DIR" -maxdepth 1 -name '*.yml' -mtime +30 2>/dev/null \
+  | head -n 50 | while IFS= read -r stale; do rm -- "$stale"; done
 ```
 
-Cap at 50 files. Delete oldest first. Run lazily and skip if it would add more than 1s to Phase 1.
+Cap at 50 files per run. Skip the sweep when the directory holds no `.yml` files. Repeated runs converge: anything stale eventually ages out.
 

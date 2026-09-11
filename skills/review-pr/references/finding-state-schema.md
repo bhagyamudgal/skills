@@ -306,5 +306,5 @@ For each remaining finding:
    - If `status == resolved`: verify the diff doesn't reintroduce the issue at `commit_sha_resolved..HEAD`. If reintroduced → mark as `regression`, keep the finding. Otherwise drop with reason: `prior-state suppression, resolved in round <round_resolved> (commit <commit_sha_resolved>)`.
     - If `status in {dismissed, wontfix}`: drop with reason: `prior-state suppression, <status> in round <round_resolved>: "<dismissal_reason>"`.
 
-Phase 4 writes everything back per `${CLAUDE_SKILL_DIR}/references/finding-state-phase4.md`, loaded then. Old state files for closed PRs are swept there too; run that sweep on Phase 1 startup when the state directory is non-empty.
+Phase 4 writes everything back per `${CLAUDE_SKILL_DIR}/references/finding-state-phase4.md`, loaded then. State files untouched for 30 days are swept there too, by age on disk with no network calls; run that sweep on Phase 1 startup when the state directory is non-empty.
 

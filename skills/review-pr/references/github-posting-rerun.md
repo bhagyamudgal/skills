@@ -14,7 +14,7 @@ Every review posted by `/review-pr` includes a hidden marker comment in the body
 Every posting run maps the semantic verdict first, per "Event mapping" in `${CLAUDE_SKILL_DIR}/references/github-posting.md`. Then query for prior tagged reviews:
 
 ```bash
-PRIOR_REVIEW_NODE_ID=$(gh api graphql -f query='
+PRIOR_REVIEWS_JSON=$(gh api graphql -f query='
   query($owner:String!, $repo:String!, $num:Int!) {
     repository(owner:$owner, name:$repo) {
       pullRequest(number:$num) {
@@ -22,15 +22,23 @@ PRIOR_REVIEW_NODE_ID=$(gh api graphql -f query='
       }
     }
   }
-' -f owner=<owner> -f repo=<repo> -F num=<num> \
-  | jq -r '
-      [.data.repository.pullRequest.reviews.nodes[]
-       | select(.body | test("<!-- review-pr:run"))]
-      | sort_by(.submittedAt) | last | .id // empty
-    ')
+' -f owner=<owner> -f repo=<repo> -F num=<num>)
 
-PRIOR_REVIEW_DB_ID=$(... same query, take .databaseId ...)
-PRIOR_REVIEW_STATE=$(... same query, take .state ...)
+PRIOR_REVIEW_NODE_ID=$(echo "$PRIOR_REVIEWS_JSON" | jq -r '
+    [.data.repository.pullRequest.reviews.nodes[]
+     | select(.body | test("<!-- review-pr:run"))]
+    | sort_by(.submittedAt) | last | .id // empty
+  ')
+PRIOR_REVIEW_DB_ID=$(echo "$PRIOR_REVIEWS_JSON" | jq -r '
+    [.data.repository.pullRequest.reviews.nodes[]
+     | select(.body | test("<!-- review-pr:run"))]
+    | sort_by(.submittedAt) | last | .databaseId // empty
+  ')
+PRIOR_REVIEW_STATE=$(echo "$PRIOR_REVIEWS_JSON" | jq -r '
+    [.data.repository.pullRequest.reviews.nodes[]
+     | select(.body | test("<!-- review-pr:run"))]
+    | sort_by(.submittedAt) | last | .state // empty
+  ')
 ```
 
 Before selecting a branch, derive `CURRENT_THREADED_FINDING_IDS` from every surviving finding with a file reference; body-fallback findings are excluded because they cannot own threads. A prior review is thread-complete only when all of these are true:

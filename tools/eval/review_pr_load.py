@@ -150,20 +150,23 @@ def subagent_loads(chunks, hunter=True, worst=True):
 
 def network_calls(mode, chunks=1, hunter=True, linked_issues=0,
                   file_level_findings=0, cross_repo=True):
-    """Prescribed gh calls. Phase 1 is view, diff, the post-diff OID re-read,
-    viewer, author, cwd repo lookup, threads and coderabbit-config, plus the
-    tree fetch and suppressions read when cross-repo, plus one fetch per
-    linked issue. Phase 2 dispatches subagents through the Agent tool with
-    staged files, so it costs zero gh calls in every mode: no reviewer
-    fetches the diff or the file list itself. Phase 4 is the prior-review
-    query, the hunk fetch, create, the create read-backs, submit, the submit
-    read-back, and one GraphQL call per file-level thread. Evidence fetches
-    inside V1/V2/V3, re-run thread resolution, and the Phase 4 garbage sweep
-    are unbounded by the text and reported separately."""
-    phase1 = 10 if cross_repo else 8
+    """Prescribed gh calls for a fresh run. Phase 1 is view, diff, the
+    post-diff OID re-read, viewer, threads, cwd repo lookup and
+    coderabbit-config, plus the tree fetch and suppressions read when
+    cross-repo, plus one fetch per linked issue. The author comes from the
+    metadata response, never a second fetch. Phase 2 dispatches subagents
+    through the Agent tool with staged files, so it costs zero gh calls in
+    every mode. Phase 4 is the prior-review query, create, the create
+    read-backs, submit, and the submit read-back, plus one GraphQL call per
+    file-level thread; hunk validation reuses the staged diff. The Step 0
+    collapse (one prior-review query instead of three) applies to re-runs
+    only and stays out of the fresh-run counts. Evidence fetches inside
+    V1/V2/V3 and re-run thread resolution are unbounded by the text and
+    reported separately."""
+    phase1 = 9 if cross_repo else 7
     phase1 += linked_issues
     phase2 = 0
-    phase4 = 7 + file_level_findings
+    phase4 = 6 + file_level_findings
     return {"phase1": phase1, "phase2": phase2, "phase4": phase4,
             "total": phase1 + phase2 + phase4}
 
