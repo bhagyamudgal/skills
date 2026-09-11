@@ -2,21 +2,7 @@
 
 ### Subagent 1: Claude reviewer (`general-purpose`)
 
-Substitute `<SKILL_DIR>` throughout the prompt before it is used, before dispatching in
-every mode, and equally before running it inline under `solo-main`, where main's own
-working directory is the user's repo and a bare relative path misses in exactly the same
-way.
-
-`<SKILL_DIR>` is the absolute directory of the SKILL.md you are currently executing,
-the `review-pr` directory this file sits in, resolved through any symlink. Derive it
-from that location; never hardcode a path. The same skill installs at user scope
-(`~/.claude/skills/review-pr`) and at project scope (`<repo>/.claude/skills/review-pr`),
-so a hardcoded guess is wrong half the time and wrong silently.
-
-Subagents inherit the user's repo as their working directory, so a bare `references/...`
-path resolves against that repo and finds nothing. The load fails silently and the
-subagent answers from memory instead. The same substitution applies to Subagent 3 and to
-the Phase 3 verifiers.
+Substitute `<SKILL_DIR>` throughout the prompt before use, in every mode including `solo-main` inline. Derive it from the SKILL.md location through any symlink; never hardcode a path. Subagents inherit the user's repo as their working directory, so a bare `references/...` path resolves against that repo and silently finds nothing. The same substitution applies to Subagent 3 and to the Phase 3 verifiers.
 
 #### Prompt substitutions
 

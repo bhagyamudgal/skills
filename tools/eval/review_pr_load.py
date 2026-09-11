@@ -51,10 +51,14 @@ FILES = [
     "dispatch-prompts.md",
     "false-positive-rules.md",
     "finding-output-format.md",
+    "finding-state-phase4.md",
     "finding-state-schema.md",
     "github-posting.md",
+    "github-posting-recovery.md",
+    "github-posting-rerun.md",
     "phase1-timeline-state.md",
     "q5-type-coercion.md",
+    "q6-cross-repo.md",
     "q6-reusability-search.md",
     "repo-map.md",
     "reviewer-prompt.md",
@@ -104,6 +108,7 @@ SUBAGENT_1_COND = [
     "class-sweep-and-inverse-risk.md",
     "schema-design-checks.md",
 ]
+SUBAGENT_1_XREPO_EXTRA = ["q6-cross-repo.md"]
 
 
 def hunter_prompt_bytes():
@@ -120,8 +125,10 @@ def main_loads(mode, worst=False, round2=False, step6_reload=False, monorepo=Tru
     diff has no DB/API payload, no new definitions, and no code-change
     finding, worst case all three plus schema checks. The cross-cutting
     prompt loads only in parallel-chunked, the only mode that dispatches
-    Subagent 3. The trailing schema entry is the Phase 4 write-back re-read;
-    the critic-verify entry is the step-6 reload for findings routed back
+    Subagent 3. The trailing phase4 entry is the Phase 4 write-back file,
+    loaded after posting; the rerun and recovery posting files load only on
+    re-runs and failures and stay out of the fresh-run paths. The
+    critic-verify entry is the step-6 reload for findings routed back
     through 4.55/4.56."""
     loads = [f for f in MAIN_ALWAYS if monorepo or f != "repo-map.md"]
     if mode == "parallel-chunked":
@@ -131,7 +138,7 @@ def main_loads(mode, worst=False, round2=False, step6_reload=False, monorepo=Tru
     loads += MAIN_IF_FINDINGS
     if mode != "solo-main" or worst:
         loads += MAIN_IF_CODE_CHANGE_FINDINGS
-    loads += ["finding-state-schema.md"]
+    loads += ["finding-state-phase4.md"]
     if step6_reload:
         loads += ["critic-verify.md"]
     if round2:
@@ -140,11 +147,16 @@ def main_loads(mode, worst=False, round2=False, step6_reload=False, monorepo=Tru
 
 
 def subagent_loads(chunks, hunter=True, worst=True):
-    """role -> ordered reference list. Chunk reviewers share one shape."""
+    """role -> ordered reference list. Chunk reviewers share one shape; the
+    xrepo-worst row adds the cross-repo Q6 block a cross-repository run
+    loads on top of the local worst case."""
     cond = SUBAGENT_1_COND if worst else []
     out = {}
     for i in range(chunks):
         out[f"chunk-reviewer-{i + 1}"] = SUBAGENT_1_ALWAYS + cond
+    if worst:
+        out["chunk-reviewer-xrepo-worst"] = (SUBAGENT_1_ALWAYS + cond
+                                             + SUBAGENT_1_XREPO_EXTRA)
     if hunter:
         out["silent-failure-hunter"] = []
     out["cross-cutting"] = ["cross-cutting-prompt.md", "finding-output-format.md"]
