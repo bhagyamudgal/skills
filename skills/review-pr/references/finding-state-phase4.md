@@ -41,12 +41,13 @@ Until it lands, set the transition by hand: edit the YAML, flip `status` to `res
 
 ## Garbage collection
 
-Once `$STATE_FILE` is defined, remove state files untouched for 30 days. Age on disk is the whole signal, so this makes no network calls: a PR untouched that long is merged, closed, or abandoned, and a fresh run rebuilds state from the cache and GitHub threads.
+Once `$STATE_FILE` is defined, bound the state directory with no network calls. Past 50 state files, remove the ones untouched for 30 days. Small directories are never swept: no cache or thread can rebuild an idle PR's history; past the cap, resumed PRs re-report prior findings as new.
 
 ```bash
-find "$STATE_DIR" -maxdepth 1 -name '*.yml' -mtime +30 2>/dev/null \
-  | head -n 50 | while IFS= read -r stale; do rm -- "$stale"; done
+count=$(find "$STATE_DIR" -maxdepth 1 -name '*.yml' 2>/dev/null | wc -l)
+if [ "$count" -gt 50 ]; then
+  find "$STATE_DIR" -maxdepth 1 -name '*.yml' -mtime +30 2>/dev/null \
+    | head -n 50 | while IFS= read -r stale; do rm -- "$stale"; done
+fi
 ```
-
-Cap at 50 files per run. Skip the sweep when the directory holds no `.yml` files. Repeated runs converge: anything stale eventually ages out.
 
