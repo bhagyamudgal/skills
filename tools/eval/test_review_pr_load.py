@@ -273,6 +273,34 @@ class TokensParserTest(unittest.TestCase):
                                                  str(pathlib.Path(tmp) / "agents"))
         self.assertIn("coverage_note", rep)
 
+    def test_split_aggregates_multi_model_usage(self):
+        import tempfile
+        result = json.dumps({"type": "result", "subtype": "success",
+                             "is_error": False, "result": "done",
+                             "duration_ms": 5000, "total_cost_usd": 0.05,
+                             "usage": {"input_tokens": 1, "output_tokens": 2,
+                                       "cache_creation_input_tokens": 0,
+                                       "cache_read_input_tokens": 0},
+                             "modelUsage": {
+                                 "m-one": {"inputTokens": 10,
+                                           "outputTokens": 20,
+                                           "cacheCreationInputTokens": 1,
+                                           "cacheReadInputTokens": 2},
+                                 "m-two": {"inputTokens": 30,
+                                           "outputTokens": 40,
+                                           "cacheCreationInputTokens": 3,
+                                           "cacheReadInputTokens": 4}},
+                             "subagent_stats": {"completed": 0}})
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = pathlib.Path(tmp) / "parent.jsonl"
+            parent.write_text(result + "\n")
+            rep = review_pr_tokens.report_parent(str(parent),
+                                                 str(pathlib.Path(tmp) / "agents"))
+        self.assertEqual(rep["total"]["input_tokens"], 40)
+        self.assertEqual(rep["total"]["output_tokens"], 60)
+        self.assertEqual(rep["total"]["cache_creation_input_tokens"], 4)
+        self.assertEqual(rep["total"]["cache_read_input_tokens"], 6)
+
 
 if __name__ == "__main__":
     unittest.main()

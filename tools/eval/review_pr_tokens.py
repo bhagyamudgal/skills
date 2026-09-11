@@ -97,7 +97,10 @@ def split_parent(path, outdir):
 
 def parent_results(path):
     """Result events in stream order. The terminal one is the main run;
-    earlier ones are subagent completions."""
+    earlier ones are subagent completions. That second half is observed CLI
+    behavior (verified on v2.1.267), not documented contract: the docs
+    guarantee only the terminal result. The coverage note below is the
+    tripwire if it ever changes shape."""
     return [event for event in harness.iter_events(
         pathlib.Path(path).read_text(encoding="utf-8"))
         if event.get("type") == "result"]
@@ -132,15 +135,22 @@ def report_parent(path, outdir):
         return agents
     terminal, subs = results[-1], results[:-1]
     model = terminal.get("modelUsage") or {}
-    flat = next(iter(model.values()), {}) if model else {}
+    summed = {}
+    for entry in model.values():
+        for key, out in (("inputTokens", "input_tokens"),
+                         ("outputTokens", "output_tokens"),
+                         ("cacheCreationInputTokens",
+                          "cache_creation_input_tokens"),
+                         ("cacheReadInputTokens", "cache_read_input_tokens")):
+            summed[out] = summed.get(out, 0) + (entry.get(key, 0) or 0)
     agents = {"main": result_cells(terminal, carved_main)}
     agents["subagents"] = [result_cells(event) for event in subs]
-    agents["total"] = {"input_tokens": flat.get("inputTokens", 0) or 0,
-                       "output_tokens": flat.get("outputTokens", 0) or 0,
+    agents["total"] = {"input_tokens": summed.get("input_tokens", 0),
+                       "output_tokens": summed.get("output_tokens", 0),
                        "cache_creation_input_tokens":
-                           flat.get("cacheCreationInputTokens", 0) or 0,
+                           summed.get("cache_creation_input_tokens", 0),
                        "cache_read_input_tokens":
-                           flat.get("cacheReadInputTokens", 0) or 0,
+                           summed.get("cache_read_input_tokens", 0),
                        "cost_usd": terminal.get("total_cost_usd", 0.0) or 0.0}
     stats = terminal.get("subagent_stats") or {}
     if stats and stats.get("completed") != len(subs):
