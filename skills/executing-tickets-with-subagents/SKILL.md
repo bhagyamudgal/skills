@@ -26,7 +26,7 @@ Record the selected branch in the ledger before dispatching work. That is the ga
 
 1. **Explore** the code with parallel read-only agents. Produce a per-sub-issue verdict of already-done, partially-done, or not-started, each with file:line evidence.
 2. **Grill the user.** Run `grill-me` on task order, PR strategy, done-bar per task, tracking method, and anything user-owned such as migrations and commit policy. Grilling ends when every item above has a locked answer written into the ledger. Locked answers are law for every later dispatch.
-3. **Spec then plan.** Write one brief per sub-issue and cover every sub-issue, each with exact code and 2-3 named risks the reviewer must check. Briefs locate by symbol, because line numbers drift as tasks land. Then run `harden-plan` against the brief set before task 1.
+3. **Spec then plan.** Write one brief per sub-issue and cover every sub-issue, each with exact code and 2-3 named risks the reviewer must check. Briefs locate by symbol, because line numbers drift as tasks land. Then run the `grill-me` verification pass against the brief set before task 1.
 4. **Instrument tracking** before task 1:
    - Keep a ledger, for example `docs/<ticket>-progress.md`. It is the recovery map, and the contract below defines it.
    - Keep the `tasks/todo.md` checklist.
