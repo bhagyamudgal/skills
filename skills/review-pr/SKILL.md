@@ -499,7 +499,7 @@ Every Phase 4 path reaches **Convergence handoff** after main submits the GitHub
 **Reviewers**: <list, with "(unavailable)" marker for any failed subagent>
 **Round**: <CURRENT_ROUND> (<active>/<resolved>/<dismissed> findings carried across rounds)
 **Convergence**: <N> new · <C> caused by earlier fixes · <R> regressions reopened · <F> carried
-**Thread coverage**: <threaded>/<posted> findings as review threads<; reason when below full>
+**Thread coverage**: <threaded>/<surviving> findings as review threads<; reason when below full>
 <trend line, omit at round 1>
 
 ## Summary
@@ -536,7 +536,7 @@ Terminal output must include Filtered out. It shows when the critic over-filters
 
 ### Thread coverage
 
-Threaded findings over posted findings for this run's posting. Line-level and file-level threads both count; body-fallback findings count as posted, not threaded. Name the reason whenever threaded < posted: body fallback, recovery fallback, a blocked phase, or no threaded posting at all. Zero findings prints `0/0`.
+Threaded findings over surviving findings, printed after the posting/recovery outcome is known: the line reports that outcome, not the planned payload. Line-level and file-level threads both count; body-fallback findings count as surviving, not threaded. Name the reason whenever threaded < surviving: body fallback, recovery fallback, a blocked or aborted phase, or no threaded posting at all (batch subagent; the orchestrator posts). A run that blocks or aborts before posting still prints the block with the reason. Zero surviving findings prints `0/0`.
 
 ### Cascade check
 
