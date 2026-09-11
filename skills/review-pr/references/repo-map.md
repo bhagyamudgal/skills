@@ -1,14 +1,12 @@
 # Shared-package repo map: `repo_map_files` / `repo_map_exports`
 
-This file holds the one copy of the repo-map shell. Three skills run it, each in its own Phase 1, each
+This file holds the one copy of the repo-map shell. Two skills run it, each in its own Phase 1, each
 feeding a different consumer:
 
 - **`/review-pr`**: main, when `packages/` or `apps/` exists. Both outputs go into
   Subagent 1's prompt for Q6.
 - **`/fix-pr-review`**: main, when `packages/` or `apps/` exists. Both outputs go into the
   Phase 3 triage subagent's prompt for reusability-aware classification.
-- **`/harden-plan`**: main, before the Phase 2 grounding dispatch. Both outputs go into
-  Subagent A and Subagent B.
 
 **IMPORTANT**: wrap in `bash -c '...'`. Raw `packages/*/src` globs abort under zsh with
 `zsh: no matches found` BEFORE `2>/dev/null` can catch it, silently emptying the map. Use
@@ -16,8 +14,8 @@ feeding a different consumer:
 
 ## Local mode
 
-The default, and the only mode `/fix-pr-review` and `/harden-plan` ever run. Both operate
-on the clone where they run.
+The default, and the only mode `/fix-pr-review` ever runs. It operates
+on the clone where it runs.
 
 ```bash
 # Repo map files: inventory of TS/TSX in shared roots (capped 500 lines, truncation marked)

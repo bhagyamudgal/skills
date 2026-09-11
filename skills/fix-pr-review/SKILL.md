@@ -65,7 +65,7 @@ Each carries its firing condition in the pointer at the point of use. Load it th
 - `references/per-fix-loop.md`: per-fix loop, interactive confirmations, narrow type-check plus baseline compare, retry/skip/abort. Loaded by main at the Phase 5 loop.
 - `references/needs-input-triage.md`: NEEDS-INPUT settle, per-item triage, Phase 8 fix plus verify, preflight before GitHub replies. Loaded by main in Phase 8 step 1, only when the count is nonzero.
 
-One reference is not bundled here: `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` holds the `repo_map_files` / `repo_map_exports` shell, the one copy this skill shares with `/review-pr` and `/harden-plan`. Loaded by main in Phase 1 when `packages/` or `apps/` exists.
+One reference is not bundled here: `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` holds the `repo_map_files` / `repo_map_exports` shell, the one copy this skill shares with `/review-pr`. Loaded by main in Phase 1 when `packages/` or `apps/` exists.
 
 ## Usage
 
@@ -163,7 +163,7 @@ Define one parser for the whole run. For each diagnostic, key its file and build
 
 Inventory shared packages and apps so the Phase 3 classifier can cross-check comments about reuse and extraction against what already exists. Scan both `packages/` and `apps/`. Cross-app helper duplication, for example `apps/backend/src/modules/v1/feature-a/helpers.ts` versus `feature-b/helpers.ts`, is common in NestJS-style monorepos and stays invisible to a packages-only scan.
 
-Load `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` and run its **Local mode** block, the one copy of this shell, shared with `/review-pr` and `/harden-plan`. It carries the `bash -c` wrapping the globs need to survive zsh, and caps each half at 500 lines with the truncation marked. Load it when `packages/` or `apps/` exists; when neither does there is nothing to run and the fallback below applies.
+Load `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` and run its **Local mode** block, the one copy of this shell, shared with `/review-pr`. It carries the `bash -c` wrapping the globs need to survive zsh, and caps each half at 500 lines with the truncation marked. Load it when `packages/` or `apps/` exists; when neither does there is nothing to run and the fallback below applies.
 
 Stash both outputs as `repo_map_files` and `repo_map_exports` for the Phase 3 subagent prompt. If neither `packages/` nor `apps/` exists (non-monorepo), set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false`. The classifier prompt uses this to reroute greps to `src/` and the repo root.
 

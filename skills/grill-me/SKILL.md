@@ -1,11 +1,11 @@
 ---
 name: grill-me
-description: Grill the user on a plan, one question at a time, until every decision in its tree is resolved. Use when the user says "grill me", or passes a plan file to be interrogated.
+description: Grill the user on a plan one question at a time until every decision is settled, then check the plan's facts against the codebase. Use when the user says "grill me", "harden", "check" or "verify" a plan, or passes a plan file to be interrogated.
 ---
 
-Interview me relentlessly about every aspect of this plan. Walk down each branch of the decision tree and settle dependencies between decisions one by one. I would rather get grilled now than rebuild later.
+Interview me relentlessly about every aspect of this plan. Walk down each branch of the decision tree and settle dependencies between decisions one by one. I would rather get grilled now than rebuild later. Once the decisions are settled, check every factual claim in the plan against the real codebase before I code.
 
-If I invoke you with a file path argument, read that file first and grill its contents as the plan.
+If I invoke you with a file path argument, read that file first and grill its contents as the plan. If the decisions are already settled and I ask only for verification, skip to the verification pass below.
 
 ## Rules
 
@@ -22,6 +22,15 @@ Always use the AskUserQuestion tool for every question you present to me. Every 
 - When an answer contradicts an earlier one or leaves a dependency unresolved, say which one and re-ask before moving on.
 - If you can answer a question by exploring the codebase, explore it instead of asking me. Use Grep, Glob, Read, or Agent to verify assumptions before grilling me on them.
 - If I say "enough" or "done" or "stop" or "skip the rest", post per the issue rule below with the decisions captured so far, then announce "Grill complete." and exit.
-- When every numbered decision has a recorded answer and no answer has opened a new one, announce "Grill complete." with the numbered summary. If an answer opens a new decision, append it to the list and say so.
-- If I invoked you with a file path, append the numbered decisions under a `## Decisions` heading in that file before announcing "Grill complete."
-- If a GitHub issue was provided in context as a URL, number, or issue body, post an issue comment for tracking before announcing "Grill complete." The body holds the numbered decisions followed by the full plan, or whatever decisions are captured so far on early exit. Comment on the exact issue from context with `gh issue comment <url> --body`. When context holds only a number, resolve its repository first instead of assuming the checkout.
+- When every numbered decision has a recorded answer and no answer has opened a new one, move to the verification pass below instead of closing out. If an answer opens a new decision, append it to the list and say so.
+
+## Verification pass
+
+The decisions are settled. Now prove the plan is true before I code.
+
+- List every factual claim in the plan: file paths, symbol names, numbers, commands, flags, CI job names.
+- Check each claim yourself with Grep, Glob, Read, or Agent. Fix what you can verify without asking, and say what you changed in one line each.
+- Ask about only what you cannot resolve on your own. Ask it exactly like a decision question: plain words, one line of context, one concrete example, 2-4 options with your recommended answer first.
+- Never ask me to confirm a fact you could have checked. Never batch questions.
+- If I invoked you with a file path, append the numbered decisions and the verified corrections under a `## Decisions` heading in that file before announcing "Grill complete."
+- If a GitHub issue was provided in context as a URL, number, or issue body, post an issue comment for tracking before announcing "Grill complete." The body holds the numbered decisions and the verified corrections followed by the full plan, or whatever is captured so far on early exit. Comment on the exact issue from context with `gh issue comment <url> --body`. When context holds only a number, resolve its repository first instead of assuming the checkout.

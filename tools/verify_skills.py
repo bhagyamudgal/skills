@@ -162,7 +162,7 @@ def check_frontmatter():
 
 # --- always-loaded context budget (repo-wide, WARN) ------------------------
 
-# 360 is the repo's real ceiling today (harden-plan, 358). discover-product-domain
+# 360 is the repo's real ceiling today. discover-product-domain
 # landed at 506 — 41% past the previous worst — and nothing caught it at review.
 MAX_DESCRIPTION_CHARS = 360
 
@@ -429,7 +429,7 @@ MIN_PROSE_RUN_LINES = 5
 # Skills install independently and cannot import a shared file, so some copies
 # are irreducible. Every entry MUST name its reason; an unexplained entry is
 # indistinguishable from a silenced bug. Example of the shape:
-#   "0123456789ab": "review-pr Phase 1 repo-map bash, copied into harden-plan —
+#   "0123456789ab": "review-pr Phase 1 repo-map bash, copied into fix-pr-review —
 #                    the two skills install separately and cannot share a file",
 DUPLICATE_ALLOWLIST = {}
 
@@ -530,8 +530,8 @@ def _containment(a, b):
 
 def check_near_duplicate_code_blocks():
     """Same intent as the byte-identical check, one step looser: the repo-map
-    bash, before it was given one home, was triplicated across fix-pr-review,
-    harden-plan and review-pr and evaded that check because the copies differed
+    bash, before it was given one home, was duplicated across fix-pr-review
+    and review-pr and evaded that check because the copies differed
     by a leading comment, an indent, and one awk string. Clusters are keyed on
     the longest member's normalized digest so they can be allowlisted through
     DUPLICATE_ALLOWLIST like any other."""
