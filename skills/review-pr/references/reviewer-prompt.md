@@ -13,23 +13,17 @@ You end your output with the run-level closing block that file specifies.
 <GROUND_TRUTH>
 
 ## Prior multi-round state, already closed
-These findings were resolved or dismissed in earlier review rounds. They stay closed unless the diff shows the resolving code was reverted.
-<filtered list from PRIOR_STATE.findings where status in {resolved, dismissed, wontfix}>
-For each: id, file, enclosing_symbol, rule_class, status, round_resolved, dismissal_reason.
+Read `<TIMELINE_FILE>`: findings resolved or dismissed in earlier review rounds stay closed unless the diff shows the resolving code was reverted. It lists id, file, enclosing_symbol, rule_class, status, round_resolved, and dismissal_reason per finding.
 
 ## PR
 URL: <url>
+Diff: <DIFF_FILE>
 
 ## Review suppressions
 <SUPPRESSIONS content if loaded, else "None">
 
 ## Shared package repo map (for Q6)
-### Files in shared packages
-<repo_map_files>
-### Exported symbols
-<repo_map_exports>
-
-May be truncated at 500 lines. For thorough checks, Grep/Glob packages/ directly in local mode; in cross-repo mode fetch on demand per `<SKILL_DIR>/references/q6-reusability-search.md`.
+Read `<REPO_MAP_FILE>` for the files in shared packages and their exported symbols. It may be truncated at 500 lines. For thorough checks, Grep/Glob packages/ directly in local mode; in cross-repo mode fetch on demand per `<SKILL_DIR>/references/q6-reusability-search.md`.
 
 ## Schema review context
 INCLUDE_SCHEMA_CHECKS: <true|false>
@@ -38,8 +32,8 @@ If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` f
 
 ## Your task
 
- 1. Run `gh pr diff <url>` for the diff. In chunked modes your dispatch names your assigned chunk files: discard every hunk outside that list BEFORE the grounding pass, and report nothing beyond it. `gh pr diff` has no include filter, so the scoping is a filter step, not a fetch flag.
-2. Run `gh pr view <url> --json files` for the file list.
+  1. Read `<DIFF_FILE>` for the diff. In chunked modes the dispatch names your assigned chunk files and `<DIFF_FILE>` holds only your chunk: report nothing beyond it.
+ 2. The dispatch lists your scope files; use that list, never a fresh file listing.
 
 3. **GROUNDING PASS: MANDATORY before answering any Q.**
    Write 3-5 bullets describing what this diff changes MECHANICALLY:
