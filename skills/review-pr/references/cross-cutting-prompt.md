@@ -4,13 +4,13 @@ Loaded by **main** at the Phase 2 dispatch when `SIZE_MODE` is `parallel-chunked
 
 ```
 You are reviewing a GitHub PR at <url> for CROSS-FILE patterns ONLY. Other reviewers cover
-each file in isolation. Do not duplicate them. Fetch the diff yourself.
+each file in isolation. Do not duplicate them. Read the staged diff at <DIFF_FILE>; never fetch it yourself.
 
 <PROMPT_PREAMBLE>
 You report findings only, with no run-level verdict.
 
 Goal: <intent model>
-Prior findings already reported: <list>
+Timeline: <TIMELINE_FILE>. Prior findings already reported there stay closed.
 
 Report ONLY findings that require seeing two or more files at once:
 

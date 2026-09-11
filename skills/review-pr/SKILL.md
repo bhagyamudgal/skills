@@ -20,7 +20,7 @@ This skill expects CodeRabbit on the repo via `.coderabbit.yaml`. CodeRabbit han
 Main or a subagent loads each file only on the branch that reaches it. Loader and firing condition:
 
 - `references/batch-mode.md`: orchestration rules, "don't stop" semantics, consolidated-report template, and automatic posting sequence. Loaded by **main** at Phase 1 when the user gives 2+ PR URLs or asks for all open PRs.
-- `references/reviewer-prompt.md`: the whole Subagent 1 prompt, the anti-slop rules it works under, and the note on why the finding shape is not restated inside it. Loaded by **main** at the Phase 2 dispatch on every `SIZE_MODE` branch, `solo-main` included.
+- `references/reviewer-prompt.md`: the whole Subagent 1 prompt, the anti-slop rules it works under, and the note on why the finding shape is not restated inside it. Loaded by **main** at the Phase 2 dispatch on every `SIZE_MODE` branch.
 - `references/cross-cutting-prompt.md`: the whole Subagent 3 prompt. Loaded by **main** at the Phase 2 dispatch when `SIZE_MODE` is `parallel-chunked`; the unchunked modes never dispatch Subagent 3.
 - `references/q5-type-coercion.md`: the Q5 type-coercion scan: coercion methods, how to decide a field is numeric, severity. Loaded by **Subagent 1** while answering Q5 when the diff contains a DB insert/update or an API payload construction.
 - `references/class-sweep-and-inverse-risk.md`: reviewer-prompt steps 5 and 6: blast-radius search order, the `class_completeness:` and `Inverse risk:` field rules, the worked inverse-risk examples. Loaded by **Subagent 1** as soon as any finding proposes a code change.
@@ -193,12 +193,11 @@ The hint is informational. It never gates posting.
 ```
 SIZE = additions + deletions
 
-if SIZE < 100:        SIZE_MODE = "solo-main"             # Skip subagent dispatch; run inline
-elif SIZE <= 500:     SIZE_MODE = "parallel-standard"     # Claude reviewer + conditional silent-failure hunter
-else:                 SIZE_MODE = "parallel-chunked"      # Per-chunk Claude reviewers + silent-failure hunter, always proceed without asking
+if SIZE <= 500:     SIZE_MODE = "parallel-standard"     # Subagent 1 reviewer + conditional silent-failure hunter
+else:               SIZE_MODE = "parallel-chunked"      # Per-chunk reviewers + hunter + cross-cutting reviewer, always proceed without asking
 ```
 
-For `solo-main`, Phase 2's Subagent 1 section runs inline in main context with the same prompt body and no Agent tool call.
+Subagent 1 always dispatches; tiny PRs pay one subagent round trip.
 
 ### Run-over-run cache check
 
@@ -209,7 +208,7 @@ If `PRIOR_STATE.convergence` exists, invoke `converge-reviews` with the current 
 
 ### Compute shared-package repo map (for Q6)
 
-If `CROSS_REPO_MODE=true`, load `${CLAUDE_SKILL_DIR}/references/repo-map.md` and run the cross-repo block unconditionally: the target repository's layout decides, not the local cwd's. Otherwise, if `packages/` or `apps/` exists, load `${CLAUDE_SKILL_DIR}/references/repo-map.md` and run the block for the mode you are in: it holds both shell blocks (the cross-repo `gh api` tree fetch and the local `bash -c` find/grep pair, each truncating at 500 lines) and stashes `repo_map_files` + `repo_map_exports` for Subagent 1's prompt. It is the one copy of that shell, shared with `/fix-pr-review` and `/harden-plan`.
+If `CROSS_REPO_MODE=true`, load `${CLAUDE_SKILL_DIR}/references/repo-map.md` and run the cross-repo block unconditionally: the target repository's layout decides, not the local cwd's. Otherwise, if `packages/` or `apps/` exists, load `${CLAUDE_SKILL_DIR}/references/repo-map.md` and run the block for the mode you are in: it holds both shell blocks (the cross-repo `gh api` tree fetch and the local `bash -c` find/grep pair, each truncating at 500 lines) and writes `repo_map_files` + `repo_map_exports` to the staged `repo-map.md` for the subagent prompts. It is the one copy of that shell, shared with `/fix-pr-review` and `/harden-plan`.
 
 If neither directory exists in local mode, skip the shell. Set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false`. Subagent 1 reroutes greps to the changed files' directories, or the repository root when those reveal nothing. Never assume `src/`.
 
@@ -265,6 +264,10 @@ If file exists, pass into Subagent 1 prompt as "Review suppressions: patterns th
 
 In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=$PINNED_BASE_OID`. Skip on 404. The pinned base OID is trusted; the PR head is not, so a PR can never suppress its own review.
 
+### Stage the handoff files
+
+Subagents never fetch the diff or receive pasted context. At the end of Phase 1, write these next to `$STATE_FILE` (gitignored like it): `diff.full.patch` (full diff, for the hunter, cross-cutting reviewer, and V3), `diff.chunk-N.patch` (per-chunk diffs split by file, chunked mode only), `repo-map.md` (repo map from the step above), `timeline.md` (intent model plus prior timeline and closed findings). No prompt tells a subagent to run `gh pr diff`. Prompts carry file paths plus the small inline intent.
+
 ---
 
 ## Phase 2: Reviewer subagents
@@ -273,18 +276,12 @@ Launch in a **single message with multiple Agent tool calls** based on `SIZE_MOD
 
 ### Dispatch strategy
 
-**`SIZE_MODE == "solo-main"`** (PR < 100 lines):
-- Run Subagent 1 prompt inline in main context (no Agent tool call). Main reads stashed diff once, answers questions, populates `reusability_searches:`, outputs in same format as subagent.
-- Still dispatch the silent-failure hunter when triggered. This fixed-cost subagent saves main context and runs in parallel.
-
-**`SIZE_MODE == "parallel-standard"`** (100-500 lines, default):
-- Dispatch Subagent 1 (Claude reviewer) + conditional Subagent 2 (silent-failure hunter) in parallel.
+**`SIZE_MODE == "parallel-standard"`** (500 lines or fewer, default):
+- Dispatch Subagent 1 (Claude reviewer) + conditional Subagent 2 (silent-failure hunter) in parallel. Subagent 1 reads `diff.full.patch`; both read `repo-map.md` and `timeline.md`.
 
 **`SIZE_MODE == "parallel-chunked"`** (> 500 lines):
-- Split the diff by file into ~500-line chunks. Never split a file across chunks.
-- Dispatch ONE Subagent 1 PER CHUNK with full intent model + prior review timeline + repo map + schema context, but only its chunk's files in scope. Prompt: "Your scope is the files listed above. Do not report findings in other files."
-- Dispatch one silent-failure hunter at full PR scope.
-- Dispatch one **cross-cutting reviewer** at full PR scope as Subagent 3. See below. Chunk reviewers report within their own chunk only, so Subagent 3 is the one reviewer that can see a defect class spanning two chunks. Without it, that class feeds the cascade directly.
+- Dispatch ONE Subagent 1 PER CHUNK with the small inline intent plus its chunk file, `repo-map.md`, and `timeline.md`. Prompt: "Your scope is the files listed above. Read only <chunk-file>. Do not report findings in other files."
+- Dispatch one silent-failure hunter and one **cross-cutting reviewer** at full PR scope, both reading `diff.full.patch`. Chunk reviewers report within their own chunk only, so Subagent 3 is the one reviewer that can see a defect class spanning two chunks. Without it, that class feeds the cascade directly.
 - Always proceed with chunked parallel review. Never ask for confirmation, regardless of size.
 
 ### Degraded-mode rule
@@ -295,7 +292,7 @@ If any subagent errors out or returns empty, continue with the remaining ones an
 
 ### Subagent 1: Claude reviewer (`general-purpose`)
 
-Substitute `<SKILL_DIR>`, the shared preamble, and the ground-truth block per `${CLAUDE_SKILL_DIR}/references/dispatch-prompts.md`, then load `${CLAUDE_SKILL_DIR}/references/reviewer-prompt.md` at this dispatch. Every mode reaches it, `solo-main` included.
+Substitute `<SKILL_DIR>`, the shared preamble, and the ground-truth block per `${CLAUDE_SKILL_DIR}/references/dispatch-prompts.md`, then load `${CLAUDE_SKILL_DIR}/references/reviewer-prompt.md` at this dispatch. Every dispatch names the staged file paths from the end of Phase 1.
 
 
 ### Subagent 2 (conditional): Silent-failure hunter

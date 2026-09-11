@@ -2,7 +2,7 @@
 
 ### Subagent 1: Claude reviewer (`general-purpose`)
 
-Substitute `<SKILL_DIR>` throughout the prompt before use, in every mode including `solo-main` inline. Derive it from the SKILL.md location through any symlink; never hardcode a path. Subagents inherit the user's repo as their working directory, so a bare `references/...` path resolves against that repo and silently finds nothing. The same substitution applies to Subagent 3 and to the Phase 3 verifiers.
+Substitute `<SKILL_DIR>` throughout the prompt before use, in every mode. Derive it from the SKILL.md location through any symlink; never hardcode a path. Subagents inherit the user's repo as their working directory, so a bare `references/...` path resolves against that repo and silently finds nothing. The same substitution applies to Subagent 3 and to the Phase 3 verifiers.
 
 #### Prompt substitutions
 
@@ -29,36 +29,34 @@ convention and the run-level closing block. Emit every finding in exactly that s
 shape is unparseable to the Phase 3 critic and is dropped.
 ```
 
-**`<GROUND_TRUTH>`**. Opens Subagent 1 and Subagent 2:
+**`<GROUND_TRUTH>`**. Opens Subagent 1 and Subagent 2. Prior findings live in the staged timeline file, not pasted here:
 
 ```text
 ## Ground truth
 Goal: <from Phase 1>
 Expected touches: <from Phase 1>
 Out of scope: <from Phase 1>
-Prior findings already reported (raise one again only as a correction): <from Phase 1>
+Timeline: <TIMELINE_FILE>. Prior findings already reported there are raised again only as a correction.
 ```
 
 #### The prompt
 
-Load `${CLAUDE_SKILL_DIR}/references/reviewer-prompt.md` at this dispatch. Every mode
-reaches it, `solo-main` included, since that mode runs the same prompt body inline. It
+Load `${CLAUDE_SKILL_DIR}/references/reviewer-prompt.md` at this dispatch. It
 holds the prompt, the anti-slop rules the reviewer works under, and the note on why the
 finding shape is never restated inside it.
 
 ### Subagent 2 (conditional): Silent-failure hunter
 
-The context packet is part of the prompt, not commentary around it. Dispatch the whole block below. With only a URL, this subagent does not know what the PR is for or what earlier rounds closed. It re-finds settled issues and misses the rest.
+The context packet is part of the prompt, not commentary around it. Dispatch the whole block below. Without the timeline file, this subagent does not know what the PR is for or what earlier rounds closed. It re-finds settled issues and misses the rest.
 
 Prompt:
 
 ```
-Check for silent failures, swallowed errors, and inadequate error handling in the GitHub
-PR at <url>. Fetch the diff yourself via `gh pr diff <url>`.
+Check for silent failures, swallowed errors, and inadequate error handling in the staged diff at <DIFF_FILE>. Read it; never fetch the diff yourself.
 
 <GROUND_TRUTH>
 
 ## Already closed in earlier rounds, do not re-raise
-<rule_class list from PRIOR_STATE.findings where status in {resolved, dismissed, wontfix}>
+Read the closed-findings list in <TIMELINE_FILE>.
 Re-raise one only when the diff shows the resolving code was reverted.
 ```

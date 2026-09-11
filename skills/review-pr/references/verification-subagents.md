@@ -4,7 +4,7 @@ Loaded by main in Phase 3, at the first of steps 4.55 / 4.9 / 6 whose dispatch c
 
 Cap: **at most 4 verification subagents in total.** V2 and V3 are one each by nature: V2 reads a short prior-state list, V3 runs one gap check. Only V1 batches, so it gets at most 2, at 10 findings per subagent. Findings past V1's first 20, ordered Critical → Minor, are verified inline in main. If a verifier errors or returns empty, run its step inline in main and note `<verifier> unavailable, so verified inline` in the Phase 4 header.
 
-All three are `general-purpose`, dispatched in ONE message so they run in parallel, and all three fetch what they need themselves (`gh pr diff`, Grep, Read) rather than being handed the diff. Each returns a compact block, no prose, no restated file contents.
+All three are `general-purpose`, dispatched in ONE message so they run in parallel. V1 and V2 gather evidence with Grep and Read at the current head; V3 reads the staged diff file. None fetches the diff itself. Each returns a compact block, no prose, no restated file contents.
 
 Substitute `<SKILL_DIR>` in every prompt below before dispatching, exactly as defined in `<SKILL_DIR>/references/dispatch-prompts.md`. V3's prompt also carries `<PROMPT_PREAMBLE>`; substitute it there with `<SKILL_DIR>` already resolved.
 
@@ -73,7 +73,7 @@ Pass `INCLUDE_SCHEMA_CHECKS` and `SCHEMA_DIR` through from Phase 1. V3 is dispat
 on the large PRs where schema changes live. A dropped flag loses Q7-Q9 where they matter most.
 
 ```
-Fetch the diff yourself. The reviewers reported findings in these categories: <list>.
+Read the staged diff at <DIFF_FILE>; never fetch it yourself. The reviewers reported findings in these categories: <list>.
 For each category with NO findings, check whether the diff genuinely has nothing, or
 whether it was overlooked:
 
