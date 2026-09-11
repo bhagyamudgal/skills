@@ -6,7 +6,7 @@ Cap: **at most 4 verification subagents in total.** V2 and V3 are one each by na
 
 All three are `general-purpose`, dispatched in ONE message so they run in parallel. V1 and V2 gather evidence with Grep and Read at the current head; V3 reads the staged diff file. None fetches the diff itself. Each returns a compact block, no prose, no restated file contents.
 
-Substitute `<SKILL_DIR>` in every prompt below before dispatching, exactly as defined in `<SKILL_DIR>/references/dispatch-prompts.md`. V3's prompt also carries `<PROMPT_PREAMBLE>`; substitute it there with `<SKILL_DIR>` already resolved.
+Substitute `<SKILL_DIR>` in every prompt below before dispatching, exactly as defined in `<SKILL_DIR>/references/dispatch-prompts.md`. V3's prompt also carries `<PROMPT_PREAMBLE>`; substitute it there with `<SKILL_DIR>` already resolved. V3's `<DIFF_FILE>` takes the staged full-diff path from the end of Phase 1.
 
 ---
 

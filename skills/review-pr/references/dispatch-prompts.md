@@ -8,7 +8,9 @@ Substitute `<SKILL_DIR>` throughout the prompt before use, in every mode. Derive
 
 `<PROMPT_PREAMBLE>` and `<GROUND_TRUTH>` are each substituted into more than one prompt, so
 this is their one definition. Every prompt that carries them names them by these tokens.
-Substitute the block as written, with `<SKILL_DIR>` already resolved.
+Substitute the block as written, with `<SKILL_DIR>` already resolved. `<DIFF_FILE>`,
+`<TIMELINE_FILE>`, and `<REPO_MAP_FILE>` take the staged paths from the end of Phase 1
+at each dispatch that names them.
 
 **`<PROMPT_PREAMBLE>`**: opens Subagent 1, Subagent 3 and V3, the three prompts that emit
 findings. Each of them follows it with its own one-line statement of whether it closes on a

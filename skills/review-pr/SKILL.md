@@ -266,7 +266,7 @@ In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/revi
 
 ### Stage the handoff files
 
-Subagents never fetch the diff or receive pasted context. At the end of Phase 1, write these next to `$STATE_FILE` (gitignored like it): `diff.full.patch` (full diff, for the hunter, cross-cutting reviewer, and V3), `diff.chunk-N.patch` (per-chunk diffs split by file, chunked mode only), `repo-map.md` (repo map from the step above), `timeline.md` (intent model plus prior timeline and closed findings). No prompt tells a subagent to run `gh pr diff`. Prompts carry file paths plus the small inline intent.
+Subagents never fetch the diff or receive pasted context. At the end of Phase 1, write these into a per-PR subdirectory next to `$STATE_FILE`, named for the state file without `.yml` (batch mode shares the directory across concurrent flows): `diff.full.patch` (full diff, for the hunter, cross-cutting reviewer, and V3), `diff.chunk-N.patch` (per-chunk diffs split by file, chunked mode only), `repo-map.md` (repo map from the step above), `timeline.md` (intent model plus prior timeline and closed findings). No prompt tells a subagent to run `gh pr diff`. Prompts carry file paths plus the small inline intent.
 
 ---
 
