@@ -43,6 +43,8 @@ The hybrid flow:
 
 When a prior `/review-pr` review exists on the PR, the rolling path in `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` may replace Phase A only for a body-only update whose complete current thread set already belongs to that submitted review.
 
+Posting a body-only review with an explicit `event` and no `comments` array, or pasting the terminal report as an issue comment, is not a degraded mode of this flow: it leaves zero resolvable threads, no run marker, and nothing the next round can build on. The only legal postings are the fresh A-B-C path below, the rolling path, and the recovery-prompted fallback. Anything else ends with the Thread coverage line stating that nothing shipped and why.
+
 ---
 
 ## Step 1: Compose the summary body
