@@ -41,21 +41,13 @@ Until it lands, set the transition by hand: edit the YAML, flip `status` to `res
 
 ## Garbage collection
 
-On Phase 1 startup, scan `.claude/review-state/*.yml`:
+Once `$STATE_FILE` is defined, bound the state directory with no network calls. Past 50 state files, remove the ones untouched for 30 days. Small directories are never swept: no cache or thread can rebuild an idle PR's history; past the cap, resumed PRs re-report prior findings as new.
 
 ```bash
-for f in .claude/review-state/*.yml; do
-  pr_num=$(yq '.pr' "$f")
-  repo=$(yq '.repo' "$f")
-  state=$(gh pr view "$pr_num" --repo "$repo" --json state,closedAt -q '.')
-  if [[ "$(jq -r .state <<<"$state")" =~ ^(CLOSED|MERGED)$ ]]; then
-    closed_at=$(jq -r .closedAt <<<"$state")
-    if older-than-30-days "$closed_at"; then
-      rm "$f"
-    fi
-  fi
-done
+count=$(find "$STATE_DIR" -maxdepth 1 -name '*.yml' 2>/dev/null | wc -l)
+if [ "$count" -gt 50 ]; then
+  find "$STATE_DIR" -maxdepth 1 -name '*.yml' -mtime +30 2>/dev/null \
+    | head -n 50 | while IFS= read -r stale; do rm -- "$stale"; done
+fi
 ```
-
-Cap at 50 files. Delete oldest first. Run lazily and skip if it would add more than 1s to Phase 1.
 

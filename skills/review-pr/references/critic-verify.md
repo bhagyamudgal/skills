@@ -30,16 +30,11 @@ For each finding with a `File: <path:line>` reference, before expensive Step 2 v
 
 ### 2. Verify `file:line`
 
-The full diff sits in main context, stashed in Phase 1. Main verifies references against it, independently of the subagent now-discarded context.
+Verify every finding against the stashed diff regardless of size or severity, independently of the subagent now-discarded context.
 
-- For PRs under `< 500` lines, verify all findings.
-- PRs `>= 500` lines: verify all Critical + Serious; for Moderate/Minor on files not fully stashed, fetch per-file patch:
-  ```bash
-  gh api repos/<owner>/<repo>/pulls/<num>/files --jq '.[] | select(.filename=="<path>") | .patch'
-  ```
 - **Routing.** Line-numbered findings go to line verification. Findings without a line number go to file-level verification. The two never mix.
 - **Line verification.** `<path:line>` must point to a line on the **post-image / new side** of the hunk. Old-side-only references, deleted lines, or lines outside any hunk drop as `hallucinated reference`.
-- **File-level verification.** Verify `path` appears in the PR changed files. A path outside the changed files drops as `hallucinated file reference`.
+- **File-level verification.** Verify `path` against the staged diff's files, not the metadata list (truncates past 100). A path in neither drops as `hallucinated file reference`.
 
 ### 3. Drop already-known
 

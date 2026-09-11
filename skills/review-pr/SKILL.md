@@ -68,6 +68,8 @@ gh pr diff <url>
 
 Record `CURRENT_HEAD` from `headRefOid`, `PINNED_BASE_OID` from `baseRefOid`, and `BASE_REF_NAME` from `baseRefName`. A push landing between the two calls mixes revisions, so after the diff lands, re-read both OIDs and require equality with the recorded pair. On either mismatch, discard both results and restart Phase 1 once. A second mismatch proceeds with a note that the PR moved mid-review.
 
+Issue the independent reads below as parallel Bash tool calls in a single assistant message: viewer login, linked-issue bodies, review threads, cwd repo, CodeRabbit config, and suppressions. They depend on nothing but the PR URL and owner/repo, so sequencing them is pure wall time.
+
 Phase 1 fetches the **full diff**. Stash it in main context. The error-handling content scan and the Phase 3 critic reference check both need it.
 
 ### Empty-diff short-circuit
@@ -88,11 +90,11 @@ Fail fast.
 
 ### Detect self-review posting
 
-After the metadata request succeeds, compare the authenticated viewer with the PR author:
+After the metadata request succeeds, compare the authenticated viewer with the PR author already recorded in that response:
 
 ```bash
 VIEWER=$(gh api user -q .login)
-AUTHOR=$(gh pr view <url> --json author -q .author.login)
+AUTHOR=<.author.login from the Phase 1 metadata>
 ```
 
 GitHub documents that [pull request authors cannot approve their own pull requests](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/about-pull-request-reviews). Set `IS_SELF_REVIEW=true` when the accounts match and continue through the complete review. Phase 3 still decides the semantic verdict as `approve` or `request-changes`; Phase 4 submits the review with `COMMENT`, preserving its summary and per-finding threads without claiming an approval GitHub cannot record. Set `IS_SELF_REVIEW=false` otherwise.
@@ -347,7 +349,7 @@ Drop cited lines that cannot exist before spending verdict effort, per the refer
 
 ### 2. Verify `file:line`
 
-Check every reference against the stashed diff, or a per-file patch past 500 lines, per the reference. Post-image side only.
+Check every reference against the stashed diff, per the reference. Post-image side only.
 
 ### 3. Drop already-known
 
