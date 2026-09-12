@@ -246,7 +246,7 @@ Labels are additive, and the opposite label has to come off in the same call. A 
 gh issue edit <N> --repo <OWNER>/<REPO> --add-label agent-ready --remove-label need-human 2>&1 | tee -a "$WORK/writes.log"
 ```
 
-Do not reach for `updateIssue(labelIds:)`. That input **replaces** the whole label set, so it silently drops every unrelated label the issue carries.
+Do not reach for `updateIssue(labelIds:)`. That input **replaces** the whole label set, so it silently drops every unrelated label the issue carries. Never add `--remove-label ai-created` and never pass `ai-created` to a remove flag. That provenance label distinguishes agent-filed issues from human-filed ones and stays for the life of the issue.
 
 Then read the log for failures, all of it rather than its tail. Prove the log exists first, because `grep` on a missing file also exits non-zero and would otherwise read as a clean run:
 
