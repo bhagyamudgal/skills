@@ -68,13 +68,13 @@ The gate is that every bar has a named result and none is failing.
 
 Render the final body to a file and record its SHA-256 digest. Resolve the repository's stable identity and current duplicate-search results, then invoke `preflight-mutations` with the exact repository, title, body path and digest, create options including `--label ai-created`, ownership boundary, and authoritative read-back query. A changed title, option, label, body path, digest, repository, or duplicate result invalidates the card.
 
-Ensure the `ai-created` provenance label exists before creating. It marks every issue filed through this skill so agent-filed issues stay distinguishable from human-filed ones. When it is absent, raise a separate label-creation card through `preflight-mutations` naming the repository, then create it and re-read the repository labels:
+Ensure the `ai-created` provenance label exists before creating. It marks every issue filed through this skill so agent-filed issues stay distinguishable from human-filed ones. When it is absent, raise a separate label-creation card through `preflight-mutations` naming the repository, then look the label up by exact name rather than a capped listing, tolerate only the already-exists race on create, and prove the label reads back:
 
 ```bash
-if ! gh label list --repo "$repository" --limit 200 --json name -q '.[].name' | grep -Fqx "ai-created"; then
-  gh label create ai-created --repo "$repository" --color "A2EEEF" --description "Created by an AI agent"
+if ! gh api "repos/$repository/labels/ai-created" >/dev/null 2>&1; then
+  create_out=$(gh label create ai-created --repo "$repository" --color "A2EEEF" --description "Created by an AI agent" 2>&1) || printf '%s\n' "$create_out" | grep -qiE "already.?exists"
 fi
-gh label list --repo "$repository" --limit 200 --json name -q '.[].name' | grep -Fqx "ai-created"
+gh api "repos/$repository/labels/ai-created" --jq .name | grep -Fqx "ai-created"
 ```
 
 Creating an issue writes to shared state, so continue only on a current `ready` result. Pass the title as one argument and the frozen body by file, always with the provenance label:
