@@ -66,19 +66,26 @@ The gate is that every bar has a named result and none is failing.
 
 ## 6. File it
 
-Render the final body to a file and record its SHA-256 digest. Resolve the repository's stable identity and current duplicate-search results, then invoke `preflight-mutations` with the exact repository, title, body path and digest, create options, ownership boundary, and authoritative read-back query. A changed title, option, body path, digest, repository, or duplicate result invalidates the card.
+Render the final body to a file and record its SHA-256 digest. Resolve the repository's stable identity and current duplicate-search results, then invoke `preflight-mutations` with the exact repository, title, body path and digest, create options including `--label ai-created`, ownership boundary, and authoritative read-back query. A changed title, option, label, body path, digest, repository, or duplicate result invalidates the card.
 
-Creating an issue writes to shared state, so continue only on a current `ready` result. Pass the title as one argument and the frozen body by file:
+Ensure the `ai-created` provenance label exists before creating. It marks every issue filed through this skill so agent-filed issues stay distinguishable from human-filed ones. When it is absent, raise a separate label-creation card through `preflight-mutations` naming the repository, then create it and re-read the repository labels:
 
 ```bash
-gh issue create --repo "$repository" --title "$title" --body-file "$body_path"
+gh label list --repo "$repository" --limit 200 --json name -q '.[].name' | grep -qx "ai-created"
+gh label create ai-created --repo "$repository" --color "A2EEEF" --description "Created by an AI agent"
+```
+
+Creating an issue writes to shared state, so continue only on a current `ready` result. Pass the title as one argument and the frozen body by file, always with the provenance label:
+
+```bash
+gh issue create --repo "$repository" --title "$title" --body-file "$body_path" --label "ai-created"
 gh issue view <issue-url> --repo "$repository" --json number,title,body,state,author,assignees,labels,url
 ```
 
-Set assignee, estimate, or priority only within the project-board ownership boundary in `CLAUDE.md`. Filing an issue does not make those fields yours to set.
+Set assignee, estimate, or priority only within the project-board ownership boundary in `CLAUDE.md`. Filing an issue does not make those fields yours to set. Never drop the `ai-created` label to set another label. Triage labels go on alongside it.
 
-Require one created URL, then compare the fetched repository, title, body, metadata, and URL with the approved payload. When the command result is missing or ambiguous, search the target repository for exact-title candidates and compare their bodies and metadata. Mark the attempt `reconcile-required` and do not retry until that authoritative search proves whether the issue exists.
+Require one created URL, then compare the fetched repository, title, body, labels, metadata, and URL with the approved payload. Require `ai-created` present in the fetched labels. When the command result is missing or ambiguous, search the target repository for exact-title candidates and compare their bodies and metadata. Mark the attempt `reconcile-required` and do not retry until that authoritative search proves whether the issue exists.
 
 Print the URL only after the read-back identifies one matching issue.
 
-The run is done when the scope is one issue, both duplicate searches ran and resolved, the title names an observation that survives a wrong diagnosis, the body carries all four parts, every cold-read bar is named and clean, and authoritative read-back identifies the printed issue URL or the attempt remains `reconcile-required` without retry.
+The run is done when the scope is one issue, both duplicate searches ran and resolved, the title names an observation that survives a wrong diagnosis, the body carries all four parts, every cold-read bar is named and clean, and authoritative read-back identifies the printed issue URL carrying the `ai-created` label or the attempt remains `reconcile-required` without retry.
