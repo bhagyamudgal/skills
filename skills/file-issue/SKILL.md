@@ -71,8 +71,10 @@ Render the final body to a file and record its SHA-256 digest. Resolve the repos
 Ensure the `ai-created` provenance label exists before creating. It marks every issue filed through this skill so agent-filed issues stay distinguishable from human-filed ones. When it is absent, raise a separate label-creation card through `preflight-mutations` naming the repository, then create it and re-read the repository labels:
 
 ```bash
-gh label list --repo "$repository" --limit 200 --json name -q '.[].name' | grep -qx "ai-created"
-gh label create ai-created --repo "$repository" --color "A2EEEF" --description "Created by an AI agent"
+if ! gh label list --repo "$repository" --limit 200 --json name -q '.[].name' | grep -Fqx "ai-created"; then
+  gh label create ai-created --repo "$repository" --color "A2EEEF" --description "Created by an AI agent"
+fi
+gh label list --repo "$repository" --limit 200 --json name -q '.[].name' | grep -Fqx "ai-created"
 ```
 
 Creating an issue writes to shared state, so continue only on a current `ready` result. Pass the title as one argument and the frozen body by file, always with the provenance label:
