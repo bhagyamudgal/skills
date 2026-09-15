@@ -19,6 +19,8 @@ npx skills add bhagyamudgal/skills -l
 
 `done`, `audit-ticket` and `git-commit` name a separate `unslop` skill for the voice of the text they produce. It is not bundled here. Without it those three still apply the punctuation rule each states inline; install `unslop` to get the rest.
 
+Artifact publishing lives upstream at Folslate and is not bundled here. Install it with `npx skills add https://folslate.com/skills/create-artifact.md`, plus `folslate-api` and `folslate-cli` from the same path when raw HTTP or CLI management is needed.
+
 ## Update
 
 ```bash
@@ -67,7 +69,6 @@ Every row below is one installable skill (`skills/<name>/SKILL.md`, which is wha
 | Skill | Description |
 |-------|-------------|
 | `done` | MANDATORY readiness verification. Map every request item to implementation, verify six acceptance lanes and five evidence facets, and issue final readiness only after required publication evidence exists |
-| `create-artifact` | Publish an HTML or Markdown report to Folslate as a public `fol.ink` link (anonymous expires in one day, signed-in is permanent) |
 | `simplify` | Remove unnecessary complexity from a completed diff while preserving its behavior, guards, and verified scope |
 | `parallel-review` | Build a reviewer roster, dispatch it in parallel over a local diff, and merge to one ranked list. The merge is not done while any reviewer is outstanding |
 | `review-pr` | Deep anti-slop review of a GitHub PR with critic-pass filtering, persistent multi-round state, and automatic GitHub submission; self-authored PRs receive the same assessment as a comment |
@@ -115,7 +116,6 @@ Several skills use progressive disclosure. `SKILL.md` holds the spine, and branc
 
 ```
 /done                # Run after every task
-/create-artifact     # Share plans, reports, audits, and other review material as a hosted link
 /simplify            # Remove unnecessary complexity without changing behavior
 /parallel-review     # Review locally-changed code
 /review-pr <pr-url>  # Review a GitHub PR (or several at once in batch mode)
