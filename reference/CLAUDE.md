@@ -240,6 +240,7 @@ The `/done` skill is the single source of truth for completion verification. It 
 - After completing changes, update the project's README.md and CLAUDE.md if conventions, exports, or workflows changed.
 - After ANY correction from me, turn it into a rule that prevents the same mistake. Put project-specific rules in the project's CLAUDE.md. Put universal rules in the global CLAUDE.md or a skill.
 - Use the `create-artifact` skill whenever sharing a plan, findings, a report, an audit, or other substantial review material with me. Send its hosted link instead of raw Markdown or a local path, follow the skill's publication checks, and report the expiry beside the link. During unattended work, prepare the artifact locally and leave the irreversible Folslate upload for my return. I review first, and destructive follow-ups wait for my explicit approval.
+- For Folslate work below `create-artifact`, prefer the `folslate-cli` skill over `folslate-api`. Use the CLI when the binary is installed or installable, and use raw HTTP only when the CLI cannot run.
 - Put handoff docs and any other docs I request in the repo's `docs/` folder. Create it if missing. Never put them in the repo root unless I explicitly ask. Use lowercase snake_case filenames, such as `docs/e2e_session_handover.md`.
 
 ## Overnight and unattended mode
