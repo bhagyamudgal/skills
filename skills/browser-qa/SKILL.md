@@ -1,6 +1,6 @@
 ---
 name: browser-qa
-description: Drive a real browser through a UI flow. Navigate, click, fill, screenshot every step, record the run, and check network and console. Use when the user names a flow to run against a URL, or after a UI change lands and needs verifying in the browser.
+description: Drive a real browser through a UI flow, or run API and endpoint QA and report structured test results. Use when the user names a flow or an endpoint to test against a URL, when verifying filters, pagination, error handling, auth or counts on an API, or after a UI or backend change lands and needs verifying in the browser.
 ---
 
 I drive a real browser through the flow and I do not call it done until I watched it work. Every step gets a screenshot, the full run gets a recording, API-triggering actions get a network check, and I read the console for new errors.
@@ -23,6 +23,7 @@ Record at minimum 1920x1080, and hold 30 fps minimum on drivers that expose fram
 
 - A natural language flow, for example "Create a recipe with 3 ingredients, verify nutrition calculates".
 - A URL plus instructions, for example `http://localhost:3000/orders` plus "Click New Order, fill supplier, submit".
+- An API endpoint plus a test matrix, for example `GET /v1/shop/:clientId/patients-order-overview` plus "verify the tab filters, date filters, pagination, error handling, and counts consistency". Here I exercise the endpoint directly, with curl or an in-page request under the authenticated session, and tabulate each case, then produce the QA Test Results report below.
 
 When no URL is provided, I default to `http://localhost:3000`.
 
@@ -105,3 +106,53 @@ VERDICT: <ALL PASS | PARTIAL | FAIL> (N/M steps)
 On failure I include the exact expected versus actual and reference the screenshot.
 
 The recording path above is the handoff to `file-pr`, which attaches it at PR creation. I report the path and stop there; the late-attach rule in CLAUDE.md covers recordings that land after the PR exists.
+
+## QA Test Results report (endpoint and API QA)
+
+When the run tests an API or endpoint and not only a click path, I build a test matrix and report the structured results below, alongside the Step 4 browser report or in place of it. I group cases by category, filters, error handling, pagination, and consistency, then exercise each one directly and record the actual response against the expected one. A case with no captured response is a FAIL, never an assumed pass.
+
+Endpoint execution and auth. Steps 2 and 3 authenticate and drive only the browser, so an endpoint-only run needs its own executor and authenticated context. I get that context one of two ways:
+
+- `curl` with the Step 2 session exported into it, its cookies plus the anti-CSRF token. A remote target that carries those credentials must be HTTPS; I allow plain HTTP only for a loopback address, and I never let a redirect downgrade HTTPS to HTTP or forward the cookies and token to another origin. Plain unauthenticated `curl` is enough only when the endpoint needs no session.
+- An in-page request through the driver's evaluate hook. A same-origin `fetch` sends the session cookie on its own but adds no anti-CSRF header, so I either call the app's own request helper, the client it already uses for API calls, which attaches the token, or read the anti-CSRF token from the cookie or meta tag and set it in `RequestInit.headers`. A cross-origin request also needs `credentials: "include"` and matching CORS.
+
+I never accept an unauthenticated response as a case result; when I cannot obtain the authenticated context I record those cases BLOCKED instead of testing the wrong thing. An endpoint case that mutates shared data goes through the same mutation preflight as Step 3 before I dispatch it. Screenshots and the recording do not apply when no UI is exercised, so the captured request and response are the evidence for each case.
+
+I capture the environment once so the run is reproducible, and every case row records the complete request inputs, its path, query, body, and any non-secret headers, not query params alone. Replay reuses a freshly provisioned Step 2 session for auth, so the row never carries it: before I write any request or response value I redact credentials, session tokens, auth headers, cookies, and personal data, and keep only the functional evidence a case needs, counts, IDs, statuses, and error messages. I use PASS or FAIL text in the Result column, never a check emoji.
+
+### Report template
+
+```
+## QA Test Results - <feature or endpoint>
+
+### Test Environment
+- Date: <YYYY-MM-DD>
+- Backend: <url> (<database>)
+- Test data: <seeded records and their IDs>
+- Auth: <account, role, IDs>
+
+### API Endpoint: `<METHOD /path>`
+
+#### <Category> Tests
+
+| # | Test | Request | Result | Expected |
+|---|------|---------|--------|----------|
+| 1 | <case> | `<path, query, body, safe headers; secrets redacted>` | PASS/FAIL: <actual observed> | <expected> |
+
+#### Error Handling Tests
+
+| # | Test | Expected | Result |
+|---|------|----------|--------|
+| N | <bad input> | <status and message> | PASS/FAIL: <observed status and message> |
+
+### Browser UI Testing
+- <what rendered, with screenshot paths under .qa/>
+- <blockers hit, stated plainly, never hidden>
+
+### Findings
+- <what passed, what failed, and any behavior that is by design>
+
+VERDICT: <ALL PASS | PARTIAL | FAIL | BLOCKED> (<passed>/<executed> cases, <blocked> blocked)
+```
+
+I keep one table per category and add only the categories the endpoint has. A case I could not execute is BLOCKED, never PASS or FAIL: I list it with its blocker, keep it out of the executed count, and cap the verdict at PARTIAL when other cases ran, or BLOCKED when none could. The Browser UI Testing section reuses the screenshots and recording from the browser flow above, so a mixed run reports the click path and the endpoints behind it in one place. Findings state failures and by-design behavior explicitly; a silent omission reads as a pass it never earned.
