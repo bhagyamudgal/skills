@@ -45,7 +45,7 @@ When a prior `/review-pr` review exists on the PR, the rolling path in `${CLAUDE
 
 Posting a body-only review with an explicit `event` and no `comments` array, or pasting the terminal report as an issue comment, is not a degraded mode of this flow: it leaves zero resolvable threads, no run marker, and nothing the next round can build on. The only legal postings are the fresh A-B-C path below, the rolling path, the blocked-by-open-threads path from Phase 3 step 8, and the recovery-prompted fallback. Anything else ends with the Thread coverage line stating that nothing shipped and why.
 
-The blocked-by-open-threads path is body-only by design, not by degradation: every blocker already owns an unresolved, non-outdated thread, so new threads would only duplicate them. Its body lists every blocker as `path:line`, author, and one-line issue, carries the run marker, and posts `REQUEST_CHANGES` (`COMMENT` for a self-review with a `request-changes` semantic verdict).
+The blocked-by-open-threads path is body-only by design, not by degradation: every blocker already owns an unresolved, non-outdated thread, so new threads would only duplicate them. Its body lists every blocker as `path:line` (`path` alone for file-level threads), author, and one-line issue, carries the run marker, and posts `REQUEST_CHANGES` (`COMMENT` for a self-review with a `request-changes` semantic verdict).
 
 ---
 

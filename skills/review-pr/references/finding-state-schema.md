@@ -254,6 +254,8 @@ These branches apply only after the contract-version check succeeds.
 
 1. **`last_run_sha == CURRENT_HEAD` with stored `base_sha` equal to the pinned base OID**: no new commits on either side. Reuse the cached review result. If authoritative cache evidence confirms the same review body, head SHA, required GitHub state, and threaded publication ownership are already posted, print the cached result and exit. Otherwise continue directly to Phase 4 and post the cached complete finding set; do not ask whether to replay or post.
 
+   Before the replay exit, compare live `OPEN_BLOCKERS` (Phase 1) against the cached verdict: thread state moves without SHA movement, so matching SHAs cannot prove the verdict still holds. If blockers are open now and the cached verdict was `approve`, the cached verdict is stale. Skip the exit, run the Phase 3 verdict fresh, and post on the blocked-by-open-threads path when it fires.
+
 2. **New commits since last run**, when cached SHA is an ancestor of HEAD, means PARTIAL re-review:
    - `git diff <last_run_sha>..<CURRENT_HEAD>` (or `gh api compare` cross-repo) for new-commits diff.
    - Dispatch Phase 2 with NEW diff and FULL file context to report findings on new commits only.
