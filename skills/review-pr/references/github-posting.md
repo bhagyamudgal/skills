@@ -43,7 +43,9 @@ The hybrid flow:
 
 When a prior `/review-pr` review exists on the PR, the rolling path in `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` may replace Phase A only for a body-only update whose complete current thread set already belongs to that submitted review.
 
-Posting a body-only review with an explicit `event` and no `comments` array, or pasting the terminal report as an issue comment, is not a degraded mode of this flow: it leaves zero resolvable threads, no run marker, and nothing the next round can build on. The only legal postings are the fresh A-B-C path below, the rolling path, and the recovery-prompted fallback. Anything else ends with the Thread coverage line stating that nothing shipped and why.
+Posting a body-only review with an explicit `event` and no `comments` array, or pasting the terminal report as an issue comment, is not a degraded mode of this flow: it leaves zero resolvable threads, no run marker, and nothing the next round can build on. The only legal postings are the fresh A-B-C path below, the rolling path, the blocked-by-open-threads path from Phase 3 step 8, and the recovery-prompted fallback. Anything else ends with the Thread coverage line stating that nothing shipped and why.
+
+The blocked-by-open-threads path is body-only by design, not by degradation: every blocker already owns an unresolved, non-outdated thread, so new threads would only duplicate them. Its body lists every blocker as `path:line`, author, and one-line issue, carries the run marker, and posts `REQUEST_CHANGES` (`COMMENT` for a self-review with a `request-changes` semantic verdict).
 
 ---
 
@@ -72,7 +74,7 @@ Build a lean summary body (NO "Filtered out" section, internal only). **Always**
 *Details in review comments below.*  <!-- omit if ALL findings are body-fallback -->
 ```
 
-When there are zero findings, replace the findings table and details line with `### Findings\nNo findings.` The body posts with `APPROVE` for another author's PR or `COMMENT` for a self-review.
+When there are zero findings, replace the findings table and details line with `### Findings\nNo findings.` The body posts with `APPROVE` for another author's PR or `COMMENT` for a self-review. Exception: on the blocked-by-open-threads path from Phase 3 step 8, the body lists the blocking open threads instead of `No findings.` and posts `REQUEST_CHANGES` (`COMMENT` for a self-review).
 
 **Severity count badges**: `🔴 <N> Critical · 🟠 <M> Serious · 🟡 <K> Moderate · 🔵 <J> Minor`. Only include levels that have findings.
 

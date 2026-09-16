@@ -45,6 +45,14 @@ prior_findings:
 
 This enables (a) accurate dedupe in Phase 3, (b) "Resolved but still present" detection (thread closed but code still exhibits the issue → flag with `Category: Prior-finding-correction`).
 
+### Derive `OPEN_BLOCKERS`
+
+From the same list, collect every entry with `is_resolved == false` AND `is_outdated == false`.
+Outdated threads stay out: the code moved under them, so they no longer describe the head
+under review. `OPEN_BLOCKERS` never feeds dedupe. Dedupe still drops re-reported findings
+so no duplicate threads are created. `OPEN_BLOCKERS` feeds only the Phase 3 step 8 verdict
+guard: an approve must not stand while blockers are open.
+
 ### Load review-state (multi-round dedup)
 
 Load `${CLAUDE_SKILL_DIR}/references/finding-state-schema.md` before reading the state file. It defines the schema, the legal `status` values, and the finding-ID strategy every later phase writes against.
