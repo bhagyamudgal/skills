@@ -41,14 +41,14 @@ The run continues unattended through the WHOLE list. The user may be away in bat
 
 - Stop-and-ask intent gap → review with just the diff; tag that PR's report `intent not grounded, findings may be generic`.
 - A PR over 2000 lines gets a chunked review. Note the size in that PR report header.
-- Completed review → queue every surviving finding for automatic posting. Queue a clean review for automatic approval, or for a comment when `IS_SELF_REVIEW=true`.
+- Completed review → queue every surviving finding for automatic posting. Queue a clean review with no open blockers for automatic approval, or for a comment when `IS_SELF_REVIEW=true`. Queue a clean review with open blockers for automatic `REQUEST_CHANGES` on the blocked-by-open-threads path (Phase 3 step 8).
 - A failed subagent doesn't stop the batch: record `<pr>: review failed (<reason>)` in the consolidated report and continue with the rest.
 
 ---
 
 ## Automatic posting
 
-After every subagent returns, post each completed review in list order through the single-PR GitHub posting flow. For another author's PR, post all surviving findings with `REQUEST_CHANGES` and a clean review with `APPROVE`. For a self-review, post the complete result with `COMMENT`. Invoke `preflight-mutations` separately for each PR immediately before its first mutation, using the batch `/review-pr` request as the authorization source. Reconcile and record each result before moving to the next PR. Record each PR's reconciled `https://github.com/<owner>/<repo>/pull/<num>#pullrequestreview-<REVIEW_DB_ID>` (or `not posted (<reason>)` when nothing landed) and carry it into that PR's `**Review URL**` line and the consolidated posting-status entry.
+After every subagent returns, post each completed review in list order through the single-PR GitHub posting flow. For another author's PR, post all surviving findings with `REQUEST_CHANGES`, a clean review with no open blockers with `APPROVE`, and a clean review with open blockers on the blocked-by-open-threads path (Phase 3 step 8). For a self-review, post the complete result with `COMMENT`. Invoke `preflight-mutations` separately for each PR immediately before its first mutation, using the batch `/review-pr` request as the authorization source. Reconcile and record each result before moving to the next PR. Record each PR's reconciled `https://github.com/<owner>/<repo>/pull/<num>#pullrequestreview-<REVIEW_DB_ID>` (or `not posted (<reason>)` when nothing landed) and carry it into that PR's `**Review URL**` line and the consolidated posting-status entry.
 
 A posting failure never asks immediately. Record the exact partial GitHub state and the recovery choices from `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` as `recovery-pending`, then continue with every untouched PR.
 

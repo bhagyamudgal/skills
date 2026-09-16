@@ -36,14 +36,24 @@ prior_findings:
     first_raised_at: <review_id>
     first_raised_commit: <sha>
     file: <path>
-    line: <post-image line at the time>
+    line: <post-image line at the time, absent for file-level threads>
     is_resolved: <bool>
     is_outdated: <bool: later commits invalidated the line>
+    author_login: <thread author login>
     body_excerpt: <first 200 chars>
     resolution_state: open | resolved | outdated | stale
 ```
 
 This enables (a) accurate dedupe in Phase 3, (b) "Resolved but still present" detection (thread closed but code still exhibits the issue → flag with `Category: Prior-finding-correction`).
+
+### Derive `OPEN_BLOCKERS`
+
+From the same list, collect every entry with `is_resolved == false` AND `is_outdated == false`,
+keeping its `file`, `line` (absent for file-level threads), `author_login`, and `body_excerpt`.
+Outdated threads stay out: the code moved under them, so they no longer describe the head
+under review. `OPEN_BLOCKERS` never feeds dedupe. Dedupe still drops re-reported findings
+so no duplicate threads are created. `OPEN_BLOCKERS` feeds the Phase 3 step 8 and step 9
+verdict guards: neither an approve nor a senior-engineer Yes may stand while blockers are open.
 
 ### Load review-state (multi-round dedup)
 

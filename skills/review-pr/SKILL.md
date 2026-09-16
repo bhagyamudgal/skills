@@ -464,7 +464,8 @@ prints it. Neither recomputes it: one number, one definition, one round.
 ### 8. Decide verdict
 
 - One or more surviving findings → `request-changes`
-- No findings → `approve`
+- No surviving findings AND no open blockers → `approve`
+- No surviving findings BUT one or more open blockers (`OPEN_BLOCKERS` from Phase 1) → `request-changes` on the blocked-by-open-threads path. Dedupe was right to drop the re-reported findings, so no new threads go up. The review posts body-only with the event, and its body lists every blocker as `path:line` (`path` alone for file-level threads with no line), author, and one-line issue. A self-review posts the same body with `COMMENT`, keeping the semantic `request-changes` verdict in the body and terminal output. Thread coverage prints `0/0` with the reason pointing at the blocking-threads list.
 
 At any round, if `cascade_share > 0.5`, prepend to the verdict reason:
 
@@ -475,7 +476,7 @@ At any round, if `cascade_share > 0.5`, prepend to the verdict reason:
 
 A binary assessment:
 
-- **No**: one or more findings survived the critic pass, OR Q1 identified an intent gap
+- **No**: one or more findings survived the critic pass, OR one or more open blockers exist, OR Q1 identified an intent gap
 - **Yes**: otherwise
 
 Write a one-sentence approval reason grounded in the most important finding or the absence of findings. Composed text carries no em or en dash. Text quoted from the issue or the diff stays as you found it.
@@ -586,7 +587,7 @@ Total:   <s>
 
 An explicit `/review-pr <PR URL>` invocation is fresh authorization to submit the complete review to that exact PR. The authorization remains valid only while the target PR, head SHA, semantic verdict, GitHub event, and frozen payload match the later mutation card. Apply `preflight-mutations` normally and block on any non-ready verdict; do not bypass it or ask the user to select findings, confirm posting, keep the review local, edit the body, or choose a next action.
 
-- When `IS_SELF_REVIEW=false`, submit every surviving finding as an individual review comment with `REQUEST_CHANGES`; submit a clean review with `APPROVE` and no review comments.
+- When `IS_SELF_REVIEW=false`, submit every surviving finding as an individual review comment with `REQUEST_CHANGES`; submit a clean review with no open blockers with `APPROVE` and no review comments; submit a clean review with open blockers on the blocked-by-open-threads path (Phase 3 step 8).
 - When `IS_SELF_REVIEW=true`, submit the same complete finding set or clean summary with `COMMENT`. Keep the semantic verdict in the body and terminal output.
 - Preserve every item in `Filtered out` as terminal-only audit output. Filtered items never enter the GitHub payload.
 - Every surviving finding ships as a review thread, or the Thread coverage line states plainly that it did not ship and why. The terminal report is never pasted as an issue comment.
