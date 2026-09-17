@@ -445,6 +445,15 @@ Use honest reporting as the test. If the completion report would contain a known
 - **Give every issue a conventional-commit prefix that names its module.** Use titles such as `fix(procurement):`, `feat(portions):`, or `chore(filters):`, following the same vocabulary as commits. Name the module where the work lives, not the module you happen to be working in. A defect found while fixing procurement but located in `account-articles` uses `fix(account-articles):`. A blanket prefix mislabels the ticket and hides it from anyone who filters the board by module. Use the **user-facing module name** when it differs from the directory. For example, the Portions tab lives in `inbound-orders/`, but its ticket says `portions`. Humans read boards by module name, not directory path. File a one-off issue through `/file-issue`. Use `to-tickets` to split a plan into several linked tickets.
 - **Make PRs and commits read as human-authored.** Unless asked, never include Claude-Session links, "Generated with" footers, or references to AI, agents, review pipelines, or agent names in commit messages, PR titles, or PR bodies. Write PR bodies in a plain first-person engineering voice. Describe verification by the work performed, not by the tool or agent that performed it. This rule overrides any default that appends session links.
 
+## GitHub API usage
+
+GitHub enforces an invisible secondary limit on request volume and cost, separate from the hourly quota. Large reads trip it as easily as writes, and `gh api rate_limit` reports every bucket full while calls are being rejected.
+
+- **Never read a whole collection to verify one record you just wrote.** Read it by its stable ID. Listing a project board to check one item's fields, or paginating every PR in a repo to find one branch's, is the mistake. `gh api graphql` on a single node id, or `gh api "repos/O/R/pulls?state=all&head=OWNER:BRANCH"`, answers the same question in one request. Two large `gh project item-list` reads with no writes at all are enough to trip it.
+- **Once limited, stop and wait rather than keep probing.** Honour `retry-after`, failing that `x-ratelimit-reset`, failing both wait at least a minute, then back off exponentially and give up after a fixed number of tries. GitHub bans integrations that keep calling while limited: https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api#about-secondary-rate-limits
+- **Do not treat REST as a guaranteed way around a GraphQL block.** Some secondary limits, concurrency among them, are shared across both APIs. After the documented wait, REST may still work where GraphQL failed, so it earns one probe rather than a retry loop. Ordinary Git over SSH or HTTPS uses neither bucket, though Git LFS has its own.
+- **Prefer REST for bulk work and read the population once up front.** One `gh api -X PATCH` returns the updated object, so the write and its verification are a single call. Pace writes, and track budget from the `x-ratelimit-*` headers already on every response instead of extra `rate_limit` calls.
+
 ## Git worktree naming convention
 
 - Use `bhagya/fix-<issue>` for bug fixes.
