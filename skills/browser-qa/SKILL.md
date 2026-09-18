@@ -1,6 +1,6 @@
 ---
 name: browser-qa
-description: Drive a real browser through a UI flow. Navigate, click, fill, screenshot every step, record the run, and check network and console. Use when the user names a flow to run against a URL, or after a UI change lands and needs verifying in the browser.
+description: Drive a real browser through a UI flow, or run API and endpoint QA and report structured test results. Use when the user names a flow or an endpoint to test against a URL, when verifying filters, pagination, error handling, auth or counts on an API, or after a UI or backend change lands and needs verifying in the browser.
 ---
 
 I drive a real browser through the flow and I do not call it done until I watched it work. Every step gets a screenshot, the full run gets a recording, API-triggering actions get a network check, and I read the console for new errors.
@@ -23,6 +23,7 @@ Record at minimum 1920x1080, and hold 30 fps minimum on drivers that expose fram
 
 - A natural language flow, for example "Create a recipe with 3 ingredients, verify nutrition calculates".
 - A URL plus instructions, for example `http://localhost:3000/orders` plus "Click New Order, fill supplier, submit".
+- An API endpoint plus a test matrix, for example `GET /v1/shop/:clientId/patients-order-overview` plus "verify the tab filters, date filters, pagination, error handling, and counts consistency". Here I exercise the endpoint directly, with curl or an in-page request under the authenticated session, and tabulate each case, then produce the QA Test Results report below.
 
 When no URL is provided, I default to `http://localhost:3000`.
 
@@ -105,3 +106,61 @@ VERDICT: <ALL PASS | PARTIAL | FAIL> (N/M steps)
 On failure I include the exact expected versus actual and reference the screenshot.
 
 The recording path above is the handoff to `file-pr`, which attaches it at PR creation. I report the path and stop there; the late-attach rule in CLAUDE.md covers recordings that land after the PR exists.
+
+## QA Test Results report (endpoint and API QA)
+
+When the run tests an API or endpoint and not only a click path, I build a test matrix and report the structured results below, alongside the Step 4 browser report or in place of it. I group cases by category, filters, error handling, pagination, and consistency, then exercise each one directly and record the actual response against the expected one. A case whose request I dispatched but which captured no response is a FAIL, never an assumed pass.
+
+Endpoint execution and auth. Steps 2 and 3 authenticate and drive only the browser, so an endpoint-only run needs its own executor and authenticated context.
+
+Before any endpoint case runs I record the session origin, the scheme, host, and port Step 2 authenticated against. Every target is checked against that one value, and Test Environment reports it as Session origin rather than defining it. I compute the triple rather than read the URL. I accept only `http` and `https` targets and reject every other scheme, `file`, `ftp` and `gopher` among them, before any approval or dispatch and whether or not the case carries credentials, so the runner never reads a local file or opens a non-HTTP connection on my say-so. I reject any URL whose authority carries userinfo, a percent-escape, or a backslash, then lowercase the scheme and host, convert the host to ASCII punycode, drop one trailing dot, and fill in the default port, 443 for HTTPS and 80 for HTTP. Any other origin needs its own approval, an API on a separate host from the browser app included. Naming or pasting an endpoint is not approval. I show the user the normalized origin and name which credentials I would send, the session cookie and the anti-CSRF token by name and never by value, get an answer in that turn, and record the origin they approved in Test Environment. Without it the case is BLOCKED and I send no request at all, credentialed or not, so a typo or a pasted link receives neither a live session nor a seeded record ID.
+
+A credentialed request in either lane must be HTTPS unless its host is written as a loopback literal, an address in `127.0.0.0/8`, `::1`, or `::ffff:127.0.0.0/104`, or the bare name `localhost`. I read that literal out of the URL and never accept a name I resolved myself, because curl and the browser both resolve again before they connect, so a rebind or a mixed A and AAAA answer can put the request on a public address after my check passed. A host on plain HTTP that is not one of those literals carries no credentials in either lane, so its cases are BLOCKED rather than tested in cleartext.
+
+I get that context one of two ways, and both run those checks first:
+
+- `curl` with the Step 2 session exported into it, its cookies plus the anti-CSRF token. I leave `-L` off every credentialed request so curl follows nothing on its own, then read `Location` myself and run the origin check on that hop before I re-issue with credentials. That is what keeps the session on one host, because curl replays both a `-b "name=value"` string and a `-H "Cookie:"` header to every host a redirect names. I carry the session in a host-scoped cookie jar with `-b jar.txt`; when the jar's cookie domain does not cover an approved endpoint origin I set an explicit `Cookie` header for that one origin instead, and never a bare `-b "name=value"` string, which unlike the jar carries no domain of its own and so survives any copy onto the next host. Plain unauthenticated `curl` is enough only when the endpoint needs no session.
+- An in-page request through the driver's evaluate hook. The page the hook runs in has to clear the origin check too, because a `fetch` is same-origin to whatever page is open and the browser attaches the session cookie on its own. A same-origin `fetch` adds no anti-CSRF header, so I either call the app's own request helper, the client it already uses for API calls, which attaches the token, or read the anti-CSRF token from the cookie or meta tag and set it in `RequestInit.headers`. A cross-origin request also needs `credentials: "include"` and matching CORS. `fetch` follows redirects on its own and carries both a manually set anti-CSRF header and any cookie the destination is eligible for, and a 307 or 308 resends the method and body as well, so I set `redirect: "error"` on every evaluate-hook request whether or not it carries credentials. That turns a redirect into a network error with no `Location` this lane can read, so I score nothing here and rerun the case through the curl lane, which sees each hop and re-runs the origin check before reissuing. That run gives the case its one verdict, under the same BLOCKED rule as every other case.
+
+I never accept an unauthenticated response as a case result; when I cannot obtain the authenticated context I record those cases BLOCKED instead of testing the wrong thing. An endpoint case that mutates shared data goes through the same mutation preflight as Step 3 before I dispatch it. Screenshots and the recording do not apply when no UI is exercised, so the captured request and response are the evidence for each case.
+
+I capture the environment once so the run is reproducible, and every case row records the complete request inputs, its path, query, body, and any non-secret headers, not query params alone. Replay reuses a freshly provisioned Step 2 session for auth, so the row never carries it: before I write any request or response value I redact credentials, session tokens, auth headers, cookies, and personal data, and keep only the functional evidence a case needs, counts, IDs, statuses, and error messages. I use PASS, FAIL, or BLOCKED text in the Result column, never a check emoji.
+
+### Report template
+
+```
+## QA Test Results - <feature or endpoint>
+
+### Test Environment
+- Date: <YYYY-MM-DD>
+- Session origin: <normalized origin Step 2 authenticated against>
+- Approved endpoint origin: <normalized origin and the date approved, when it differs from the session origin>
+- Backend: <url> (<database>)
+- Test data: <seeded records and their IDs>
+- Auth: <account, role, IDs>
+
+### API Endpoint: `<METHOD /path>`
+
+#### <Category> Tests
+
+| # | Test | Request | Result | Expected |
+|---|------|---------|--------|----------|
+| 1 | <case> | `<path, query, body, safe headers; secrets redacted>` | PASS/FAIL/BLOCKED: <actual observed, or the blocker> | <expected> |
+
+#### Error Handling Tests
+
+| # | Test | Request | Expected | Result |
+|---|------|---------|----------|--------|
+| N | <bad input> | `<path, query, body, safe headers; secrets redacted>` | <status and message> | PASS/FAIL/BLOCKED: <observed status and message, or the blocker> |
+
+### Browser UI Testing
+- <what rendered, with screenshot paths under .qa/>
+- <blockers hit, stated plainly, never hidden>
+
+### Findings
+- <what passed, what failed, and any behavior that is by design>
+
+VERDICT: <ALL PASS | PARTIAL | FAIL | BLOCKED> (<passed>/<executed> cases, <blocked> blocked)
+```
+
+I keep one table per category and add only the categories the endpoint has. A case whose request I never dispatched is BLOCKED, never PASS or FAIL, and so is a case the unauthenticated-response rule above blocks. A request counts as dispatched once its bytes left the client, so a refused connection or a failed DNS lookup is not dispatched. I list a blocked case with its blocker, keep it out of the executed count, and cap the verdict at PARTIAL when other cases executed, or BLOCKED when none did. The Browser UI Testing section reuses the screenshots and recording from the browser flow above, so a mixed run reports the click path and the endpoints behind it in one place. Findings state failures and by-design behavior explicitly; a silent omission reads as a pass it never earned.
