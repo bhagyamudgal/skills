@@ -1,17 +1,16 @@
 # Finding output format
 
-The single shape every reviewer and verifier emits a finding in. Loaded by **Subagent 1**
-(Phase 2 reviewer), **Subagent 3** (Phase 2 cross-cutting reviewer) and **V3** (Phase 3
-deep gap check) — all three produce findings that Phase 3 dedupes, sweeps and persists,
-and without this file each invents a shape that dedupe and step 4.55 cannot parse.
+The single shape every reviewer and verifier uses for a finding. **Subagent 1** in Phase 2 loads it, and so do **Subagent 3** and **V3** in Phase 3. All three produce findings that Phase 3 dedupes, sweeps and persists. Without this file each invents a shape that dedupe and step 4.55 cannot parse.
 `q6-reusability-search.md` points here too, so a Q6a finding comes out in the same shape
 as every other finding.
 
 Emit the fields verbatim, one per line, in the order below.
 
+Every finding is posted to GitHub verbatim, so write it as an engineer writes to another engineer. Nothing you compose carries an em or en dash: a period or a comma does the same work, and a range takes a hyphen. Text you quote from the diff or the issue stays exactly as you found it, and the arrows and pipes in the field templates below are structure rather than prose. No bold label that restates the line it opens.
+
 ## Line number convention
 
-`File: <path:line>` must use the **post-image line number** — the line as it appears in
+`File: <path:line>` must use the **post-image line number**, the line as it appears in
 the new version (the `+` side of the unified diff hunk, or unchanged context on the new
 side). NOT old-side. NOT the diff hunk header offset. Omit `:line` for module-scope
 findings; they route to file-level review comments.
@@ -25,23 +24,23 @@ File:        <path:line> (or <path> alone for module-scope)
 Category:    Intent | Unnecessary | DRY | Performance | Security |
              Reusability | Silent-failure | Breaking-change |
              Architecture | Prior-finding-correction
-Rule-class:  <2-3 word slug — e.g., silent-failure, n+1-query, error-code-wrong-branch>
+Rule-class:  <2-3 word slug: e.g. silent-failure, n+1-query, error-code-wrong-branch>
 Enclosing-symbol: <function/class/component containing the cited line, or "<module>">
 Issue:       <one sentence>
 Why it matters: <one sentence>
 Suggested fix:  <one sentence, actionable>
 Inverse risk:   <the failure mode this fix trades INTO if implemented literally,
-                 or "none — pure addition">
-Class-sites:    <A>/<N> — affected sites over sites searched, from the
-                class_completeness audit below
+                 or "none, pure addition">
+Class-sites:    <A>/<N> (affected sites over sites searched, from the
+                class_completeness audit below)
 ```
 
 `Inverse risk` and `Class-sites` are REQUIRED on every finding that proposes a code
-change — one field per cascade feeder. `/fix-pr-review` seeds its own inverse-risk check
-and class sweep from these two lines, so a finding printed without them costs the next
-skill a full re-derivation.
+change, one field per cascade feeder. `/fix-pr-review` seeds its own inverse-risk check
+and class sweep from these two lines. A finding printed without them forces the next
+skill into a full re-derivation.
 
-`Rule-class` and `Enclosing-symbol` are required too — they let the critic compute a
+`Rule-class` and `Enclosing-symbol` are required too. They let the critic compute a
 stable finding ID (`sha1(file::enclosing_symbol::rule_class)`) that survives line shifts
 and rewordings across review rounds. Load
 `<SKILL_DIR>/references/finding-state-schema.md` for the exact ID derivation, the
@@ -49,7 +48,7 @@ normalization it assumes on both fields, and the `status` values a finding may c
 
 ## `class_completeness:` audit
 
-Required on every finding that proposes a code change. Use this EXACT field name so
+Every finding that proposes a code change needs this. Use this EXACT field name so
 Phase 3 step 4.55 can parse it:
 
 ```
@@ -59,7 +58,7 @@ class_completeness:
     signature: <the literal/pattern actually searched>
     search: <tool>("<query>", "<path>") → <N> sites
     sites:
-      - <file:line or symbol>: affected | not-affected — <one clause why>
+      - <file:line or symbol>: affected | not-affected, <one clause why>
     verdict: COMPLETE (all N sites reported) | INCOMPLETE (<M> unreported sites)
 ```
 
@@ -69,8 +68,7 @@ the total number of entries in `sites:`.
 
 Do NOT write `handled` in this audit. `handled` belongs to a different, later layer:
 `class_sites[].handled` in `<SKILL_DIR>/references/finding-state-schema.md` records
-whether the PR has since COVERED an affected site, and only affected sites are carried
-into that list. One word per layer — conflating them makes a merely-swept finding look
+whether the PR has since COVERED an affected site. Only affected sites move into that list. One word per layer. Mixing them makes a merely-swept finding look
 fixed.
 
 If the finding proposes no code change, write exactly:
@@ -78,15 +76,15 @@ If the finding proposes no code change, write exactly:
 
 ## Run-level closing block
 
-A reviewer whose scope is the WHOLE PR (Subagent 1 in unchunked modes) ends its output
+Subagent 1 with WHOLE-PR scope in unchunked modes ends its output
 with:
 
 ```
 Senior engineer approval: Yes | No
 Approval reason: <one sentence>
-Summary: <3 sentences — what the PR does, biggest concern, overall verdict>
+Summary: <3 sentences. What the PR does, the biggest concern, the overall verdict.>
 Verdict: approve | request-changes
 ```
 
-Chunk reviewers, Subagent 3 and V3 report findings only — their scope is partial, so main
+Chunk reviewers, Subagent 3 and V3 report findings only. They cover part of the PR, so main
 composes the run-level verdict in Phase 3.

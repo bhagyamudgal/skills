@@ -7,51 +7,48 @@ skill, not by reading it. This measures the one part of that which produces a cl
 discrete signal: which skill the agent reaches for first.
 
 Each case runs in a fresh non-interactive session against tools/eval/fixture/, streams the
-JSON event log, and records the FIRST Skill invocation. The session is killed the moment
-that lands — we are measuring the routing decision, not the work that follows, and letting
-the skill run costs roughly 3x more per case.
+JSON event log, and records the first Skill invocation that is not ambient. The session is
+killed the moment that lands — we are measuring the routing decision, not the work that
+follows, and letting the skill run costs roughly 3x more per case.
 
 Usage:
     python3 tools/eval/run_triggers.py                # all cases
     python3 tools/eval/run_triggers.py --limit 5      # pilot before spending the full run
     python3 tools/eval/run_triggers.py --case 7       # one case by index
     python3 tools/eval/run_triggers.py --budget 0.15  # per-case USD cap
+    python3 tools/eval/run_triggers.py --ignore-skill foo  # extend the ambient set
 """
-import argparse, json, os, pathlib, selectors, shutil, signal, subprocess, sys, tempfile, time
+import argparse, json, os, pathlib, selectors, shutil, subprocess, sys, time
+
+import harness
 
 HERE = pathlib.Path(__file__).resolve().parent
 CASES = HERE / "triggers.json"
 FIXTURE = HERE / "fixture"
 
+# Skills a standing instruction fires in every session, whatever the utterance. They are not
+# routing decisions, so recording one as the answer scores the global config instead of the
+# description under test. `unslop` is here because the user's global CLAUDE.md orders it into
+# every session and a UserPromptSubmit hook repeats the order; it lands first in every case
+# and, since the session dies on the first Skill event, the real routing choice never runs.
+AMBIENT_SKILLS = frozenset({"unslop"})
+
+
+def leave_uncommitted_edit(repo):
+    """So "review this" and "commit this" have a real diff to act on."""
+    path = repo / "src" / "user.ts"
+    path.write_text(path.read_text() + "\nexport const VERSION = 2;\n")
+
 
 def make_sandbox(skill_path=None):
-    """Copy the fixture to a throwaway git repo.
-
-    The committed fixture lives inside this repo, so an agent with write access and a
-    `commit this` utterance would commit to the skills repo itself. Every run gets its
-    own tree, git-initialised so git-shaped utterances have something real to act on,
-    and discarded afterwards.
-    """
-    tmp = pathlib.Path(tempfile.mkdtemp(prefix="trigger-eval-"))
-    shutil.copytree(FIXTURE, tmp / "repo")
-    repo = tmp / "repo"
-    if skill_path:
-        project_skills = repo / ".claude" / "skills"
-        project_skills.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(skill_path, project_skills / skill_path.name, dirs_exist_ok=True)
-    q = {"cwd": str(repo), "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
-    subprocess.run(["git", "init", "-q"], **q)
-    subprocess.run(["git", "add", "-A"], **q)
-    subprocess.run(["git", "-c", "user.email=eval@local", "-c", "user.name=eval",
-                    "commit", "-qm", "fixture"], **q)
-    # Leave one uncommitted edit so "review this" / "commit this" have a real diff.
-    (repo / "src" / "user.ts").write_text(
-        (repo / "src" / "user.ts").read_text() + "\nexport const VERSION = 2;\n")
-    return tmp, repo
+    return harness.make_sandbox(
+        "trigger-eval-", FIXTURE,
+        skills=[skill_path] if skill_path else (),
+        post_commit_edit=leave_uncommitted_edit)
 
 
-def run_case(utterance, budget, timeout, tools=None, skill_path=None):
-    """Return (skill_or_None, cost, seconds, error_or_None)."""
+def run_case(utterance, budget, timeout, tools=None, skill_path=None, ambient=AMBIENT_SKILLS):
+    """Return (skill_or_None, cost, seconds, error_or_None, ambient_skills_seen)."""
     tmp, repo = make_sandbox(skill_path)
     cmd = ["claude", "-p", utterance,
            "--output-format", "stream-json", "--verbose",
@@ -69,51 +66,46 @@ def run_case(utterance, budget, timeout, tools=None, skill_path=None):
         if is_process_group_stopped:
             return "", ""
         is_process_group_stopped = True
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        try:
-            return proc.communicate(timeout=1)
-        except subprocess.TimeoutExpired:
-            proc.stdout.close()
-            proc.stderr.close()
-            try:
-                proc.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                pass
-            return "", ""
+        return harness.kill_process_group(proc)
 
     def parse_event(line):
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
             return None
-        if event.get("type") == "assistant":
-            for content in event.get("message", {}).get("content", []):
-                if content.get("type") == "tool_use" and content.get("name") == "Skill":
-                    return "skill", (content.get("input") or {}).get("skill")
+        named = harness.parse_skill_names(event)
+        if named:
+            return "skill", named
         if event.get("type") == "result":
-            error = None
-            if event.get("is_error"):
-                status = event.get("api_error_status")
-                terminal_reason = event.get("terminal_reason")
-                detail = str(event.get("result", "")).strip().replace("\n", " ")[:160]
-                error = ": ".join(
-                    part
-                    for part in [
-                        f"api error {status}" if status else None,
-                        terminal_reason if terminal_reason != "completed" else None,
-                        detail or None,
-                    ]
-                    if part
-                ) or "result-error"
-            return "result", (event.get("total_cost_usd", 0.0), error)
+            return "result", (event.get("total_cost_usd", 0.0),
+                              harness.format_result_error(event))
         return None
 
     cost, started = 0.0, time.time()
     stdout_buffer = b""
     stderr_chunks = []
+    seen_ambient = []
+
+    def consume(parsed):
+        """Fold one parsed event into a return tuple, or None to keep reading."""
+        kind, value = parsed
+        if kind == "skill":
+            for name in value:
+                # A Skill block whose input did not parse means a skill fired and the
+                # harness could not read which. Returning it as `None` is indistinguishable
+                # from the agent choosing nothing, which a `forbid` case then scores as a
+                # pass. It is an eval failure, not a routing decision.
+                if name is None:
+                    return (None, cost, time.time() - started,
+                            "Skill invoked with unreadable input", seen_ambient)
+                if name in ambient:
+                    seen_ambient.append(name)
+                    continue
+                return name, cost, time.time() - started, None, seen_ambient
+            return None
+        total, error = value
+        return None, total, time.time() - started, error, seen_ambient
+
     try:
         with selectors.DefaultSelector() as selector:
             selector.register(proc.stdout, selectors.EVENT_READ)
@@ -122,7 +114,7 @@ def run_case(utterance, budget, timeout, tools=None, skill_path=None):
                 remaining = timeout - (time.time() - started)
                 if remaining <= 0:
                     stop_process_group()
-                    return None, cost, time.time() - started, "timeout"
+                    return None, cost, time.time() - started, "timeout", seen_ambient
                 events = selector.select(timeout=min(remaining, 1.0))
                 if not events:
                     if proc.poll() is not None:
@@ -142,37 +134,35 @@ def run_case(utterance, budget, timeout, tools=None, skill_path=None):
                         parsed = parse_event(line.decode(errors="replace"))
                         if not parsed:
                             continue
-                        kind, value = parsed
-                        if kind == "skill":
-                            return value, cost, time.time() - started, None
-                        cost, error = value
-                        return None, cost, time.time() - started, error
+                        outcome = consume(parsed)
+                        if outcome:
+                            return outcome
 
             remaining = timeout - (time.time() - started)
             if remaining <= 0:
                 stop_process_group()
-                return None, cost, time.time() - started, "timeout"
+                return None, cost, time.time() - started, "timeout", seen_ambient
             try:
                 proc.wait(timeout=remaining)
             except subprocess.TimeoutExpired:
                 stop_process_group()
-                return None, cost, time.time() - started, "timeout"
+                return None, cost, time.time() - started, "timeout", seen_ambient
 
             if stdout_buffer:
                 parsed = parse_event(stdout_buffer.decode(errors="replace"))
                 if parsed:
-                    kind, value = parsed
-                    if kind == "skill":
-                        return value, cost, time.time() - started, None
-                    cost, error = value
-                    return None, cost, time.time() - started, error
+                    outcome = consume(parsed)
+                    if outcome:
+                        return outcome
 
             stderr = b"".join(stderr_chunks).decode(errors="replace").strip()
             returncode = proc.returncode
             detail = f": {stderr}" if stderr else ""
             if returncode != 0:
-                return None, cost, time.time() - started, f"claude exited {returncode}{detail}"
-            return None, cost, time.time() - started, f"missing result event{detail}"
+                return (None, cost, time.time() - started,
+                        f"claude exited {returncode}{detail}", seen_ambient)
+            return (None, cost, time.time() - started,
+                    f"missing result event{detail}", seen_ambient)
     finally:
         stop_process_group()
         shutil.rmtree(tmp, ignore_errors=True)
@@ -196,7 +186,18 @@ def main():
                          "reports a coin flip as a fact. Use 3+ for anything you act on.")
     ap.add_argument("--skill-path", type=pathlib.Path,
                     help="copy a source skill into each sandbox for pre-install testing")
+    ap.add_argument("--ignore-skill", action="append", default=[], metavar="NAME",
+                    help=f"treat NAME as ambient and keep reading past it. Repeatable. "
+                         f"Adds to the default set {sorted(AMBIENT_SKILLS)}.")
+    ap.add_argument("--no-ignore-ambient", action="store_true",
+                    help="record the first Skill invocation even if it is ambient, which is "
+                         "how this ran before and is the way to see what is being skipped.")
     args = ap.parse_args()
+
+    if args.repeat < 1:
+        ap.error("--repeat must be at least 1")
+
+    ambient = frozenset() if args.no_ignore_ambient else AMBIENT_SKILLS | set(args.ignore_skill)
 
     if not FIXTURE.is_dir():
         print(f"missing fixture: {FIXTURE}", file=sys.stderr)
@@ -224,12 +225,13 @@ def main():
         expected_skill = c.get("expect")
         forbidden_skill = c.get("forbid")
         print(f"[{i+1}/{len(cases)}] {c['utterance'][:56]:<56} ", end="", flush=True)
-        fires, errors = [], []
+        fires, errors, skipped = [], [], []
         for _ in range(args.repeat):
-            got, cost, secs, err = run_case(
-                c["utterance"], args.budget, args.timeout, args.tools, skill_path)
+            got, cost, secs, err, ambient_seen = run_case(
+                c["utterance"], args.budget, args.timeout, args.tools, skill_path, ambient)
             fires.append(got)
             errors.append(err)
+            skipped.extend(ambient_seen)
         hits = sum(
             err is None
             and (not has_expected_skill or fired == expected_skill)
@@ -237,15 +239,16 @@ def main():
             for fired, err in zip(fires, errors)
         )
         rate = hits / len(fires)
-        verdict = ("ERROR" if any(errors) else "PASS" if hits == len(fires)
-                   else "FLAKY" if hits else "FAIL")
+        verdict = harness.verdict(hits, len(fires), has_error=any(errors))
         seen = {}
         for fired, error in zip(fires, errors):
             outcome = f"error:{error}" if error else fired or "none"
             seen[outcome] = seen.get(outcome, 0) + 1
         summary = ", ".join(f"{k}x{v}" for k, v in sorted(seen.items(), key=lambda kv: -kv[1]))
-        print(f"{verdict:<5} {hits}/{len(fires)}  {summary}")
-        results.append({**c, "fires": fires, "errors": errors,
+        passed_over = ", ".join(f"{n}x{skipped.count(n)}" for n in sorted(set(skipped)))
+        print(f"{verdict:<5} {hits}/{len(fires)}  {summary}"
+              + (f"  [ambient: {passed_over}]" if passed_over else ""))
+        results.append({**c, "fires": fires, "errors": errors, "ambient": skipped,
                         "hits": hits, "n": len(fires),
                         "rate": rate, "verdict": verdict})
 

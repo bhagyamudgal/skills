@@ -45,6 +45,18 @@
       "expect": "grill-me",
       "why": "KNOWN COLLISION: the installed `grilling` skill claims the same word" },
 
+    { "utterance": "harden this plan before I start coding",
+      "expect": "grill-me",
+      "why": "migrated harden-plan entry point; must route to grill-me now that harden-plan is deleted" },
+
+    { "utterance": "check this plan against the codebase",
+      "expect": "grill-me",
+      "why": "verification-pass wording; must not route to verify-claims, which gates inference-backed claims rather than plan facts" },
+
+    { "utterance": "verify this plan against the codebase",
+      "expect": "grill-me",
+      "why": "explicit verify wording; must not collide with verify-claims" },
+
     { "utterance": "audit this ticket",
       "expect": "audit-ticket",
       "why": "five triggers collapsed to two; explicit form" },

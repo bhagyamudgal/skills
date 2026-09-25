@@ -1,7 +1,7 @@
 # Domain verification
 
-Use an evidence ladder with two rungs: **screen** every candidate with a registry
-lookup, then **confirm** the survivors at a registrar. A missing DNS record, blank
+Work a two-rung evidence ladder. Screen every candidate with a registry
+lookup, then confirm the survivors at a registrar. A missing DNS record, blank
 website, timeout, or generic request failure never proves availability.
 
 ## Status vocabulary
@@ -69,12 +69,12 @@ Interpret responses narrowly:
 - `429` -> honor `Retry-After`, reduce concurrency, then retry once;
 - `400`, `401`, `403`, `5xx`, timeout, HTML, or malformed JSON -> `unknown`.
 
-Start with at most five concurrent lookups, cache duplicate queries for the run,
-and back off on throttling. A registry `404` can still represent a reserved,
+Start with at most five concurrent lookups. Cache duplicate queries for the run
+and back off when throttled. A registry `404` can still represent a reserved,
 blocked, or premium name at the registrar.
 
-DNS may reject obvious delegated names before RDAP, but NXDOMAIN/NODATA never
-advances a name to an available state. Use WHOIS only as a low-volume diagnostic
+DNS can reject obvious delegated names before RDAP, but NXDOMAIN/NODATA never
+marks a name available. Use WHOIS only as a low-volume diagnostic
 for ambiguous evidence, not as a bulk checker.
 
 ## 3. Confirm at a registrar
@@ -119,15 +119,15 @@ click the registration action, add to cart, sign in, make an offer, or purchase.
 
 ## Opportunistic accelerators
 
-An undocumented endpoint observed in an already-working browser session may
-accelerate a large batch, but it never replaces the evidence ladder. Treat session
+An undocumented endpoint you spot in an already-working browser session can
+speed up a large batch, but it never replaces the evidence ladder. Treat session
 tokens such as Revved `rcs` values as ephemeral: do not store or replay them across
 sessions, bypass anti-bot controls, or depend on their response schema. Confirm
 every survivor through registry RDAP and the registrar.
 
 ## Final evidence
 
-Recheck the chosen domain at the registrar immediately before the user acts.
-Phrase the claim as "registrar-confirmed available at <time>", never "secured" or
-"owned". Availability is a snapshot; only a successful registration can prove
+Recheck the chosen domain at the registrar right before the user acts.
+Phrase the claim as "registrar-confirmed available at <time>". Never write "secured" or
+"owned". Availability is a snapshot. Only a successful registration proves
 acquisition.

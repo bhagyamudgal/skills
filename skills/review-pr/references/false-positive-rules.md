@@ -1,6 +1,6 @@
 # False-positive rules table (Phase 3 step 4.6)
 
-Loaded by main at Phase 3 step 4.6, whenever at least one finding survives step 4.5. SKILL.md keeps the iterator contract — `id` / `trigger` / `evidence_check` / `action`, applied in order, every fire logged to Filtered Out with the rule `id`. This file holds the rules that iterator runs, and is the single source of truth for false-positive filtering: adding a new false-positive class is a one-row edit here.
+Loaded by main at Phase 3 step 4.6, whenever at least one finding survives step 4.5. SKILL.md keeps the iterator contract, `id` / `trigger` / `evidence_check` / `action`, applied in order, every fire logged to Filtered Out with the rule `id`. This file holds the rules that iterator runs, and is the single source of truth for false-positive filtering: adding a new false-positive class is a one-row edit here.
 
 The table is consulted per finding, not read linearly. Match a finding's `Issue` / `Why` text against each `trigger` in order; run the `evidence_check` only when the trigger hits.
 
@@ -13,14 +13,19 @@ rules:
       (?i)\.toFixed\(|\.toString\(|\.toLocaleString\(|String\(
     evidence_check: |
       Verify cited line in stashed diff. Drop if the call is structurally enclosed by
-      Number(...) / parseFloat(...) / parseInt(...) / unary +(...) on the SAME line.
+      Number(...) / parseFloat(...) / unary +(...) on the SAME line.
+      parseInt(...) counts ONLY for a verified-integer field
+      (DB integer/bigint, Zod z.number().int() per
+      <SKILL_DIR>/references/q5-type-coercion.md) whose source is verified
+      integer-formatted and within Number.MAX_SAFE_INTEGER, or where explicit
+      truncation intent is documented at the write site.
       Anchored patterns:
         =\s*(Number|parseFloat|parseInt|\+)\s*\(\s*<call>
         :\s*(Number|parseFloat|parseInt|\+)\s*\(\s*<call>
         return\s+(Number|parseFloat|parseInt|\+)\s*\(\s*<call>
       Do NOT match across lines, do NOT match sibling args (e.g., foo(bar.toFixed(1), Number(y))).
     action: drop
-    log_reason: "wrapped-coercion FP — call wrapped in Number(...) on same line"
+    log_reason: "wrapped-coercion FP: call wrapped in Number(...) on same line"
 
   - id: intent-alignment
     trigger: |
@@ -35,8 +40,8 @@ rules:
       If overlap >= 0.5 → return evidence_present (downgrade).
       If overlap = 1.0 AND severity = Minor → return evidence_present_drop (drop).
     action: downgrade-1-and-note   # plus drop-if-Minor for overlap=1.0 case
-    note: "Note: this change aligns with PR intent (\"<keywords>\"). Re-verify before merging — may be intentional."
-    log_reason: "intent-alignment downgrade — <N>/<M> finding tokens match PR intent"
+    note: "Note: this change aligns with PR intent (\"<keywords>\"). Re-verify before merging. It may be intentional."
+    log_reason: "intent-alignment downgrade: <N>/<M> finding tokens match PR intent"
 
   - id: library-behavior-citation
     trigger: |
@@ -53,8 +58,8 @@ rules:
         Moderate → DROP
         Minor    → DROP
     action: severity-conditional   # see severity ladder above
-    note: "Note: unverified library-behavior claim — empirical check required before acting."
-    log_reason: "library-claim — <severity> with no citation"
+    note: "Note: unverified library-behavior claim. Empirical check required before acting."
+    log_reason: "library-claim: <severity> with no citation"
 
   - id: default-fallback
     trigger: |
@@ -72,6 +77,6 @@ rules:
       If a "by design" / "only X makes sense" / "always X" comment is found → evidence_present_drop (DROP).
       Else if any named-default signal → evidence_present (downgrade).
     action: downgrade-1-and-note   # plus DROP if "by design" comment found
-    note: "Note: a named default (<CONST>) handles the absent value — likely intentional design, not a propagation bug."
-    log_reason: "default-fallback — found <CONST>"
+    note: "Note: a named default (<CONST>) handles the absent value. Likely intentional design, not a propagation bug."
+    log_reason: "default-fallback: found <CONST>"
 ```

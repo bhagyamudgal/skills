@@ -97,7 +97,7 @@ def check_nested_prompt(path, lines):
             if inner and open_len <= 3:
                 fail(rel(path),
                      f"fence at {open_at} uses {open_len} backticks and contains "
-                     f"{inner} inner fence(s) — the first inner fence CLOSES it. "
+                     f"{inner} inner fence(s). The first inner fence CLOSES it. "
                      f"Use {'`' * (open_len + 1)} for the outer fence.")
             open_at = None
         else:
@@ -148,22 +148,22 @@ def check_frontmatter():
             fail(skill.name, "frontmatter has no `name:`")
         elif name != skill.name:
             fail(skill.name, f"frontmatter `name: {name}` does not match its "
-                             f"directory `{skill.name}` — the harness routes on "
+                             f"directory `{skill.name}`. The harness routes on "
                              f"the name, so this skill is unreachable")
         if not values.get("description", "").strip().strip("\"'"):
-            fail(skill.name, "frontmatter has no non-empty `description:` — the "
+            fail(skill.name, "frontmatter has no non-empty `description:`. The "
                              "harness decides when to fire the skill from it")
         for key in keys:
             if key not in KNOWN_FRONTMATTER_KEYS:
                 warn(skill.name, f"frontmatter key `{key}` is not one of "
-                                 f"{sorted(KNOWN_FRONTMATTER_KEYS)} — the harness "
+                                 f"{sorted(KNOWN_FRONTMATTER_KEYS)}. The harness "
                                  f"ignores it")
 
 
 # --- always-loaded context budget (repo-wide, WARN) ------------------------
 
-# 360 is the repo's real ceiling today (harden-plan, 358). discover-product-domain
-# landed at 506 — 41% past the previous worst — and nothing caught it at review.
+# 360 is the repo's real ceiling today (review-pr, 345). discover-product-domain
+# landed at 506 — 47% past the previous worst — and nothing caught it at review.
 MAX_DESCRIPTION_CHARS = 360
 
 # Set from the repo's own distribution: two skills sit past 10 KB with the
@@ -212,7 +212,7 @@ def check_description_budget():
             continue
         warn(skill.name,
              f"description is {size} chars, {size - MAX_DESCRIPTION_CHARS} over the "
-             f"{MAX_DESCRIPTION_CHARS}-char budget — every session pays for it on "
+             f"{MAX_DESCRIPTION_CHARS}-char budget. Every session pays for it on "
              f"every turn, fired or not. Cut it back to the trigger, or set "
              f"`disable-model-invocation: true` and make it user-invoked")
 
@@ -253,10 +253,10 @@ def check_orphan_model_invocation():
 
     Narrowing it by description shape was tried and abandoned. `Use when the
     user ...` opens project-discovery, which fires autonomously when the user
-    "seems unsure". Matching `only` scored 2/2 on the current tree and is an
-    accident: on calibrate-board-mutations it is matching inside `read-only`,
-    which is about data access, not invocation. A broad gate a human triages
-    beats a heuristic that demotes a skill silently."""
+    "seems unsure". Matching `only` scored 2/2 on the tree of the day and is an
+    accident: on the since-removed calibrate-board-mutations it matched inside
+    `read-only`, which is about data access, not invocation. A broad gate a
+    human triages beats a heuristic that demotes a skill silently."""
     corpus = _inbound_search_corpus()
     for skill in SKILLS:
         values = _frontmatter_values(skill)
@@ -268,7 +268,7 @@ def check_orphan_model_invocation():
             continue
         warn(skill.name,
              f"model-invoked with no inbound reference from {ROOT.name}/ or "
-             f"{REFERENCE_DIR.name}/ — no other skill routes to it, so the "
+             f"{REFERENCE_DIR.name}/. No other skill routes to it, so the "
              f"always-loaded description is buying autonomous recognition and "
              f"nothing else. Keep it if the agent must fire this off a situation "
              f"the user will not name; if it only ever fires when the user asks "
@@ -284,7 +284,7 @@ def check_progressive_disclosure():
         if size <= MAX_SKILL_MD_BYTES or (skill / "references").is_dir():
             continue
         warn(skill.name,
-             f"SKILL.md is {size:,} bytes with no references/ — every invocation "
+             f"SKILL.md is {size:,} bytes with no references/. Every invocation "
              f"loads all of it. Move the depth behind "
              f"${{CLAUDE_SKILL_DIR}}/references/ and point at it from SKILL.md")
 
@@ -329,7 +329,7 @@ def check_severity_ladder_consistency():
                             rf"|\b{rung}\b{_LADDER_SEP}\b(?:{_CANON_ALT})\b")
                 if re.search(adjacent, l):
                     fail(rel(path), f"line {i}: `{rung}` used as a severity rung "
-                                    f"next to the canonical ladder — the repo "
+                                    f"next to the canonical ladder. The repo "
                                     f"ladder is {' > '.join(CANONICAL_LADDER)}; a "
                                     f"caller emitting a rung this skill never "
                                     f"names is silently ignored")
@@ -342,7 +342,7 @@ def check_severity_ladder_consistency():
             if named != prefix:
                 missing = [r for r in prefix if r not in named]
                 fail(rel(path), f"line {i}: gate names {named} but skips "
-                                f"{missing} — a finding on the skipped rung "
+                                f"{missing}. A finding on the skipped rung "
                                 f"passes the gate silently")
 
 
@@ -385,7 +385,7 @@ def check_pointer_form():
                 if not _is_load_instruction(l[:m.start()]):
                     continue
                 fail(rel(path), f"line {i}: load instruction with a bare "
-                                f"`{m.group(0)}` — resolves against the user's "
+                                f"`{m.group(0)}`. It resolves against the user's "
                                 f"repo, not the skill dir, and fails silently. "
                                 f"Use ${{CLAUDE_SKILL_DIR}}/{m.group(0)}")
 
@@ -413,9 +413,9 @@ def check_orphan_reference_files():
                 named |= {f"{s}.md" for s in slugs}
             for f in sorted(directory.glob("*.md")):
                 if f.name not in named:
-                    warn(f"{skill.name}/{bundle}",
-                         f"{f.name} is not pointed at by SKILL.md — dead file, "
-                         f"or a disclosure that was never wired up")
+                     warn(f"{skill.name}/{bundle}",
+                         f"{f.name} is not pointed at by SKILL.md. It is a dead "
+                         f"file or a disclosure that was never wired up")
 
 
 # --- cross-skill duplication (repo-wide, WARN) -----------------------------
@@ -429,8 +429,9 @@ MIN_PROSE_RUN_LINES = 5
 # Skills install independently and cannot import a shared file, so some copies
 # are irreducible. Every entry MUST name its reason; an unexplained entry is
 # indistinguishable from a silenced bug. Example of the shape:
-#   "0123456789ab": "review-pr Phase 1 repo-map bash, copied into harden-plan —
-#                    the two skills install separately and cannot share a file",
+#   "0123456789ab": "<skill-a> Phase 1 shell, copied into <skill-b> because
+#                    the two install separately and the loader cannot reach
+#                    across skill directories",
 DUPLICATE_ALLOWLIST = {}
 
 
@@ -491,7 +492,7 @@ def check_cross_skill_duplication():
         warn("duplication",
              f"{entry['lines']}-line {entry['kind']} block [{digest}] is "
              f"byte-identical across {len(entry['skills'])} skills: "
-             f"{', '.join(entry['sites'])} — allowlist it with a reason if the "
+             f"{', '.join(entry['sites'])}. Allowlist it with a reason if the "
              f"copy is deliberate")
 
 
@@ -530,8 +531,8 @@ def _containment(a, b):
 
 def check_near_duplicate_code_blocks():
     """Same intent as the byte-identical check, one step looser: the repo-map
-    bash, before it was given one home, was triplicated across fix-pr-review,
-    harden-plan and review-pr and evaded that check because the copies differed
+    bash, before it was given one home, was duplicated across fix-pr-review
+    and review-pr and evaded that check because the copies differed
     by a leading comment, an indent, and one awk string. Clusters are keyed on
     the longest member's normalized digest so they can be allowlisted through
     DUPLICATE_ALLOWLIST like any other."""
@@ -577,7 +578,7 @@ def check_near_duplicate_code_blocks():
         warn("duplication",
              f"{len(longest[2])}-line code block [{digest}] is near-identical "
              f"across {len(skills)} skills once comments and indentation are "
-             f"normalized: {sites} — the hash check above cannot see this one; "
+             f"normalized: {sites}. The hash check above cannot see this one; "
              f"allowlist it with a reason if the copy is deliberate")
 
 
@@ -625,7 +626,7 @@ def check_global_rules_mirror_drift():
     live = read(LIVE_GLOBAL_RULES)
     if live is None:
         note("reference/CLAUDE.md",
-             f"mirror drift check skipped — {LIVE_GLOBAL_RULES} is not on this "
+             f"mirror drift check skipped. {LIVE_GLOBAL_RULES} is not on this "
              f"machine. The live file is user-local, so this check only runs "
              f"where it exists")
         return
@@ -648,7 +649,7 @@ def check_global_rules_mirror_drift():
     warn("reference/CLAUDE.md",
          f"has drifted from {LIVE_GLOBAL_RULES}: {mirror_only} line(s) only in "
          f"the mirror, {live_only} only in the live file, across "
-         f"{len(sections)} section(s) — {shown}"
+         f"{len(sections)} section(s), {shown}"
          f"{f' (+{hidden} more)' if hidden > 0 else ''}. Line 1 claims the file "
          f"is a copy and other skills cite it as one")
 
@@ -711,7 +712,7 @@ def check_cross_skill_fields():
             warn("cross-skill", f"`{field}` in review-pr but absent from fix-pr-review")
     if "class_sweep:" in fp_t:
         fail("cross-skill",
-             "fix-pr-review still uses `class_sweep:` — review-pr emits "
+             "fix-pr-review still uses `class_sweep:`. Review-pr emits "
              "`class_completeness:`; the receiver cannot parse the sender")
     if "blast_radius" in fp_t:
         fail("cross-skill", "`blast_radius` should be retired (written once, read nowhere)")
@@ -754,6 +755,132 @@ def check_dangling_refs():
                     fail(rel(path), f"line {i}: points at skill `{m.group(1)}` (not installed)")
 
 
+# --- skill registry consistency (FAIL) -------------------------------------
+
+def check_skill_registry():
+    """`npx skills add` discovers `skills/<name>/SKILL.md` with `name` and
+    `description` frontmatter, so a directory without one is invisible to the
+    installer: a bare folder count then disagrees with `npx skills add -l`
+    and nothing says why. Non-skill material lives outside `skills/` and is
+    listed in the README Bundled-tooling table, so anything SKILL.md-less
+    left directly under `skills/` is a packing error and fails here. This
+    check keeps the registries in agreement so the next addition, rename, or
+    removal cannot reintroduce the confusion silently: the SKILL.md set
+    against the README Skills table and Usage block, with every non-skill
+    directory under `skills/` accounted for in the Bundled-tooling table.
+    Only flat, public skills are supported: a root SKILL.md, a nested one, or
+    a `metadata.internal` hidden skill fails outright instead of slipping
+    past the comparison."""
+    readme_path = ROOT.parent / "README.md"
+    try:
+        readme = readme_path.read_text(encoding="utf-8")
+    except OSError:
+        fail("registry", f"{readme_path} is unreadable, cannot check the skill registry")
+        return
+    installable = {p.name for p in ROOT.iterdir()
+                   if p.is_dir() and (p / "SKILL.md").exists()}
+    present = {p.name for p in ROOT.iterdir() if p.is_dir()}
+    tooling = present - installable
+
+    if (ROOT.parent / "SKILL.md").exists():
+        fail("registry", "a root SKILL.md exists. The installer discovers it, "
+                         "but the README Skills table cannot name it and no "
+                         "skill directory owns it. This repo supports only "
+                         "flat skills under skills/")
+    for path in sorted(ROOT.rglob("SKILL.md")):
+        if path.parent.parent != ROOT:
+            fail("registry", f"`{rel(path)}` is nested. The installer walks "
+                             f"catalog layouts the README table does not "
+                             f"model. This repo supports only flat "
+                             f"`skills/<name>/SKILL.md` skills")
+    for skill in SKILLS:
+        lines = read(skill / "SKILL.md") or []
+        frontmatter = ""
+        if len(lines) > 1 and lines[0].strip() == "---":
+            end = next((i for i, line in enumerate(lines[1:], 1)
+                        if line.strip() == "---"), None)
+            frontmatter = "\n".join(lines[1:end]) if end else ""
+        if re.search(r"^\s*internal:\s*(true|True|TRUE)\b\s*(#.*)?$",
+                      frontmatter, re.M):
+            fail("registry", f"`{skill.name}` sets a truthy `metadata.internal`, "
+                             f"so the default installer listing hides it while "
+                             f"the README table shows it. This repo supports "
+                             f"only public skills")
+
+    def _section(head):
+        start = readme.find(head)
+        if start < 0:
+            return None
+        body = readme[start + len(head):]
+        nxt = body.find("\n## ")
+        return body[:nxt] if nxt >= 0 else body
+
+    table_section = _section("## Skills (slash commands)")
+    if table_section is None:
+        fail("registry", "README has no `## Skills (slash commands)` section")
+    else:
+        table = set(re.findall(r"^\|\s*`([a-z0-9-]+)`", table_section, re.M))
+        for name in sorted(installable - table):
+            fail("registry", f"`{name}` has a SKILL.md but no row in the README "
+                             f"Skills table, so the README undercounts what "
+                             f"`npx skills add` installs")
+        for name in sorted(table - installable):
+            fail("registry", f"README Skills table lists `{name}` but "
+                             f"`skills/{name}/SKILL.md` does not exist, so the "
+                             f"README overcounts what `npx skills add` installs")
+
+    usage_section = _section("## Usage")
+    if usage_section is None:
+        fail("registry", "README has no `## Usage` section, so the "
+                         "slash-command index is missing entirely")
+    else:
+        commands = set(re.findall(r"^/([a-z0-9-]+)\b", usage_section, re.M))
+        for name in sorted(installable - commands):
+            fail("registry", f"`{name}` has a SKILL.md but no `/`-command line "
+                             f"in the README Usage block, so an installed skill "
+                             f"has no documented invocation")
+        for name in sorted(commands - installable):
+            fail("registry", f"README Usage block lists `/{name}` but "
+                             f"`skills/{name}/SKILL.md` does not exist, so the "
+                             f"documented command installs nothing")
+
+    tooling_section = _section("## Bundled tooling")
+    if tooling_section is None:
+        if tooling:
+            fail("registry", f"README has no `## Bundled tooling` section for "
+                             f"{sorted(tooling)}")
+    else:
+        refs = set(re.findall(r"skills/([a-z0-9-]+)/?", tooling_section))
+        for name in sorted(tooling):
+            if name not in refs:
+                fail("registry", f"`skills/{name}/` has no SKILL.md, so `npx skills "
+                                 f"add` never lists it, but the README Bundled-tooling "
+                                 f"table does not account for it either. A bare folder "
+                                 f"count then disagrees with the installer with no "
+                                 f"explanation. List it under `## Bundled tooling` or "
+                                 f"give it a SKILL.md")
+        for name in sorted(refs):
+            if name not in present:
+                fail("registry", f"README Bundled-tooling table points at "
+                                 f"`skills/{name}/`, which does not exist")
+            elif name in installable:
+                fail("registry", f"`skills/{name}/` has a SKILL.md, so it is an "
+                                 f"installable skill, but the README lists it as "
+                                 f"bundled tooling")
+        for name in sorted(set(re.findall(r"^\|\s*`([a-z0-9-]+)/`",
+                                          tooling_section, re.M))):
+            if not (ROOT.parent / name).is_dir():
+                fail("registry", f"README Bundled-tooling table lists `{name}/` "
+                                 f"but it does not exist at the repo root. The "
+                                 f"bootstrap documentation points at nothing")
+
+    note("registry", f"{len(installable)} installable skills "
+                     f"({', '.join(sorted(installable))}); "
+                     f"{len(tooling)} bundled-tooling director"
+                     f"{'ies' if len(tooling) != 1 else 'y'} "
+                     f"({', '.join(sorted(tooling)) or 'none'})")
+
+
 def check_subagent_relative_paths():
     """A `references/...` path inside a fenced block is subagent-facing. Subagents
     inherit the user's repo as cwd, so a bare relative path silently resolves to
@@ -768,8 +895,8 @@ def check_subagent_relative_paths():
                 depth ^= 1
                 continue
             if depth and re.search(r"(?<!SKILL_DIR>/)(?<!/)\breferences/[a-z0-9-]+\.md", l):
-                fail(rel(path), f"line {i}: bare `references/...` inside a prompt block "
-                                f"— subagents cannot resolve it; use <SKILL_DIR>/references/")
+                fail(rel(path), f"line {i}: bare `references/...` inside a prompt block. "
+                                f"Subagents cannot resolve it; use <SKILL_DIR>/references/")
 
 
 def check_forbidden_prefix_sync():
@@ -791,7 +918,7 @@ def check_forbidden_prefix_sync():
     b = re.search(r"`{3}\s*\n(\s*Thanks[^`]*?)`{3}", rt, re.S)
     if not b:
         fail("fix-pr-review",
-             "triage-rubric.md no longer carries the forbidden-prefix list — the "
+             "triage-rubric.md no longer carries the forbidden-prefix list. The "
              "subagent writes replies it cannot see the spec for")
         return
     mirrored = words(b.group(1))
@@ -842,7 +969,7 @@ def check_review_pr_ratio_naming():
     n = len(re.findall(r"regression_share|cascade_share|`caused_by` share", t))
     names = set(re.findall(r"(regression_share|cascade_share)", t))
     if len(names) > 1:
-        fail("review-pr", f"two names for one ratio: {sorted(names)} — collapse to cascade_share")
+        fail("review-pr", f"two names for one ratio: {sorted(names)}. Collapse to cascade_share")
 
 
 def check_review_pr_severity_line():
@@ -851,7 +978,7 @@ def check_review_pr_severity_line():
         return
     for i, l in enumerate(ls, 1):
         if "Severity wins" in l and "Critical" not in l:
-            fail("review-pr", f"line {i}: severity ladder omits Critical — {l.strip()[:70]}")
+            fail("review-pr", f"line {i}: severity ladder omits Critical. {l.strip()[:70]}")
 
 
 MARKERS = {"FAIL": "x", "WARN": "!", "INFO": "-"}
@@ -869,6 +996,145 @@ def _emit(label, items):
             where = tag[len(group) + 1:]
             print(f"    {MARKERS[label]} {where + ': ' if where else ''}{msg}")
     print()
+
+
+
+# --- shell chain across bash fences (repo-wide, FAIL) ----------------------
+
+BASH_FENCE = re.compile(r"^(\s*)(`{3,})bash\s*$")
+ANY_FENCE_OPEN = re.compile(r"^\s*(`{3,})\S*\s*$")
+SHELL_BUILTINS = {
+    "IFS", "PATH", "HOME", "PWD", "OLDPWD", "SHELL", "USER", "PS1", "PS2",
+    "RANDOM", "REPLY", "SECONDS", "LINENO", "BASH_SOURCE", "FUNCNAME",
+    "GITHUB_TOKEN", "GH_TOKEN", "EDITOR", "TMPDIR", "LANG", "LC_ALL",
+}
+
+
+def _fenced_spans(lines):
+    """Yield (open_index, close_index, ticks, is_bash) for every fenced block.
+
+    A closing fence must be at least as long as the one that opened it, which is
+    what lets a four-backtick block legally contain three-backtick fences."""
+    out, i = [], 0
+    while i < len(lines):
+        m = ANY_FENCE_OPEN.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        ticks = m.group(1)
+        is_bash = bool(BASH_FENCE.match(lines[i]))
+        j = i + 1
+        while j < len(lines):
+            c = re.match(rf"^\s*{ticks[0]}{{{len(ticks)},}}\s*$", lines[j])
+            if c:
+                break
+            j += 1
+        out.append((i, min(j, len(lines)), ticks, is_bash))
+        i = j + 1
+    return out
+
+
+def _bash_blocks(lines):
+    """Yield (first_body_line_number, body_lines) for every bash fence.
+
+    The line number is 1-based and points at the first line of the body, not at
+    the fence, so a reported finding lands on the offending command."""
+    return [(o + 2, lines[o + 1:c]) for o, c, _t, is_bash in _fenced_spans(lines)
+            if is_bash]
+
+
+def check_placeholder_consistency():
+    """`$NAME` means an earlier block put it in this shell; `<NAME>` means the
+    reader substitutes it here. A name written both ways means one of the two
+    is dead, and nothing reports which. That is how a producer block can set a
+    variable no consumer ever reads while the document still looks wired up."""
+    for path in EVERY_MD:
+        lines = read(path) or []
+        shell, token = set(), set()
+        for _, body in _bash_blocks(lines):
+            text = "\n".join(body)
+            shell |= set(re.findall(r"\$\{?([A-Z][A-Z0-9_]{1,})\b", text))
+            token |= set(re.findall(r"<([A-Z][A-Z0-9_]{1,})>", text))
+        for name in sorted((shell & token) - SHELL_BUILTINS):
+            fail(rel(path),
+                 f"`{name}` is written as both `${name}` and `<{name}>` in bash "
+                 f"blocks. One form is dead: either the assignment has no reader "
+                 f"or the paste token has no producer. Pick one and say which in "
+                 f"prose")
+
+
+def check_bash_block_chain():
+    """Derived from the fence bodies, so there is no declaration to fall out of
+    date. Catches the three shapes that survived nine review rounds on
+    triage-board: a function defined and never called, and a variable read with
+    no assignment anywhere and no `:?` guard to fail loudly when it is unset.
+
+    A function named anywhere in the prose counts as called. review-pr defines
+    a cleanup helper and invokes it only from instruction text, which is a
+    legitimate shape in a document meant for an agent to follow.
+
+    A variable assigned and read inside one block is ordinary and is not
+    reported; requiring the read to land in a later block flagged 55 legitimate
+    uses across the repo and buried the three real findings.
+
+    The unset-read rule warns rather than fails. Several skills assign a value
+    in prose and read it in a fence, which is a real gap but an established
+    convention, and failing 15 pre-existing instances would gate every future
+    PR on other people's skills."""
+    for path in EVERY_MD:
+        lines = read(path) or []
+        blocks = _bash_blocks(lines)
+        if not blocks:
+            continue
+        assigned, read_at, guarded = {}, {}, {}
+        defined, called = {}, set()
+        for start, body in blocks:
+            text = "\n".join(body)
+            for offset, line in enumerate(body):
+                at = start + offset
+                for m in re.finditer(
+                        r"(?:^|[;&|]|\b(?:then|do|else)\s)\s*([A-Z][A-Z0-9_]{1,})=",
+                        line):
+                    assigned.setdefault(m.group(1), (at, m.start(1)))
+                for m in re.finditer(r"\$\{([A-Z][A-Z0-9_]{1,}):[?]", line):
+                    guarded.setdefault(m.group(1), (at, m.start(1)))
+                for m in re.finditer(r"\$\{?([A-Z][A-Z0-9_]{1,})\b", line):
+                    read_at.setdefault(m.group(1), (at, m.start(1)))
+            for m in re.finditer(r"^\s*([a-z_][a-z0-9_]*)\s*\(\)\s*\{", text, re.M):
+                defined.setdefault(m.group(1), start)
+            for line in text.split("\n"):
+                if re.match(r"^\s*[a-z_][a-z0-9_]*\s*\(\)", line):
+                    continue
+                m = re.match(r"^\s*([a-z_][a-z0-9_]*)\b", line)
+                if m:
+                    called.add(m.group(1))
+                called |= set(re.findall(r"[|&]{2}\s*([a-z_][a-z0-9_]*)\b", line))
+
+        for name, pos in sorted(read_at.items()):
+            if name in SHELL_BUILTINS:
+                continue
+            r_line = pos[0]
+            a = assigned.get(name)
+            g = guarded.get(name)
+            if (a is not None and a <= pos) or (g is not None and g <= pos):
+                continue
+            warn(rel(path),
+                 f"`${name}` is read at line {r_line} with no `{name}=` in any "
+                 f"bash block and no `${{{name}:?}}` guard. Unset it expands to "
+                 f"empty and the command runs against the wrong target instead "
+                 f"of failing. WARN rather than FAIL because several skills "
+                 f"assign in prose and read in a fence by convention")
+
+        fenced = set()
+        for o, c, _t, _b in _fenced_spans(lines):
+            fenced |= set(range(o, min(c, len(lines)) + 1))
+        prose = "\n".join(l for i, l in enumerate(lines) if i not in fenced)
+        for name, d_line in sorted(defined.items()):
+            if name in called or re.search(rf"\b{re.escape(name)}\b", prose):
+                continue
+            fail(rel(path),
+                 f"`{name}()` is defined at line {d_line} and never called. A "
+                 f"function nothing invokes is the defect this check exists for")
 
 
 def main():
@@ -895,9 +1161,12 @@ def main():
     check_orphan_reference_files()
     check_reference_files_exist()
     check_dangling_refs()
+    check_skill_registry()
     check_cross_skill_duplication()
     check_near_duplicate_code_blocks()
     check_global_rules_mirror_drift()
+    check_placeholder_consistency()
+    check_bash_block_chain()
 
     check_status_values()
     check_banned_status_words()
@@ -977,7 +1246,7 @@ def check_field_chains():
         req, emit = _required(field), _emitted(field)
         if req and not emit:
             fail("chain", f"`{field}` is required at {req[0]} but no template "
-                          f"anywhere emits it — validation can never pass")
+                          f"anywhere emits it. Validation can never pass")
 
 
 def check_required_field_in_all_item_blocks():
@@ -1008,7 +1277,7 @@ def check_required_field_in_all_item_blocks():
             if field not in body:
                 fail("chain", f"`{field}` is required of every item but is absent "
                               f"from the `{block}` block of triage-prompt.md "
-                              f"(lines {s}-{e}) — the plan fails validation and aborts")
+                              f"(lines {s}-{e}). The plan fails validation and aborts")
 
 
 def check_compute_before_read():
@@ -1030,7 +1299,7 @@ def check_compute_before_read():
                 if target > cur:
                     fail(rel(path),
                          f"line {i}: Phase {cur} defers to a value \"computed in "
-                         f"Phase {target}\" — Phase {cur} runs first, so it does not "
+                         f"Phase {target}\". Phase {cur} runs first, so it does not "
                          f"exist yet: {l.strip()[:70]}")
 
 
