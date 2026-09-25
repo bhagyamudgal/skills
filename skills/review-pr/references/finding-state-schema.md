@@ -168,8 +168,8 @@ One id, not a list — the single *nearest* cause. When several closed findings 
 ```
 
 - **`resolved`**: subagent saw the fix in the diff between `commit_sha_resolved` and the prior round's HEAD, **and** every `class_sites` entry is `handled: true`. A fix that lands on the cited site while a sibling site stays unhandled leaves the finding `active`. No automated writer sets this today — see the writer caveat at the end of "Phase 4 — write back".
-- **`dismissed`**: an explicit disposition imported from prior state or a downstream triage workflow. `dismissal_reason` is required. `/review-pr` never creates this status by deselecting a finding.
-- **`wontfix`**: user rejected the finding as wrong / out-of-scope. `dismissal_reason` is required (e.g., "intentional design — see the linked design issue").
+- **`dismissed`**: an explicit disposition imported from prior state, a downstream triage workflow, or a Phase 1 author-reply read (a resolved thread whose human reply carries a rationale plus pointer, see "Build the prior-review timeline" in SKILL.md). `dismissal_reason` is required. `/review-pr` never creates this status by deselecting a finding.
+- **`wontfix`**: user rejected the finding as wrong / out-of-scope, either imported or recorded from a Phase 1 author-reply read. `dismissal_reason` is required (e.g., "intentional design — see the linked design issue").
 - **`regression`**: subagent emits a finding whose `id` matches an existing `resolved` entry, AND the diff shows the resolving code was reverted/edited. Treat as a fresh active finding but keep the history.
 - **`dismissed`/`wontfix` → `active`**: the code condition recorded in `depends_on` no longer holds at the current head, so the rationale that closed the finding no longer applies. Reopen as `active`; keep `dismissal_reason` and the original `round_resolved` as history, and note which commit voided the condition. There is no separate "voided" status — a void dismissal is just an open finding again.
 
@@ -333,7 +333,7 @@ State transitions written by Phase 4:
 | `dismissed`/`wontfix` | yes (suppressed)   | (n/a)        | unchanged (suppressed in Phase 3 step 4.95) |
 | `dismissed`/`wontfix`, `depends_on` condition voided at current head | (n/a) | (n/a) | `active` (reopened; `dismissal_reason` + `round_resolved` kept as history) |
 
-An external triage workflow may import `dismissed` or `wontfix` before Phase 4 loads prior state. Phase 4 preserves those dispositions or reopens them when `depends_on` no longer holds; it never creates either disposition.
+An external triage workflow may import `dismissed` or `wontfix` before Phase 4 loads prior state. Phase 4 preserves those dispositions or reopens them when `depends_on` no longer holds; it never creates either disposition. The one other writer is Phase 1, which records author thread replies as `dismissed`/`wontfix` per "Build the prior-review timeline" in SKILL.md.
 
 **Writer caveat — `resolved` has no automated writer yet.** Every other transition in the table above is written by Phase 4 write-back, which is also the only writer of `class_sites`. `resolved` is the exception: `/fix-pr-review` applies fixes and resolves the GitHub threads, but it never opens this file — it has no `review-state` code path at all. Wiring that write-back into `/fix-pr-review` (locate the state file, match its FIX items to entries, check the gate, write) is follow-up work, out of scope here.
 

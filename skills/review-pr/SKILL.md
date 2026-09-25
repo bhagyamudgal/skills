@@ -118,7 +118,7 @@ query($owner:String!, $repo:String!, $num:Int!) {
       reviewThreads(first:100) {
         nodes {
           id isResolved isOutdated path line
-          comments(first:5) {
+          comments(first:20) {
             nodes {
               databaseId author { login } body createdAt
               pullRequestReview { id submittedAt commit { oid } state }
@@ -143,10 +143,12 @@ prior_findings:
     is_resolved: <bool>
     is_outdated: <bool — later commits invalidated the line>
     body_excerpt: <first 200 chars>
+    author_rationale: <none | design-decision | out-of-scope | refuted-with-evidence | fix-promised, read from human replies AFTER the first comment; bot replies never count>
+    rationale_pointer: <doc path, ADR, issue number, or test name cited in the reply, or none>
     resolution_state: open | resolved | outdated | stale
 ```
 
-This enables (a) accurate dedupe in Phase 3, (b) "Resolved but still present" detection (thread closed but code still exhibits the issue → flag with `Category: Prior-finding-correction`).
+This enables (a) accurate dedupe in Phase 3, (b) reply-aware reopening. A resolved thread whose code still exhibits the issue is not automatically a regression. Read every human reply on the thread first. When the author gave a rationale with a pointer, one of design-decision (points at a doc, ADR, or issue), out-of-scope (points at a follow-up issue), or refuted-with-evidence (names a test, measurement, or counterexample), record the finding as `dismissed` or `wontfix` in the state file with that rationale in `dismissal_reason` and the code condition it rests on in `depends_on`, and do not re-raise it. Re-raise with `Category: Prior-finding-correction` only when the thread has no human reply, the reply promised a fix the diff shows never landed, or a later commit voided `depends_on`.
 
 ### Load review-state (multi-round dedup)
 
