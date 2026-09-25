@@ -14,6 +14,7 @@ query($owner:String!, $repo:String!, $num:Int!, $after:String = null) {
         nodes {
           id isResolved isOutdated path line
           comments(first:20) {
+            pageInfo { hasNextPage endCursor }
             nodes {
               databaseId author { login } body createdAt
               pullRequestReview { id submittedAt commit { oid } state }
@@ -27,6 +28,27 @@ query($owner:String!, $repo:String!, $num:Int!, $after:String = null) {
 ```
 
 Paginate: while `pageInfo.hasNextPage` is true, repeat with `-f after=<endCursor>` and accumulate every page before building the timeline. Past 100 threads an unpaginated fetch silently drops history the dedupe needs.
+
+Paginate thread comments the same way, per thread. After the thread list is complete, for every thread whose comments `pageInfo.hasNextPage` is true, fetch the remaining pages before classifying anything:
+
+```bash
+gh api graphql -f query='
+query($threadId:ID!, $after:String = null) {
+  node(id:$threadId) {
+    ... on PullRequestReviewThread {
+      comments(first:100, after:$after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          databaseId author { login } body createdAt
+          pullRequestReview { id submittedAt commit { oid } state }
+        }
+      }
+    }
+  }
+}' -f threadId=<thread id> -f after=<endCursor>
+```
+
+Accumulate every page per thread. Never classify a thread as having no human reply while its comments connection still has an unfetched page: an unseen page may hold the rationale.
 
 Build:
 
@@ -84,6 +106,14 @@ CURRENT_ROUND=$(( $(echo "$PRIOR_STATE" | yq '.last_round') + 1 ))
 ```
 
 `PRIOR_STATE.findings` is passed into Subagent 1's prompt (filtered to `status in {resolved, dismissed, wontfix}`) so the reviewer suppresses already-handled findings upfront. Phase 3 step 4.95 enforces this as a safety net.
+
+### Record author rationale (reply-aware dispositions)
+
+Do this after state load, before Phase 2 dispatch. For every timeline entry whose `author_rationale` is not `none` and not `fix-promised`:
+
+1. Match the timeline `thread_id` to the state entry whose `github_thread_id` equals it. No match means the finding predates thread-ID tracking: do not create an entry (an entry without a stable `file`/`enclosing_symbol`/`rule_class` identity cannot dedupe). Log `no state entry matches thread <thread_id>, leaving for normal review flow` and let reviewers judge the thread on its merits.
+2. On a match, set the entry deterministically: `out-of-scope` becomes `wontfix`; `design-decision` or `refuted-with-evidence` becomes `dismissed`. Write `dismissal_reason` as the rationale plus its pointer, `depends_on` as the code condition the rationale rests on, and refresh `updated_at`. Leave round counters untouched.
+3. Entries written here enter Phase 3 as `dismissed`/`wontfix` and suppress normally; a later commit that voids `depends_on` reopens them through the existing rule, not through a new finding.
 
 ### Run-over-run cache check
 
