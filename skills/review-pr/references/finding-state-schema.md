@@ -167,9 +167,8 @@ One id, not a list: the single *nearest* cause. When several closed findings cou
    is void and the finding reopens as active)
 ```
 
-- **`resolved`**: subagent saw the fix in the diff between `commit_sha_resolved` and the prior round's HEAD, **and** every `class_sites` entry is `handled: true`. A fix that lands on the cited site while a sibling site stays unhandled leaves the finding `active`. No automated writer sets this today. See the writer caveat at the end of "Phase 4: write back" in `finding-state-phase4.md`.
-- **`dismissed`**: an explicit disposition imported from prior state or a downstream triage workflow. `dismissal_reason` is required. `/review-pr` never creates this status by deselecting a finding.
-- **`wontfix`**: user rejected the finding as wrong / out-of-scope. `dismissal_reason` is required (e.g., "intentional design, see the linked design issue").
+- **`dismissed`**: an explicit disposition imported from prior state, a downstream triage workflow, or a Phase 1 author-reply read (a resolved thread whose human reply carries a rationale plus pointer, see "Build the prior-review timeline" in `references/phase1-timeline-state.md`). `dismissal_reason` is required. `/review-pr` never creates this status by deselecting a finding.
+- **`wontfix`**: user rejected the finding as wrong / out-of-scope, either imported or recorded from a Phase 1 author-reply read. `dismissal_reason` is required (e.g., "intentional design, see the linked design issue").
 - **`regression`**: subagent emits a finding whose `id` matches an existing `resolved` entry, AND the diff shows the resolving code was reverted/edited. Treat as a fresh active finding but keep the history.
 - **`dismissed`/`wontfix` → `active`**: the code condition recorded in `depends_on` no longer holds at the current head, so the rationale that closed the finding no longer applies. Reopen as `active`; keep `dismissal_reason` and the original `round_resolved` as history, and note which commit voided the condition. There is no separate "voided" status. A void dismissal is just an open finding again.
 
@@ -309,4 +308,5 @@ For each remaining finding:
     - If `status in {dismissed, wontfix}`: drop with reason: `prior-state suppression, <status> in round <round_resolved>: "<dismissal_reason>"`.
 
 Phase 4 writes everything back per `${CLAUDE_SKILL_DIR}/references/finding-state-phase4.md`, loaded then. Past 50 state files, 30-day-untouched ones are swept there too, disk-only; run that sweep on Phase 1 startup when the state directory is non-empty.
+
 

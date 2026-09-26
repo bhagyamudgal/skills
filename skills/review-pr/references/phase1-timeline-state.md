@@ -13,7 +13,8 @@ query($owner:String!, $repo:String!, $num:Int!, $after:String = null) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id isResolved isOutdated path line
-          comments(first:5) {
+          comments(first:20) {
+            pageInfo { hasNextPage endCursor }
             nodes {
               databaseId author { login } body createdAt
               pullRequestReview { id submittedAt commit { oid } state }
@@ -28,6 +29,27 @@ query($owner:String!, $repo:String!, $num:Int!, $after:String = null) {
 
 Paginate: while `pageInfo.hasNextPage` is true, repeat with `-f after=<endCursor>` and accumulate every page before building the timeline. Past 100 threads an unpaginated fetch silently drops history the dedupe needs.
 
+Paginate thread comments the same way, per thread. After the thread list is complete, for every thread whose comments `pageInfo.hasNextPage` is true, fetch the remaining pages before classifying anything:
+
+```bash
+gh api graphql -f query='
+query($threadId:ID!, $after:String = null) {
+  node(id:$threadId) {
+    ... on PullRequestReviewThread {
+      comments(first:100, after:$after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          databaseId author { login } body createdAt
+          pullRequestReview { id submittedAt commit { oid } state }
+        }
+      }
+    }
+  }
+}' -f threadId=<thread id> -f after=<endCursor>
+```
+
+Accumulate every page per thread. Never classify a thread as having no human reply while its comments connection still has an unfetched page: an unseen page may hold the rationale.
+
 Build:
 
 ```
@@ -41,10 +63,12 @@ prior_findings:
     is_outdated: <bool: later commits invalidated the line>
     author_login: <thread author login>
     body_excerpt: <first 200 chars>
+    author_rationale: <none | design-decision | out-of-scope | refuted-with-evidence | fix-promised, read from human replies AFTER the first comment; bot replies never count>
+    rationale_pointer: <doc path, ADR, issue number, or test name cited in the reply, or none>
     resolution_state: open | resolved | outdated | stale
 ```
 
-This enables (a) accurate dedupe in Phase 3, (b) "Resolved but still present" detection (thread closed but code still exhibits the issue → flag with `Category: Prior-finding-correction`).
+This enables (a) accurate dedupe in Phase 3, (b) reply-aware reopening. A resolved thread whose code still exhibits the issue is not automatically a regression. Read every human reply on the thread first. When the author gave a rationale with a pointer, one of design-decision (points at a doc, ADR, or issue), out-of-scope (points at a follow-up issue), or refuted-with-evidence (names a test, measurement, or counterexample), record the finding as `dismissed` or `wontfix` in the state file with that rationale in `dismissal_reason` and the code condition it rests on in `depends_on`, and do not re-raise it. Re-raise with `Category: Prior-finding-correction` only when the thread has no human reply, the reply promised a fix the diff shows never landed, or a later commit voided `depends_on`.
 
 ### Derive `OPEN_BLOCKERS`
 
@@ -82,6 +106,14 @@ CURRENT_ROUND=$(( $(echo "$PRIOR_STATE" | yq '.last_round') + 1 ))
 ```
 
 `PRIOR_STATE.findings` is passed into Subagent 1's prompt (filtered to `status in {resolved, dismissed, wontfix}`) so the reviewer suppresses already-handled findings upfront. Phase 3 step 4.95 enforces this as a safety net.
+
+### Record author rationale (reply-aware dispositions)
+
+Do this after state load, before Phase 2 dispatch. For every timeline entry whose `author_rationale` is not `none` and not `fix-promised`:
+
+1. Match the timeline `thread_id` to the state entry whose `github_thread_id` equals it. No match means the finding predates thread-ID tracking: do not create an entry (an entry without a stable `file`/`enclosing_symbol`/`rule_class` identity cannot dedupe). Log `no state entry matches thread <thread_id>, leaving for normal review flow` and let reviewers judge the thread on its merits.
+2. On a match, set the entry deterministically: `out-of-scope` becomes `wontfix`; `design-decision` or `refuted-with-evidence` becomes `dismissed`. Write `dismissal_reason` as the rationale plus its pointer, `depends_on` as the code condition the rationale rests on, and refresh `updated_at`. Leave round counters untouched.
+3. Entries written here enter Phase 3 as `dismissed`/`wontfix` and suppress normally; a later commit that voids `depends_on` reopens them through the existing rule, not through a new finding.
 
 ### Run-over-run cache check
 

@@ -31,7 +31,7 @@ Phase 4 writes these state transitions:
 | `dismissed`/`wontfix` | yes (suppressed)   | (n/a)        | unchanged (suppressed in Phase 3 step 4.95) |
 | `dismissed`/`wontfix`, `depends_on` condition voided at current head | (n/a) | (n/a) | `active` (reopened; `dismissal_reason` + `round_resolved` kept as history) |
 
-An external triage workflow may import `dismissed` or `wontfix` before Phase 4 loads prior state. Phase 4 preserves those dispositions or reopens them when `depends_on` no longer holds; it never creates either disposition.
+An external triage workflow may import `dismissed` or `wontfix` before Phase 4 loads prior state. Phase 4 preserves those dispositions or reopens them when `depends_on` no longer holds; it never creates either disposition. The one other writer is Phase 1, which records author thread replies as `dismissed`/`wontfix` per "Build the prior-review timeline" in `phase1-timeline-state.md`.
 
 **Writer caveat: `resolved` has no automated writer yet.** Every other transition in the table above is written by Phase 4 write-back, which is also the only writer of `class_sites`. `resolved` is the exception: `/fix-pr-review` applies fixes and resolves the GitHub threads, but it never opens this file. It has no `review-state` code path at all. Wiring that write-back into `/fix-pr-review` (locate the state file, match its FIX items to entries, check the gate, write) is follow-up work, out of scope here.
 
