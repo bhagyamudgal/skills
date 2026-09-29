@@ -79,7 +79,7 @@ Every row below is one installable skill (`skills/<name>/SKILL.md`, which is wha
 | `project-discovery` | Discovery interview before writing code on a new project. Interrogate requirements and stack, then emit `CLAUDE.md`, `PATTERNS.md` and the `lib/` scaffolding |
 | `discover-product-domain` | Generate through independent naming lenses, remix with the user, and verify their exact standard-price `.com` domains |
 | `design-director` | Senior creative-director direction. Eight modes cover brief simplification, staged logo work, layout, typography, color, critique, brand identity, and production asset finalization |
-| `browser-qa` | Drive a real browser through a UI flow with Playwright MCP. Screenshot every step, check network and console, and account for every step with PASS or FAIL |
+| `browser-qa` | Drive a real browser through a UI flow, or exercise an API endpoint directly. Screenshot every step of the flow, check network and console, and account for each step with PASS or FAIL. Tabulate every endpoint case as PASS, FAIL or BLOCKED in a QA Test Results report |
 | `reuse-first` | Search-first discipline before writing any new utility, type, schema, component, hook, or constant, with a 3-layer search you must print, the reuse ladder, and fork smells |
 | `backend-perf` | Performance checklist for backend endpoints and DB queries. Walk every check and name a verdict on each. A check you did not name is a check you did not run |
 | `systematic-debugging` | Four-phase root-cause loop for mid-debugging discipline, where no fix lands without an understood cause, every phase ends on a checkable bar, and bandaid budget is zero |
@@ -122,7 +122,7 @@ Several skills use progressive disclosure. `SKILL.md` holds the spine, and branc
 /fix-pr-review       # Triage and apply CodeRabbit / review-pr findings
 /audit-ticket <n>    # Audit a stale issue against current code, then update or sunset it
 /fix-ts-errors       # Fix TypeScript errors, loop until the workspace check is green
-/browser-qa          # Drive a UI flow in a real browser
+/browser-qa          # Drive a UI flow in a real browser, or run endpoint QA with tabulated results
 /grill-me            # Interview-style plan/design refinement, then fact-check against the codebase
 /project-discovery   # Plan a new project
 /discover-product-domain  # Generate, remix, and verify product .com names

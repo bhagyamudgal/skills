@@ -141,6 +141,14 @@
       "expect": "browser-qa",
       "why": "COLLISION: producing UI boundary evidence belongs to browser-qa; done consumes it only for a completion verdict" },
 
+    { "utterance": "QA the GET /v1/orders endpoint: verify the tab filters, pagination, and error handling, then tabulate the results.",
+      "expect": "browser-qa",
+      "why": "endpoint-QA trigger: a structured API test-results request with no browser flow named still routes to browser-qa after the broadened description" },
+
+    { "utterance": "The /v1/orders endpoint is slow, check it for N+1 queries.",
+      "expect": "backend-perf",
+      "why": "COLLISION: a slow-endpoint performance investigation belongs to backend-perf; browser-qa's broadened endpoint wording must not pull it away" },
+
     { "utterance": "No, VERSION is 2, not 3. Correct that factual mistake.",
       "forbid": "verify-claims",
       "why": "NEGATIVE: a harmless factual correction is not an inference-backed, decision-driving claim. Forbid rather than expect-nothing — done fires legitimately at the end of a correction, and the runner scores the first Skill call" },
