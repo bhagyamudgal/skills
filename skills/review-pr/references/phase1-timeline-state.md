@@ -64,11 +64,12 @@ prior_findings:
     author_login: <thread author login>
     body_excerpt: <first 200 chars>
     author_rationale: <none | design-decision | out-of-scope | refuted-with-evidence | fix-promised, read from human replies AFTER the first comment; bot replies never count>
-    rationale_pointer: <doc path, ADR, issue number, or test name cited in the reply, or none>
+    rationale_pointer: <doc path, ADR, issue number, test name, measurement, or file:line cited in the reply, or none>
+    reply_excerpt: <first 300 chars of the human reply that set author_rationale, or none>
     resolution_state: open | resolved | outdated | stale
 ```
 
-This enables (a) accurate dedupe in Phase 3, (b) reply-aware reopening. A resolved thread whose code still exhibits the issue is not automatically a regression. Read every human reply on the thread first. When the author gave a rationale with a pointer, one of design-decision (points at a doc, ADR, or issue), out-of-scope (points at a follow-up issue), or refuted-with-evidence (names a test, measurement, or counterexample), record the finding as `dismissed` or `wontfix` in the state file with that rationale in `dismissal_reason` and the code condition it rests on in `depends_on`, and do not re-raise it. Re-raise with `Category: Prior-finding-correction` only when the thread has no human reply, the reply promised a fix the diff shows never landed, or a later commit voided `depends_on`.
+This enables (a) accurate dedupe in Phase 3, (b) reply-aware reopening. Read every human reply on every prior thread, open or resolved, before any prior finding is carried, re-verified, or re-raised. An author who answers a finding often leaves the thread open for a human reviewer. Code that still exhibits the issue is not by itself grounds to raise it again. A thread is **answered** when its `author_rationale` is design-decision (points at a doc, ADR, or issue), out-of-scope (points at a follow-up issue), or refuted-with-evidence (names a test, measurement, counterexample, or file:line). A reply without a pointer sets `none`. Record an answered finding as `dismissed` or `wontfix` in the state file with that rationale in `dismissal_reason` and the code condition it rests on in `depends_on`, and do not re-raise it. "The new commits did not touch this code" is never a reason to re-raise an answered finding. The author already said why the code stays. Re-raise with `Category: Prior-finding-correction` only when the thread is not answered, the reply promised a fix the diff shows never landed, a later commit voided `depends_on`, or you have new evidence that a specific claim in `reply_excerpt` is false. A correction on an answered thread quotes the claim it refutes, names the new evidence, and links the prior thread.
 
 ### Derive `OPEN_BLOCKERS`
 
@@ -109,9 +110,9 @@ CURRENT_ROUND=$(( $(echo "$PRIOR_STATE" | yq '.last_round') + 1 ))
 
 ### Record author rationale (reply-aware dispositions)
 
-Do this after state load, before Phase 2 dispatch. For every timeline entry whose `author_rationale` is not `none` and not `fix-promised`:
+Do this after state load, before Phase 2 dispatch. Start `ANSWERED_THREADS` as an empty list; it is a Phase 3 and Phase 4 input only. For every answered timeline entry:
 
-1. Match the timeline `thread_id` to the state entry whose `github_thread_id` equals it. No match means the finding predates thread-ID tracking: do not create an entry (an entry without a stable `file`/`enclosing_symbol`/`rule_class` identity cannot dedupe). Log `no state entry matches thread <thread_id>, leaving for normal review flow` and let reviewers judge the thread on its merits.
+1. Match the timeline `thread_id` to the state entry whose `github_thread_id` equals it. No match happens when the state file is missing, comes from another worktree, or was written without thread IDs. The reply still holds: add the thread to `ANSWERED_THREADS` with its `thread_id`, `file`, `line`, `body_excerpt`, `author_rationale`, `dismissal_reason` (the rationale plus its pointer), and `depends_on` (the code condition the rationale rests on). Phase 3 drops findings that match it per `critic-verify.md` step 3, and Phase 4 writes the state entry from the dropped finding's identity. Never fall back to letting reviewers raise an answered thread again.
 2. On a match, set the entry deterministically: `out-of-scope` becomes `wontfix`; `design-decision` or `refuted-with-evidence` becomes `dismissed`. Write `dismissal_reason` as the rationale plus its pointer, `depends_on` as the code condition the rationale rests on, and refresh `updated_at`. Leave round counters untouched.
 3. Entries written here enter Phase 3 as `dismissed`/`wontfix` and suppress normally; a later commit that voids `depends_on` reopens them through the existing rule, not through a new finding.
 

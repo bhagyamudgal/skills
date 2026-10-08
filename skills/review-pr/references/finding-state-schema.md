@@ -167,7 +167,7 @@ One id, not a list: the single *nearest* cause. When several closed findings cou
    is void and the finding reopens as active)
 ```
 
-- **`dismissed`**: an explicit disposition imported from prior state, a downstream triage workflow, or a Phase 1 author-reply read (a resolved thread whose human reply carries a rationale plus pointer, see "Build the prior-review timeline" in `references/phase1-timeline-state.md`). `dismissal_reason` is required. `/review-pr` never creates this status by deselecting a finding.
+- **`dismissed`**: an explicit disposition imported from prior state, a downstream triage workflow, or a Phase 1 author-reply read (an open or resolved thread whose human reply carries a rationale plus pointer, see "Build the prior-review timeline" in `references/phase1-timeline-state.md`). `dismissal_reason` is required. `/review-pr` never creates this status by deselecting a finding.
 - **`wontfix`**: user rejected the finding as wrong / out-of-scope, either imported or recorded from a Phase 1 author-reply read. `dismissal_reason` is required (e.g., "intentional design, see the linked design issue").
 - **`regression`**: subagent emits a finding whose `id` matches an existing `resolved` entry, AND the diff shows the resolving code was reverted/edited. Treat as a fresh active finding but keep the history.
 - **`dismissed`/`wontfix` → `active`**: the code condition recorded in `depends_on` no longer holds at the current head, so the rationale that closed the finding no longer applies. Reopen as `active`; keep `dismissal_reason` and the original `round_resolved` as history, and note which commit voided the condition. There is no separate "voided" status. A void dismissal is just an open finding again.
@@ -258,7 +258,7 @@ These branches apply only after the contract-version check succeeds.
 2. **New commits since last run**, when cached SHA is an ancestor of HEAD, means PARTIAL re-review:
    - `git diff <last_run_sha>..<CURRENT_HEAD>` (or `gh api compare` cross-repo) for new-commits diff.
    - Dispatch Phase 2 with NEW diff and FULL file context to report findings on new commits only.
-   - Phase 3 merges new findings with cached findings still applicable (re-verify each cached finding against current HEAD; drop with `stale after new commits` if changed).
+   - Phase 3 merges new findings with cached findings still applicable (re-verify each cached finding against current HEAD; drop with `stale after new commits` if changed). Then drop every cached finding whose thread is answered (defined in `phase1-timeline-state.md`), logged `answered in thread <thread_id>: <author_rationale>` for Phase 4 step 2. Unchanged code does not carry an answered finding forward. Unanswered cached findings stay.
    - Phase 4 header: `Mode: partial re-review (N new commits since cached run at <sha>)`.
 
 3. **Cache exists but `last_run_sha` is NOT an ancestor** (force-push, branch reset), **or stored `base_sha` differs from the pinned base OID** (base moved): invalidate cache, full fresh run.
