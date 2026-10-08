@@ -353,7 +353,7 @@ Check every reference against the stashed diff, per the reference. Post-image si
 
 ### 3. Drop already-known
 
-Drop anything Phase 1 already reported unless it carries `Category: Prior-finding-correction`, per the reference.
+Drop anything Phase 1 already reported unless it carries `Category: Prior-finding-correction`, per the reference. A finding whose thread the author answered stays dropped even when the new commits left its code unchanged.
 
 ### 4. Challenge with the 3-prong test
 
@@ -425,11 +425,12 @@ own and V3's alike, arrive after steps 4.55, 4.56 and 4.96 have already run, so 
 carry an empty `Class-sites`, an empty `Inverse risk`, and no `caused_by` unless routed
 back. Route every finding this step adds back through:
 
-1. **4.55**: class-completeness sweep, so `Class-sites: <A>/<N>` is non-empty. Where V1
+1. **3**: drop already-known, including answered threads.
+2. **4.55**: class-completeness sweep, so `Class-sites: <A>/<N>` is non-empty. Where V1
    has already returned, run the sweep inline in main rather than dispatching a second V1;
    the 4-subagent cap still holds.
-2. **4.56**: inverse-risk derivation, so every `Suggested fix:` carries an `Inverse risk:`.
-3. **4.96**: lineage attribution, so `caused_by` is set or explicitly null.
+3. **4.56**: inverse-risk derivation, so every `Suggested fix:` carries an `Inverse risk:`.
+4. **4.96**: lineage attribution, so `caused_by` is set or explicitly null.
 
 `Inverse risk` and `Class-sites` are mandatory on any finding proposing a code change no
 matter which step raised it; a gap-check finding that skips these writes nulls straight

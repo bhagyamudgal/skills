@@ -38,7 +38,10 @@ Verify every finding against the stashed diff regardless of size or severity, in
 
 ### 3. Drop already-known
 
-If a finding matches "Prior findings" from Phase 1 AND is NOT marked `Prior-finding-correction`: DROP, log `already reported in prior review`.
+A match is the same file and the same issue as the prior thread's first comment, and the line may have shifted. Check the answered branch first:
+
+1. The matched thread is answered, as defined in `phase1-timeline-state.md`: keep a `Prior-finding-correction` only if it quotes the reply claim it refutes, names new evidence, and links the thread, and mark it `answered-correction`. Otherwise DROP, log `answered in thread <thread_id>: <author_rationale>`; Phase 4 step 2 reads this log.
+2. Any other match NOT marked `Prior-finding-correction`: DROP, log `already reported in prior review`.
 
 ### 4. Challenge with the 3-prong test
 
