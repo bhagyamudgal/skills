@@ -114,7 +114,7 @@ Do this after state load, before Phase 2 dispatch. Start `ANSWERED_THREADS` as a
 
 1. Match the timeline `thread_id` to the state entry whose `github_thread_id` equals it. No match happens when the state file is missing, comes from another worktree, or was written without thread IDs. The reply still holds: add the thread to `ANSWERED_THREADS` with its `thread_id`, `file`, `line`, `body_excerpt`, `author_rationale`, `dismissal_reason` (the rationale plus its pointer), and `depends_on` (the code condition the rationale rests on). Phase 3 drops findings that match it per `critic-verify.md` step 3, and Phase 4 writes the state entry from the dropped finding's identity. Never fall back to letting reviewers raise an answered thread again.
 2. On a match, set the entry deterministically: `out-of-scope` becomes `wontfix`; `design-decision` or `refuted-with-evidence` becomes `dismissed`. Write `dismissal_reason` as the rationale plus its pointer, `depends_on` as the code condition the rationale rests on, and refresh `updated_at`. Leave round counters untouched.
-3. Entries written here enter Phase 3 as `dismissed`/`wontfix` and suppress normally; a later commit that voids `depends_on` reopens them through the existing rule, not through a new finding.
+3. Entries written here enter Phase 3 as `dismissed`/`wontfix` and suppress normally, except an `answered-correction` per `critic-round2.md` step 4.95; a later commit that voids `depends_on` reopens them through the existing rule, not through a new finding.
 
 ### Run-over-run cache check
 

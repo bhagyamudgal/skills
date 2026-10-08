@@ -119,7 +119,7 @@ If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` f
 
 - Report semantic and codebase-wide defects. CodeRabbit owns style, formatting and naming.
 - Prior findings stay closed. **Exception**: if you believe a prior finding was wrong, report it with `Category: Prior-finding-correction` + concrete explanation. When the timeline shows the author answered that thread, the correction must quote the reply claim it refutes, name new evidence, and link the thread.
-- Findings in `PRIOR_STATE.findings` with `status in {resolved, dismissed, wontfix}` stay closed too. Re-raise one only when the diff shows the resolving code was reverted, and mark the new finding's `status` as `regression`.
+- Findings in `PRIOR_STATE.findings` with `status in {resolved, dismissed, wontfix}` stay closed too. Re-raise one only when the diff shows the resolving code was reverted (mark `status` as `regression`), or as a `Prior-finding-correction` that meets the answered-thread bar above.
 - Raise a conditional issue, like "this COULD become a problem if X", only when X shows as a codebase signal in the diff.
 - Point every finding at a `File: <path>`. Give the line when you can name it on the post-image side; leave it off for module-scope findings, which route to file-level review comments.
 - Raise missing tests only where this PR was expected to add them. Advice that would fit any PR belongs to no PR.
