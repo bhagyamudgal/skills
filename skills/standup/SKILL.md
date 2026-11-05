@@ -32,7 +32,9 @@ Session history is best-effort across Claude, Codex, and OpenCode. Missing store
 
 Write for a **non-technical listener**: a manager, a product owner, a client. Every line answers two questions in everyday words. What changed for the people using the product, and why does that help them?
 
-Before writing a line for an item you authored (Done and In progress), read its PR body: `gh pr view <number> --repo <org>/<repo> --json title,body`. The body holds what the title compresses, namely the effect a user sees and any measured numbers. Carry one number across when the body states one, as a before and after a listener can feel: "opens in 0.04 s instead of 0.75 s", "about 17 times faster". Use only numbers the body states.
+Before writing a line for an item you authored that has a PR (Done and In progress), read its PR body: `gh pr view <number> --repo <org>/<repo> --json title,body`. The body holds what the title compresses, namely the effect a user sees and any measured numbers. Carry one number across when the body states one, as a before and after a listener can feel: "opens in 0.04 s instead of 0.75 s", "about 17 times faster". Use only numbers the body states.
+
+Work without a PR (pushed commits, unpushed commits, uncommitted changes, stashes, session-only tickets) gets its plain line from the gathered commit messages, branch names and session titles. Describe the effect those sources support and leave the number out.
 
 Name the screen or task the user knows, then the effect. Translate every engineering term into what it does for the user: "fanout 1,013 to 14 queries" becomes "the Alternatives tab opens about 17 times faster on large orders"; "cached currency formatter" becomes "price screens load faster". When an effect has no plain description, use a short everyday comparison.
 
