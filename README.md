@@ -92,6 +92,7 @@ Every row below is one installable skill (`skills/<name>/SKILL.md`, which is wha
 | `executing-tickets-with-subagents` | Orchestrate bundled tickets or explicit away/keep-going work through a durable ledger, with one mutation owner per task and a bounded unattended worker pool |
 | `sync-agent-setups` | Manually preview and sync Claude Code's user-authored behavioral setup outward to explicitly selected agents |
 | `resolving-merge-conflicts` | Resolve an in-progress git conflict without a **silent drop**. Every hunk from both sides is placed as kept, superseded, or dropped before you commit |
+| `sync-with-base` | Merge the PR's base branch into the current feature branch, resolve conflicts without a silent drop, type-check, then push the current branch only, never the base. Detects the base from the branch's PR instead of assuming `dev` |
 | `git-commit` | Conventional commits from diff analysis. Every file is classified into exactly one commit. Append-only, with a message-only mode |
 | `file-pr` | Publish a PR from a current `ready-to-publish` card, with `browser-qa`'s before-and-after evidence and QA results in the body for UI and API changes, verify the remote branch and PR, then return their evidence to `done` |
 | `file-issue` | File one issue an assignee can act on unaided, using two-vocabulary duplicate search, a title that survives a wrong diagnosis, and a body carrying observation, reproduction, expectation and a checkable done condition |
@@ -139,6 +140,7 @@ Several skills use progressive disclosure. `SKILL.md` holds the spine, and branc
 /executing-tickets-with-subagents  # Run a bundled ticket end-to-end via subagents
 /sync-agent-setups     # Preview and sync Claude setup to selected agents
 /resolving-merge-conflicts         # Resolve merge/rebase conflicts safely
+/sync-with-base        # Merge a PR's base branch into the current branch safely
 /git-commit          # Conventional commit (or message-only)
 /file-pr             # Publish a current ready-to-publish card, then return evidence to done
 /file-issue          # File one actionable issue, with dedupe search and the same bars
