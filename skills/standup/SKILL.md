@@ -28,9 +28,21 @@ A bare `YYYY-MM-DD` means 10:00 local that day. Use full ISO only for sub-day pr
 
 Session history is best-effort across Claude, Codex, and OpenCode. Missing stores are skipped silently. Present stores never block the other sources.
 
-## Step 2: Write the standup
+## Step 2: Translate each item into plain words
 
-Keep it short and flat. One ticket is one line. A whole standup reads aloud in well under a minute. Never list individual commits or SHAs. Never dump file lists. Never quote session prompts verbatim.
+Write for a **non-technical listener**: a manager, a product owner, a client. Every line answers two questions in everyday words. What changed for the people using the product, and why does that help them?
+
+Before writing a line for an item you authored that has a PR (Done and In progress), read its PR body: `gh pr view <number> --repo <org>/<repo> --json title,body`. The body holds what the title compresses, namely the effect a user sees and any measured numbers. Carry one number across when the body states one, as a before and after a listener can feel: "opens in 0.04 s instead of 0.75 s", "about 17 times faster". Use only numbers the body states.
+
+Work without a PR (pushed commits, unpushed commits, uncommitted changes, stashes, session-only tickets) gets its plain line from the gathered commit messages, branch names and session titles. Describe the effect those sources support and leave the number out.
+
+Name the screen or task the user knows, then the effect. Translate every engineering term into what it does for the user: "fanout 1,013 to 14 queries" becomes "the Alternatives tab opens about 17 times faster on large orders"; "cached currency formatter" becomes "price screens load faster". When an effect has no plain description, use a short everyday comparison.
+
+Teammates' items (Merged, Reviewed) get one plain phrase each, written from the title. Read the body only when the title alone is engineering shorthand.
+
+## Step 3: Write the standup
+
+Keep it short and flat. One ticket is one line. A whole standup reads aloud in about a minute. Never list individual commits or SHAs. Never dump file lists. Never quote session prompts verbatim.
 
 Collapse every commit, PR, and local change for the same ticket into a single line. Branch names and PR titles carry the ticket number.
 
@@ -50,21 +62,27 @@ Always output the standup in markdown, using this structure.
 
 ### Done
 
-- **<ticket>**: <what landed> (#<pr>)
+- **<screen or feature>**: <what changed for users>. <why it helps, with a number when the PR states one> (#<pr>)
 
 ### Merged (<n>)
 
-- <teammate>'s **<ticket>** (#<pr>)
+- <teammate>'s <plain phrase for the change> (#<pr>)
 
 ### In progress
 
-- **<ticket>**: <what is mid-way through>
+- **<screen or feature>**: <what is being changed and what users will get>
 
 ### Reviewed
 
-- <teammate>'s **<ticket>** (#<pr>)
+- <teammate>'s <plain phrase for the change> (#<pr>)
 ```
 
-Write each line as a short phrase, not a sentence. Lead with the ticket or feature, then a few words on what it was. Merge small related items onto one line rather than spending a bullet each.
+Write each Done and In progress line as one or two short sentences. Lead with the screen or feature the listener knows, then the change, then the benefit. Merge small related items onto one line rather than spending a bullet each.
+
+One line, written for the listener:
+
+```markdown
+- **Procurement, Alternatives tab**: opens about 17 times faster on large orders (0.04 s instead of 0.75 s) and no longer slows the system down for other users. Prices and totals are unchanged. (#7738)
+```
 
 When any of `github.errors`, `github.error`, `local.errors`, or `sessions.errors` is present, or a source was skipped, add one short note at the end so the user knows the picture is partial. Otherwise say nothing about plumbing. When everything is empty, say so in one line and suggest checking the org or repo root.
