@@ -38,7 +38,16 @@ Question:
       description: "Print the failing request body/mutation and leave the pending review as a draft on GitHub for manual submit"
 ```
 
-Immediately before the chosen recovery's first delete or fallback-post mutation, refresh the PR and pending review. Freeze a canonical pending-review snapshot containing the exact review ID, author, `PENDING` state, head SHA, complete review body, and every attached comment and thread's IDs, path, line, side, and body; digest that snapshot. Invoke `preflight-mutations` with the exact PR and head SHA, the snapshot path and digest, selected recovery action, frozen monolithic body path and digest, and the user's Step 7 choice. In an unattended run, delete a pending review only when this run owns it. This run owns a review whose IDs it captured from its own Phase A response, or one reconciliation matched on author, summary body, head SHA, and the complete line-comment set. Only its author can see a pending review, and no cache or state entry references these IDs yet, so the IDs are disposable handles and recreating the review from the frozen payload and snapshot restores its prior state. Pass the deletion to `preflight-mutations` as `reversible`, quoting the `SKILL.md` unattended rule as its authorization. Every other pending review stays untouched, a hand-written draft or a partial match included. Post nothing for it, record the PR as `recovery-pending` with `blocked: pending review <id> is not this run's` as its next action, and move on without waiting for an answer. Re-fetch and require an exact snapshot match immediately before deletion. Apply the preflight result contract before continuing; a count match is never sufficient.
+Immediately before the chosen recovery's first delete or fallback-post mutation, refresh the PR and pending review. Freeze a canonical pending-review snapshot containing the exact review ID, author, `PENDING` state, head SHA, complete review body, and every attached comment and thread's IDs, path, line, side, and body; digest that snapshot. Invoke `preflight-mutations` with the exact PR and head SHA, the snapshot path and digest, selected recovery action, frozen monolithic body path and digest, and the user's Step 7 choice. Re-fetch and require an exact snapshot match immediately before deletion. Apply the preflight result contract before continuing; a count match is never sufficient.
+
+**Unattended runs.** An unattended run never deletes a review. It finishes a pending review this run owns: one whose IDs it captured from its own Phase A response, or one reconciliation matched on author, summary body, head SHA, and the complete line-comment set. Replace that review's body with the frozen monolithic body, then submit it through Phase C with `REVIEW_EVENT`, so threads already attached stay as threads. Put both writes on one `preflight-mutations` card: the body edit restores from the snapshot's body, and the submit is the review this invocation authorizes.
+
+```bash
+gh api graphql -f query='mutation($id:ID!,$body:String!){updatePullRequestReview(input:{pullRequestReviewId:$id,body:$body}){pullRequestReview{id state body}}}' \
+  -f id="$REVIEW_NODE_ID" -F body=@<frozen monolithic body file>
+```
+
+When the body edit or the submit fails, or the pending review is not this run's own (a hand-written draft or a partial match), leave it untouched, record the PR as `recovery-pending` with the reason as its next action, and move on without waiting for an answer.
 
 **Cleanup helper** (used by "Post as monolithic" + "Abort"):
 
