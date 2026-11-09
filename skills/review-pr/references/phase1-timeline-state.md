@@ -105,8 +105,12 @@ else
   PRIOR_STATE='{ pr: <num>, repo: "<owner>/<repo>", findings: [], last_round: 0 }'
 fi
 
-CURRENT_ROUND=$(( $(echo "$PRIOR_STATE" | yq '.last_round') + 1 ))
+LOCAL_ROUND=$(echo "$PRIOR_STATE" | yq '.last_round')
+GITHUB_ROUND=$(gh pr view <url> --json reviews -q '[.reviews[].body | capture("review-pr:run [^>]*round=(?<round>[0-9]+)").round | tonumber] | max // 0')
+CURRENT_ROUND=$(( (LOCAL_ROUND > GITHUB_ROUND ? LOCAL_ROUND : GITHUB_ROUND) + 1 ))
 ```
+
+The `review-pr:run` markers on GitHub are the round every reviewer and machine shares; the state file is this machine's copy, missing on any other machine or worktree.
 
 `PRIOR_STATE.findings` is passed into Subagent 1's prompt (filtered to `status in {resolved, dismissed, wontfix}`, minus `origin: pre-existing` entries) so the reviewer suppresses already-handled findings upfront. Pre-existing entries stay reportable so Phase 3 step 4.57 can notice a later commit rewriting their line. Phase 3 step 4.95 enforces this as a safety net.
 
