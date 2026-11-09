@@ -133,7 +133,7 @@ line is not.
 - **Line-level (REST, Phase A)**: `{"path": "<file>", "line": <post-image>, "side": "RIGHT", "body": "<markdown>"}`. Goes into the `comments` array of the REST review creation call.
 - **File-level (GraphQL, Phase B)**: `path: "<file>"`, `subjectType: FILE`, `body: "<markdown>"`, `pullRequestReviewId: <node_id from Phase A>`. GitHub doesn't anchor code for file-level threads. Include a brief code reference in the body (e.g., "near the `<symbol>` definition").
 
-**Never load bodies with `-f body=@file`.** The `@path` file-reading convention works only with `-F/--field`; `-f/--raw-field` posts the literal `@...` string, which renders as a dead link instead of the finding. This happened live on gastrosmart/GSM3#6274, where twenty threads posted as `@/var/...` paths and had to be rewritten with PATCH. Build bodies with `jq --arg` as in Step 4, or assemble the payload in Python and pipe it via `--input -`.
+**Never load bodies with `-f body=@file`.** The `@path` file-reading convention works only with `-F/--field`; `-f/--raw-field` posts the literal `@...` string, which renders as a dead link instead of the finding. This happened live on gastrosmart/GSM3#6274, where twenty threads posted as `@/var/...` paths and had to be rewritten with PATCH. Build the Phase A payload from Step 3's frozen files, as Step 4 does. A body typed into a shell JSON literal breaks on its first raw newline or tab with `jq: Invalid string: control characters`.
 
 ---
 
@@ -145,7 +145,7 @@ Parse each `patch`: each `@@ -<oldStart>,<oldLen> +<newStart>,<newLen> @@` heade
 
 For each line-level finding: is `line` present on `path`'s post-image counter? If yes → keep. If no → demote to file-level + log the demotion.
 
-With routing now exact, render the complete summary body, canonical ordered line-comment set `(path, line, side, body)`, canonical ordered file-level set `(finding ID, path, body)`, and monolithic recovery body to files and freeze their SHA-256 digests. The file-level set is the posting ledger: Phase B posts and reconciles each exact frozen entry rather than rebuilding a path/body from live findings. Refresh the PR URL, base and current head SHA, and any prior review's ID, state, body, author, and submitted time. Invoke `preflight-mutations` immediately before Step 4 or Step 4-rolling (in `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md`) performs the posting batch's first mutation. Pass those target guards, all frozen payload paths and digests, every surviving finding ID, the semantic verdict, `IS_SELF_REVIEW`, `REVIEW_EVENT`, line/file targets, prior review ID or new-review action, subsequent add/submit/resolve targets, and the originating `/review-pr` request as the authorization source. Apply its result contract before continuing.
+With routing now exact, render the complete summary body, canonical ordered line-comment set `(path, line, side, body)` as a JSON array file, canonical ordered file-level set `(finding ID, path, body)`, and monolithic recovery body to files and freeze their SHA-256 digests. The file-level set is the posting ledger: Phase B posts and reconciles each exact frozen entry rather than rebuilding a path/body from live findings. Refresh the PR URL, base and current head SHA, and any prior review's ID, state, body, author, and submitted time. Invoke `preflight-mutations` immediately before Step 4 or Step 4-rolling (in `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md`) performs the posting batch's first mutation. Pass those target guards, all frozen payload paths and digests, every surviving finding ID, the semantic verdict, `IS_SELF_REVIEW`, `REVIEW_EVENT`, line/file targets, prior review ID or new-review action, subsequent add/submit/resolve targets, and the originating `/review-pr` request as the authorization source. Apply its result contract before continuing.
 
 ---
 
@@ -157,19 +157,15 @@ Pass ALL fields in a single `--input` JSON. **Omit the `event` field** so the re
 
 **Note**: call Phase A even with zero line-level findings. Pass `comments: []`. The REST endpoint accepts an empty array with a body-only PENDING review; this is the only way to get the `pullRequestReviewId` Phase B's mutations need.
 
-```bash
-COMMENTS_JSON='[
-  {"path": "<file path>", "line": <post-image line>, "side": "RIGHT", "body": "<line-level comment>"}
-]'
-# OR: COMMENTS_JSON='[]'  when all findings are file-level
+The line-comment file holds `[]` when every finding is file-level.
 
-REVIEW_RESP=$(gh api "repos/<owner>/<repo>/pulls/<number>/reviews" \
-  --method POST \
-  --input <(jq -n \
-    --arg body "<summary body from Step 1>" \
+```bash
+REVIEW_RESP=$(jq -n \
+    --rawfile body "<frozen summary body file>" \
     --arg commit_id "<head SHA>" \
-    --argjson comments "$COMMENTS_JSON" \
-    '{body: $body, commit_id: $commit_id, comments: $comments}'))
+    --slurpfile comments "<frozen line-comment JSON file>" \
+    '{body: $body, commit_id: $commit_id, comments: $comments[0]}' \
+  | gh api "repos/<owner>/<repo>/pulls/<number>/reviews" --method POST --input -)
 
 REVIEW_NODE_ID=$(echo "$REVIEW_RESP" | jq -r '.node_id // empty')
 REVIEW_DB_ID=$(echo "$REVIEW_RESP" | jq -r '.id // empty')
