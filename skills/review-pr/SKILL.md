@@ -235,7 +235,7 @@ pgTable\( | createTable\( | CREATE TABLE | knex\.schema\.createTable | Schema\.c
 
 If any pattern appears, set `INCLUDE_SCHEMA_CHECKS = true`. Also extract `SCHEMA_DIR`. Typical values are `db/schema/`, `drizzle/schema/`, `src/schema/`, or `migrations/`. If unidentifiable, set `SCHEMA_DIR = "."` and limit Q7-Q9 grepping to files matching the table-definition pattern, for example `Grep("pgTable", ".", glob: "**/*.ts")`.
 
-In cross-repo mode, use `gh api git/trees/<head-sha>?recursive=1` for file listing. Q7-Q9 reads use `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>`.
+In cross-repo mode, use `gh api 'repos/<owner>/<repo>/git/trees/<head-sha>?recursive=1'` for file listing. Q7-Q9 reads use `gh api 'repos/<owner>/<repo>/contents/<path>?ref=<head-sha>'`. Quote every URL that holds a `?` or `&`, in single quotes or in double quotes when it carries a shell variable: zsh reads an unquoted `?` as a glob and aborts with `no matches found`.
 
 ### Check for sensitive code (flag for Phase 2)
 
@@ -281,7 +281,7 @@ suppressions:
 
 If file exists, pass into Subagent 1 prompt as "Review suppressions: patterns this project has already accepted; skip them". Phase 3 step 5.5 also applies as safety net.
 
-In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=$PINNED_BASE_OID`. Skip on 404. The pinned base OID is trusted; the PR head is not, so a PR can never suppress its own review.
+In cross-repo mode, fetch via `gh api "repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=$PINNED_BASE_OID"`. Skip on 404. The pinned base OID is trusted; the PR head is not, so a PR can never suppress its own review.
 
 ### Stage the handoff files
 
