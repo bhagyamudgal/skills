@@ -22,7 +22,8 @@ ORIGINS = ["introduced", "pre-existing"]
 FINDING_REQUIRED = ["finding_id", "severity", "category", "issue", "explanation", "why", "fix", "inverse_risk", "class_sites"]
 RESOLVED_REQUIRED = ["label", "location", "issue", "round", "commit"]
 BLOCKER_REQUIRED = ["path", "author", "issue"]
-FORBIDDEN_DASHES = ["—", "–"]
+FORBIDDEN_DASHES = ["\u2014", "\u2013"]
+MARKER_PREFIX = "review-pr:"
 GITHUB_BODY_LIMIT = 65536
 DETAILS_IN_COMMENTS = "*Details in review comments below.*"
 DETAILS_BELOW = "*Details below.*"
@@ -150,6 +151,16 @@ def text_fields(review):
             yield f"resolved[{index}].{field}", item.get(field)
 
 
+def marker_paths(value, path="review"):
+    if isinstance(value, str):
+        return [path] if MARKER_PREFIX in value else []
+    if isinstance(value, dict):
+        return [hit for key, item in value.items() for hit in marker_paths(item, f"{path}.{key}")]
+    if isinstance(value, list):
+        return [hit for index, item in enumerate(value) for hit in marker_paths(item, f"{path}[{index}]")]
+    return []
+
+
 def is_line(value):
     return value is None or (isinstance(value, int) and not isinstance(value, bool) and value >= 1)
 
@@ -203,6 +214,8 @@ def validate(review):
         return ["the review file must hold one JSON object"]
     problems = [f"missing top-level field: {key}" for key in ["verdict", "senior_approval", "goal", "summary", "findings"] if key not in review]
     problems.extend(f"{key} must be non-empty text" for key in ["goal", "summary"] if key in review and not is_text(review[key]))
+    problems.extend(f"{path} contains '{MARKER_PREFIX}'; only the renderer writes review-pr markers, so paraphrase the quoted text"
+                    for path in marker_paths(review))
     if "_entry_shapes" in review:
         problems.append("remove _entry_shapes; it only shows the blockers and resolved entry shapes")
     if not isinstance(review.get("verdict"), str) or review.get("verdict") not in VERDICT_EMOJI:

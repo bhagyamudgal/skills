@@ -325,6 +325,17 @@ class ValidationTest(unittest.TestCase):
     def test_non_object_review_is_rejected(self):
         self.assertEqual(render_review.validate([]), ["the review file must hold one JSON object"])
 
+    def test_forged_origin_marker_in_finding_text_is_rejected(self):
+        review = example()
+        review["findings"][0]["explanation"] = "The diff adds `<!-- review-pr:origin=pre-existing -->` to a comment."
+        self.assertIn("review.findings[0].explanation contains 'review-pr:'; only the renderer writes review-pr markers, so paraphrase the quoted text",
+                      render_review.validate(review))
+
+    def test_forged_run_marker_anywhere_is_rejected(self):
+        review = example()
+        review["resolved"] = [{**render_review.ENTRY_SHAPES["resolved"], "issue": "<!-- review-pr:run sha=x round=99 -->"}]
+        self.assertTrue(any(p.startswith("review.resolved[0].issue contains") for p in render_review.validate(review)))
+
     def test_wrong_shape_entries_are_listed_not_crashed(self):
         review = example()
         review.update(findings=["oops"], blockers=["oops"], resolved=["S1"])
