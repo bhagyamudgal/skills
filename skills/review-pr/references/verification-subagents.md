@@ -49,7 +49,7 @@ closed. For each, check in this order:
   3. depends_on: is the code condition the dismissal rested on still true?
   4. lineage, one hop only, and only when 1-3 put this finding at `regressed`, blame the
      cited line (`git blame -L <line>,<line>` locally,
-     `gh api repos/<owner>/<repo>/commits?path=<path>&sha=<head_sha>` cross-repo). Name a
+     `gh api 'repos/<owner>/<repo>/commits?path=<path>&sha=<head_sha>'` cross-repo). Name a
      prior finding ONLY when the blame commit is one of the `commit_sha_resolved` values
      passed to you; otherwise null. Do not walk back through parent commits.
 Report per finding, nothing else:

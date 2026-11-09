@@ -35,6 +35,17 @@ Class-sites:    <A>/<N> (affected sites over sites searched, from the
                 class_completeness audit below)
 ```
 
+## Severity scale
+
+Grade by the impact a user or operator can reach on the code as it stands, not the worst outcome you can imagine. Every model grades against these anchors, so the same defect gets the same label whoever reviews it.
+
+- **Critical**: data loss or corruption, a security or tenancy breach, wrong money, or a crash on a common path, reachable now. Example: a write endpoint that updates a record without checking the caller's account.
+- **Serious**: a wrong result or a failure on a realistic path, bounded to one feature or recoverable. Examples: a filter that silently drops rows created after a cutoff; a schema change with no migration.
+- **Moderate**: a real defect on an edge path, or a maintainability cost that already shows. Examples: a first-save race that returns a 500 and succeeds on retry; two copies of one rule that have started to differ.
+- **Minor**: correct today. Naming, a dead branch, small duplication, wording.
+
+A defect that is real but latent (the path is unreachable today, or a query shows zero affected rows) is Moderate at most. Between two levels, take the lower one and give the reason in your terminal report. A check that states its own default severity, such as Q5, Q6a, or the security reviewer's scale, keeps that default; these anchors grade every other finding.
+
 `Inverse risk` and `Class-sites` are REQUIRED on every finding that proposes a code
 change, one field per cascade feeder. `/fix-pr-review` seeds its own inverse-risk check
 and class sweep from these two lines. A finding printed without them forces the next

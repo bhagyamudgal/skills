@@ -55,7 +55,7 @@ if [ "$CROSS_REPO_MODE" = "true" ]; then
     --jq '.tree[] | select(.type == "blob" and (.path | test("^(packages|apps)/.*\\.(ts|tsx)$")) and (.path | test("node_modules|dist|build|\\.test\\.|\\.spec\\.") | not)) | .path' \
     | awk 'NR<=500{print} END{if(NR>500)print "[truncated at 500 of " NR " lines]"}'
   repo_map_files="<output>"
-  repo_map_exports="N/A (cross-repo mode, fetch via 'gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>' on-demand)"
+  repo_map_exports="N/A (cross-repo mode, fetch via 'gh api \"repos/<owner>/<repo>/contents/<path>?ref=<head-sha>\"' on-demand)"
 fi
 ```
 

@@ -1,6 +1,6 @@
 # GitHub posting flow (Phase 4): REST + GraphQL hybrid
 
-Main loads this in Phase 4 for every completed review. It owns the fresh-review path: summary body, per-finding comments, hunk validation, the three posting phases, and the write-back. Re-runs load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` when a prior `/review-pr` review or cache entry exists; posting failures load `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md`.
+Main loads this in Phase 4 for every completed review. It owns the fresh-review path: rendering every body with `scripts/render_review.py`, the three posting phases, and the write-back. Re-runs load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` when a prior `/review-pr` review or cache entry exists; posting failures load `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md`.
 
 ---
 
@@ -49,103 +49,45 @@ The blocked-by-open-threads path is body-only by design, not by degradation: eve
 
 ---
 
-## Step 1: Compose the summary body
+## Step 1: Render every body with the script
 
-Every field you compose for this body posts verbatim, and none carries an em or en dash. Text quoted from the issue or the diff stays as you found it, and the `·` separators are structure rather than prose.
+Every body this run posts comes from the renderer, never from hand-written markdown, so the layout is the same whichever model runs the skill. Write one review JSON file from the Phase 3 result and run:
 
-Build a lean summary body (NO "Filtered out" section, internal only). **Always** include the marker comment so future runs can detect this review:
-
-```markdown
-<!-- review-pr:run sha=<head_sha> round=<round_number> -->
-## PR Review: #<number>
-<verdict-emoji> <verdict> | <severity-count-badges>
-**Senior engineer approval**: <emoji> <Yes | No>, <one-sentence reason>
-
-**Goal**: <intent goal>
-**Summary**: <2-3 sentences>
-
-### Findings
-| # | Sev | File | Issue |
-|---|-----|------|-------|
-| S1 | 🟠 | `<path:line>` | <one-line issue> |
-| M1 | 🟡 | `<path>` | <one-line issue (file-level)> |
-| m1 | 🔵 | *(general)* | <one-line issue (body-fallback)> |
-
-*Details in review comments below.*  <!-- omit if ALL findings are body-fallback -->
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/render_review.py" --example
+python3 "${CLAUDE_SKILL_DIR}/scripts/render_review.py" <review.json> --diff <staged diff.full.patch> \
+  --out <new render dir> --pr <number> --head-sha <CURRENT_HEAD> --round <CURRENT_ROUND>
 ```
 
-When there are zero introduced findings, replace the findings table and details line with `### Findings\nNo findings.`, and list any pre-existing findings under `### Pre-existing` in the same table shape, still posted as threads. The body posts with `APPROVE` for another author's PR or `COMMENT` for a self-review. Exception: on the blocked-by-open-threads path from Phase 3 step 8, the body lists the blocking open threads instead of `No findings.` and posts `REQUEST_CHANGES` (`COMMENT` for a self-review), with pre-existing findings listed in the body and no threads.
+`--example` prints a valid input file plus an `_entry_shapes` key showing a `blockers` and a `resolved` entry; drop that key before rendering. Fill `verdict`, `senior_approval`, `goal`, `summary`, every surviving finding with its state `finding_id` and its 2-3 sentence `explanation`, `blockers` on the blocked-by-open-threads path from Phase 3 step 8, and `resolved` on a re-review. A finding that proposes no code change takes `N/A (no code change proposed)` for `class_sites`. Text fields carry no em or en dash; source text quoted from the issue or the diff goes in backticks and stays as you found it. A non-zero exit lists every problem on stderr. Fix the JSON and render again into a new directory; an output file is never edited by hand.
 
-**Severity count badges**: `🔴 <N> Critical · 🟠 <M> Serious · 🟡 <K> Moderate · 🔵 <J> Minor`. Only include levels that have findings. They count `Origin: introduced` findings only; append `· ⚪ <P> Pre-existing` when any finding carries that origin. Pre-existing rows in the findings table put `pre-existing` after the severity emoji.
-
-**Finding numbering**: assign sequential IDs by severity: `C1, C2…` Critical, `S1, S2…` Serious, `M1, M2…` Moderate, `m1, m2…` Minor. Use these IDs consistently in the summary table and review comments. **Note**: per-round visible labels (M3, S1, etc.) do NOT have to match across rounds. Internal stability comes from the `findings[].id` hash in `.claude/review-state/<pr>.yml` (see `references/finding-state-schema.md`).
-
-**Comment routing, three tiers**:
-
-- **Line-level thread** (REST, Phase A): finding has a valid `file:line` where the line exists on the post-image side of the diff → attach with `{path, line, side: "RIGHT", body}`.
-- **File-level thread** (GraphQL, Phase B): finding has a file reference but no valid diff line (file/module-scope, schema overlap, line not in diff) → attach via `addPullRequestReviewThread` with `subjectType: FILE`.
-- **Body fallback** (rare): finding has NO file reference at all → use `*(general)*` in the summary table and append the full detail to the body under `### Additional findings`.
-
-All three tiers create resolvable, replyable GitHub threads. Body fallback is the only acceptable reason for a finding to lack its own thread. Never use it to work around an API error (Step 7 in `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` covers that).
-
-**Re-review "Resolved since last review" line**: replace the prior "Fixed" wording with explicit `resolved`. After the table:
-
-```markdown
-**Resolved since last review**: S1 (`auth.ts:47` missing null check, round 4 commit `abc1234`), S4 (`db.ts:123` N+1 query, round 5 commit `def5678`) *(threads resolved)*
-```
+The renderer writes `summary.md`, `line_comments.json`, `file_level.json`, `monolithic.md`, and `ids.json`. It writes the `review-pr:run` marker, labels findings by severity (`C`, `S`, `M`, `m`), computes the severity badges from introduced findings, lists pre-existing findings under `### Pre-existing`, and never emits a `Filtered out` section. It routes each finding against the staged diff: a line on the post-image side becomes a line-level thread (REST, Phase A), any other file in the diff a file-level thread (GraphQL, Phase B), and a finding with no file (shown as `*(general)*`) or with a file outside the diff (shown with its path) the body fallback. On the blocked-by-open-threads path every finding goes to the body. Each demotion prints on stderr. `ids.json` maps every `finding_id` to the label and tier this round gave it, and its `line` entries appear in the same order as `line_comments.json`, which is how Step 8b ties each posted line comment back to its `finding_id`. Phase 4 write-back reads labels from it. Body fallback is the only acceptable reason for a finding to lack its own thread. Never use it to work around an API error (Step 7 in `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` covers that).
 
 Every finding status is exactly one of `active`, `resolved` (with commit SHA), `dismissed` (with reason), `wontfix` (with reason), or `regression`: the enum in `references/finding-state-schema.md`. "Deferred" is not one of them: it leaves the reader unable to tell a shipped fix from an open one.
 
 ---
 
-## Step 2: Compose review comments (per finding)
+## Step 2: What each rendered comment carries
 
-Each finding with a valid file reference becomes a review comment. Format as self-contained markdown:
-
-```markdown
-<severity-emoji> **<Severity>** · <Category>< · Pre-existing>
-
-**<Issue one-sentence>**
-
-<2-3 sentence explanation>
-
-**Why it matters**: <one sentence>
-
-**Suggested fix**: <one sentence, actionable>
-
-**Inverse risk**: <the failure mode this fix trades INTO if implemented literally, or "none, pure addition">
-
-**Class-sites**: <A>/<N> (affected sites over sites searched)
-```
-
-Severity emojis: 🔴 Critical, 🟠 Serious, 🟡 Moderate, 🔵 Minor.
-
-The ` · Pre-existing` suffix appears only on `Origin: pre-existing` findings. Their body also ends with `<!-- review-pr:origin=pre-existing -->`, which Phase 1 reads to keep the thread out of `OPEN_BLOCKERS`, and adds one line after the header: `This line predates the PR (blame <short-sha>), so it does not block this review. It gets its own issue.` Step 8c links the issue once it exists.
+Each comment opens with `<severity emoji> **<Severity>** · <Category>`, then the issue in bold, the explanation, and four labelled lines: `**Why it matters**`, `**Suggested fix**`, `**Inverse risk**`, `**Class-sites**`. A pre-existing finding adds ` · Pre-existing` to that first line, a blame sentence after it, and ends with `<!-- review-pr:origin=pre-existing -->`, which Phase 1 reads to keep the thread out of `OPEN_BLOCKERS`. Step 8c links its tracking issue once it exists.
 
 **Inverse risk and Class-sites are not decoration.** They are the two cascade fields Phase 3
 steps 4.56 and 4.55 derived, and `/fix-pr-review` seeds its own inverse-risk check and class
-sweep straight off these two lines instead of re-deriving them. Emit both on every finding
-that proposes a code change. `none, pure addition` is a valid `Inverse risk`, an omitted
-line is not.
+sweep straight off these two lines instead of re-deriving them. The renderer rejects a finding
+without them; `none, pure addition` is a valid `Inverse risk`.
 
 **Comment payload shape**:
 
-- **Line-level (REST, Phase A)**: `{"path": "<file>", "line": <post-image>, "side": "RIGHT", "body": "<markdown>"}`. Goes into the `comments` array of the REST review creation call.
-- **File-level (GraphQL, Phase B)**: `path: "<file>"`, `subjectType: FILE`, `body: "<markdown>"`, `pullRequestReviewId: <node_id from Phase A>`. GitHub doesn't anchor code for file-level threads. Include a brief code reference in the body (e.g., "near the `<symbol>` definition").
+- **Line-level (REST, Phase A)**: each `line_comments.json` entry is `{"path", "line", "side": "RIGHT", "body"}` and goes into the `comments` array of the REST review creation call.
+- **File-level (GraphQL, Phase B)**: each `file_level.json` entry gives `path` and `body` for `addPullRequestReviewThread` with `subjectType: FILE` and `pullRequestReviewId: <node_id from Phase A>`.
 
-**Never load bodies with `-f body=@file`.** The `@path` file-reading convention works only with `-F/--field`; `-f/--raw-field` posts the literal `@...` string, which renders as a dead link instead of the finding. This happened live on gastrosmart/GSM3#6274, where twenty threads posted as `@/var/...` paths and had to be rewritten with PATCH. Build bodies with `jq --arg` as in Step 4, or assemble the payload in Python and pipe it via `--input -`.
+**Never load bodies with `-f body=@file`.** The `@path` file-reading convention works only with `-F/--field`; `-f/--raw-field` posts the literal `@...` string, which renders as a dead link instead of the finding. This happened live on gastrosmart/GSM3#6274, where twenty threads posted as `@/var/...` paths and had to be rewritten with PATCH. Build the Phase A payload from the rendered files, as Step 4 does. A body typed into a shell JSON literal breaks on its first raw newline or tab with `jq: Invalid string: control characters`.
 
 ---
 
-## Step 3: Pre-posting hunk validation
+## Step 3: Freeze the rendered files
 
-Before Phase A (or rolling-review path), reuse the staged `diff.full.patch` from Phase 1. No fetch: the OID check and posting guards already cover movement since Phase 1. Verify each line-level comment's `(path, line)` is on the post-image side. Demote mismatches to file-level (Phase B).
-
-Parse each `patch`: each `@@ -<oldStart>,<oldLen> +<newStart>,<newLen> @@` header starts a new hunk. Within the hunk, `+` lines and space-prefixed context lines advance the post-image counter (start at `newStart`); `-` lines do not. A line is "in the diff" only if it matches a counter value on some hunk for that file.
-
-For each line-level finding: is `line` present on `path`'s post-image counter? If yes → keep. If no → demote to file-level + log the demotion.
-
-With routing now exact, render the complete summary body, canonical ordered line-comment set `(path, line, side, body)`, canonical ordered file-level set `(finding ID, path, body)`, and monolithic recovery body to files and freeze their SHA-256 digests. The file-level set is the posting ledger: Phase B posts and reconciles each exact frozen entry rather than rebuilding a path/body from live findings. Refresh the PR URL, base and current head SHA, and any prior review's ID, state, body, author, and submitted time. Invoke `preflight-mutations` immediately before Step 4 or Step 4-rolling (in `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md`) performs the posting batch's first mutation. Pass those target guards, all frozen payload paths and digests, every surviving finding ID, the semantic verdict, `IS_SELF_REVIEW`, `REVIEW_EVENT`, line/file targets, prior review ID or new-review action, subsequent add/submit/resolve targets, and the originating `/review-pr` request as the authorization source. Apply its result contract before continuing.
+Freeze the files Step 1 rendered from the staged `diff.full.patch`. No fetch: the OID check and posting guards already cover movement since Phase 1. Freeze the rendered files and their SHA-256 digests. `file_level.json` is the posting ledger: Phase B posts and reconciles each exact frozen entry rather than rebuilding a path/body from live findings. Refresh the PR URL, base and current head SHA, and any prior review's ID, state, body, author, and submitted time. Invoke `preflight-mutations` immediately before Step 4 or Step 4-rolling (in `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md`) performs the posting batch's first mutation. Pass those target guards, all frozen payload paths and digests, every surviving finding ID, the semantic verdict, `IS_SELF_REVIEW`, `REVIEW_EVENT`, line/file targets, prior review ID or new-review action, subsequent add/submit/resolve targets, and the originating `/review-pr` request as the authorization source. Apply its result contract before continuing.
 
 ---
 
@@ -157,19 +99,15 @@ Pass ALL fields in a single `--input` JSON. **Omit the `event` field** so the re
 
 **Note**: call Phase A even with zero line-level findings. Pass `comments: []`. The REST endpoint accepts an empty array with a body-only PENDING review; this is the only way to get the `pullRequestReviewId` Phase B's mutations need.
 
-```bash
-COMMENTS_JSON='[
-  {"path": "<file path>", "line": <post-image line>, "side": "RIGHT", "body": "<line-level comment>"}
-]'
-# OR: COMMENTS_JSON='[]'  when all findings are file-level
+The line-comment file holds `[]` when every finding is file-level.
 
-REVIEW_RESP=$(gh api "repos/<owner>/<repo>/pulls/<number>/reviews" \
-  --method POST \
-  --input <(jq -n \
-    --arg body "<summary body from Step 1>" \
+```bash
+REVIEW_RESP=$(jq -n \
+    --rawfile body "<frozen summary body file>" \
     --arg commit_id "<head SHA>" \
-    --argjson comments "$COMMENTS_JSON" \
-    '{body: $body, commit_id: $commit_id, comments: $comments}'))
+    --slurpfile comments "<frozen line-comment JSON file>" \
+    '{body: $body, commit_id: $commit_id, comments: $comments[0]}' \
+  | gh api "repos/<owner>/<repo>/pulls/<number>/reviews" --method POST --input -)
 
 REVIEW_NODE_ID=$(echo "$REVIEW_RESP" | jq -r '.node_id // empty')
 REVIEW_DB_ID=$(echo "$REVIEW_RESP" | jq -r '.id // empty')
@@ -185,7 +123,7 @@ ATTACHED_THREADS=0
 
 Capture BOTH IDs: `node_id` (GraphQL) for Phases B/C, `id` (integer) for caching. Read the review and its review comments back by ID and require its author, `PENDING` state, complete summary body, head SHA, and complete canonical line-comment set to match the frozen create before Phase B.
 
-A timeout, interrupted response, or missing ID is `reconcile-required`, not proof that creation failed. Query the PR's reviews authoritatively, fetch every current-author `PENDING` review and all of its review comments, then compare author, exact frozen summary body, exact head SHA, and complete canonical line-comment set. One exact match restores both review IDs and continues Phase B. One candidate that matches the head and summary but has a different line-comment set preserves its IDs and enters Step 7 in `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md`'s pending-review branch. If any other current-author pending review exists, preserve all candidate IDs and block for reconciliation; a nonmatching body or head is still external state, not evidence that no pending review exists. Set `NO_PENDING_REVIEW=true` only after a complete query proves there are zero current-author pending reviews on the PR. Multiple exact or partial candidates, or an inconclusive query, block the run. Never create or fall back to another review while any pending create remains unresolved.
+A timeout, interrupted response, missing ID, or any HTTP error is `reconcile-required`, not proof that creation failed: a bare `HTTP 422` can still have created the review, and a second POST then fails with `User can only have one pending review per pull request`. Query the PR's reviews authoritatively with `gh api 'repos/<owner>/<repo>/pulls/<number>/reviews?per_page=100' --paginate`, fetch every current-author `PENDING` review and all of its review comments, then compare author, exact frozen summary body, exact head SHA, and complete canonical line-comment set. One exact match restores both review IDs and continues Phase B. One candidate that matches the head and summary but has a different line-comment set preserves its IDs and enters Step 7 in `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md`'s pending-review branch. If any other current-author pending review exists, preserve all candidate IDs and block for reconciliation; a nonmatching body or head is still external state, not evidence that no pending review exists. A current-author submitted review matching the frozen summary, head, and complete line-comment set, in `REQUIRED_REVIEW_STATE`, means the create landed and was then submitted. Capture its `node_id` and `id` and enter Step 7's submitted-review branch. A submitted match on summary and head that differs in line comments or state is `reconcile-required`. Set `NO_PENDING_REVIEW=true` only after a complete query proves there are zero current-author pending reviews and no such submitted match on the PR. Multiple exact or partial candidates, or an inconclusive query, block the run. Never create or fall back to another review while any pending create remains unresolved.
 
 ---
 
@@ -193,19 +131,16 @@ A timeout, interrupted response, or missing ID is `reconcile-required`, not proo
 
 **Skip if `ROLLING_PATH=true`**: rolling eligibility proves there are no new threads to attach.
 
-For each entry in the frozen canonical file-level set, in order (originals + Step 3 demotions), use that entry's exact finding ID, path, and body:
+For each entry in the frozen canonical file-level set, in order (the rendered `file_level.json`), run `INDEX` from 0 to the file's length minus 1 and send that entry's exact path and body, recording the returned IDs against its `finding_id`. jq reads all three from the frozen file, so the shell never parses a body:
 
 ```bash
-THREAD_RESP=$(gh api graphql -f query='
-  mutation($reviewId: ID!, $path: String!, $body: String!) {
-    addPullRequestReviewThread(input: {
-      pullRequestReviewId: $reviewId, path: $path, body: $body, subjectType: FILE
-    }) {
-      thread { id comments(first: 1) { nodes { databaseId } } }
-    }
-  }
-' -f reviewId="$REVIEW_NODE_ID" -f path="<file>" -f body="<file-level body>")
-# -f (lowercase) forces string; -F would coerce numeric-looking values to JSON numbers
+THREAD_RESP=$(jq -n \
+    --arg reviewId "$REVIEW_NODE_ID" \
+    --slurpfile entries "<frozen file_level.json>" \
+    --argjson index "${INDEX:?}" \
+    '{query: "mutation($reviewId: ID!, $path: String!, $body: String!) { addPullRequestReviewThread(input: {pullRequestReviewId: $reviewId, path: $path, body: $body, subjectType: FILE}) { thread { id comments(first: 1) { nodes { databaseId } } } } }",
+      variables: {reviewId: $reviewId, path: $entries[0][$index].path, body: $entries[0][$index].body}}' \
+  | gh api graphql --input -)
 
 THREAD_NODE_ID=$(echo "$THREAD_RESP" | jq -r '.data.addPullRequestReviewThread.thread.id // empty')
 THREAD_COMMENT_ID=$(echo "$THREAD_RESP" | jq -r '.data.addPullRequestReviewThread.thread.comments.nodes[0].databaseId // empty')

@@ -13,7 +13,7 @@ Goal: produce an accurate, critical, actionable PR review, filter out noise (sty
 
 This skill expects CodeRabbit on the repo via `.coderabbit.yaml`. CodeRabbit handles style and convention findings first. `/review-pr` handles the deep semantic and codebase-wide review only it can do.
 
-**Use AskUserQuestion for user-facing decisions that still require judgment**: stop-and-ask and post-failure recovery. Posting is not a decision point. Invoking `/review-pr` authorizes submission of the complete review. Large PRs always proceed with chunked review without asking. Any sentence that offers the user 2+ labeled paths is an AskUserQuestion call. Options are cursor-selectable, concrete, and considered. Put the strongest first and mark it "(Recommended)".
+**Use AskUserQuestion for user-facing decisions that still require judgment**: stop-and-ask and post-failure recovery. Posting is not a decision point. Invoking `/review-pr` authorizes submission of the complete review. Large PRs always proceed with chunked review without asking. Any sentence that offers the user 2+ labeled paths is an AskUserQuestion call. Options are cursor-selectable, concrete, and considered. Put the strongest first and mark it "(Recommended)". In an unattended run (the AskUserQuestion tool is unavailable, or the invoking prompt says nobody can answer), take the first option of each question this skill defines and print which one you took. Step 7's pending-review recovery is the exception: it follows its own unattended rule, which never deletes a review.
 
 ## Reference files
 
@@ -32,7 +32,7 @@ Main or a subagent loads each file only on the branch that reaches it. Loader an
 - `references/verification-subagents.md`: V1/V2/V3 dispatch conditions + the exact prompt each is given. Loaded by **main** in Phase 3 at the first of steps 4.55 / 4.9 / 6 that fires.
 - `references/false-positive-rules.md`: the four-rule YAML table (`wrapped-coercion`, `intent-alignment`, `library-behavior-citation`, `default-fallback`) each surviving finding is run through. Loaded by **main** at Phase 3 step 4.6 when any finding survives step 4.5.
 - `references/finding-state-schema.md`: both persistence files: `.claude/review-state/<pr>.yml` (schema, finding-ID strategy, state machine, Phase 1 read path) and the run-over-run cache (schema + the three replay branches). Loaded by **main** in Phase 1 before the review-state read and the cache check, and held through Phase 3. The Phase 4 write-back and sweep live in `${CLAUDE_SKILL_DIR}/references/finding-state-phase4.md`, loaded in Phase 4 after posting, plus on Phase 1 startup when the state directory is non-empty.
-- `references/github-posting.md`: fresh-review REST/GraphQL posting flow: summary body, per-finding comments, hunk validation, Phases A through C, and the write-back. Loaded by **main** in Phase 4 for every completed review. Re-runs with a prior review or cache entry also load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` (Steps 0, 0b, 0c, 4-rolling, 8d); a posting failure also loads `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` (Step 7).
+- `references/github-posting.md`: fresh-review REST/GraphQL posting flow: rendering every body with `scripts/render_review.py`, Phases A through C, and the write-back. Loaded by **main** in Phase 4 for every completed review. Re-runs with a prior review or cache entry also load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` (Steps 0, 0b, 0c, 4-rolling, 8d); a posting failure also loads `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` (Step 7).
 - `references/phase1-timeline-state.md`: prior-review thread query plus shaping, the review-state read plus round seeding, and the run-over-run cache branches. Loaded by **main** in Phase 1 at the timeline, state, and cache steps.
 - `references/dispatch-prompts.md`: the `<SKILL_DIR>` derivation, the `<PROMPT_PREAMBLE>` and `<GROUND_TRUTH>` blocks, and the silent-failure hunter context packet. Loaded by **main** at the Phase 2 dispatch.
 - `references/critic-verify.md`: critic steps 1 through 4.57, dedupe through origin attribution. Loaded by **main** at Phase 3 step 1, kept through step 4.57, reloaded at step 6 for routed findings.
@@ -235,7 +235,7 @@ pgTable\( | createTable\( | CREATE TABLE | knex\.schema\.createTable | Schema\.c
 
 If any pattern appears, set `INCLUDE_SCHEMA_CHECKS = true`. Also extract `SCHEMA_DIR`. Typical values are `db/schema/`, `drizzle/schema/`, `src/schema/`, or `migrations/`. If unidentifiable, set `SCHEMA_DIR = "."` and limit Q7-Q9 grepping to files matching the table-definition pattern, for example `Grep("pgTable", ".", glob: "**/*.ts")`.
 
-In cross-repo mode, use `gh api git/trees/<head-sha>?recursive=1` for file listing. Q7-Q9 reads use `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>`.
+In cross-repo mode, use `gh api 'repos/<owner>/<repo>/git/trees/<head-sha>?recursive=1'` for file listing. Q7-Q9 reads use `gh api 'repos/<owner>/<repo>/contents/<path>?ref=<head-sha>'`. Quote every URL that holds a `?` or `&`, in single quotes or in double quotes when it carries a shell variable: zsh reads an unquoted `?` as a glob and aborts with `no matches found`.
 
 ### Check for sensitive code (flag for Phase 2)
 
@@ -281,7 +281,7 @@ suppressions:
 
 If file exists, pass into Subagent 1 prompt as "Review suppressions: patterns this project has already accepted; skip them". Phase 3 step 5.5 also applies as safety net.
 
-In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=$PINNED_BASE_OID`. Skip on 404. The pinned base OID is trusted; the PR head is not, so a PR can never suppress its own review.
+In cross-repo mode, fetch via `gh api "repos/<owner>/<repo>/contents/.claude/review-suppressions.yml?ref=$PINNED_BASE_OID"`. Skip on 404. The pinned base OID is trusted; the PR head is not, so a PR can never suppress its own review.
 
 ### Stage the handoff files
 
@@ -633,13 +633,13 @@ An explicit `/review-pr <PR URL>` invocation is fresh authorization to submit th
 - Preserve every item in `Filtered out` as terminal-only audit output. Filtered items never enter the GitHub payload.
 - Every surviving finding ships as a review thread, or the Thread coverage line states plainly that it did not ship and why. The terminal report is never pasted as an issue comment.
 
-Load `${CLAUDE_SKILL_DIR}/references/github-posting.md` now: summary body, per-finding comments, hunk validation, Phases A through C, and the write-back. Also load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` when a prior `/review-pr` review or cache entry exists for this PR, and `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` if any posting phase fails.
+Load `${CLAUDE_SKILL_DIR}/references/github-posting.md` now: rendering every body with `scripts/render_review.py`, Phases A through C, and the write-back. Also load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` when a prior `/review-pr` review or cache entry exists for this PR, and `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` if any posting phase fails.
 
-Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, `IS_SELF_REVIEW`, summary body content, the complete surviving finding list (line-level + file-level), `PRIOR_STATE` (Step 0c in the rerun file compares against it), `$CACHE_FILE` path, `$STATE_FILE` path, and the `/review-pr` invocation as the posting authorization source.
+Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, `IS_SELF_REVIEW`, a new render-directory path inside an existing directory (the renderer creates it in Step 1 of `github-posting.md` and refuses a path that already exists), the complete surviving finding list (line-level + file-level), `PRIOR_STATE` (Step 0c in the rerun file compares against it), `$CACHE_FILE` path, `$STATE_FILE` path, and the `/review-pr` invocation as the posting authorization source.
 
 ### Convergence handoff
 
-After authoritative posting and write-back, invoke `converge-reviews` with the PR request, base/current head and diff hash, reviewed paths, reviewer roster and lenses, current findings and dispositions, and `$STATE_FILE`. Store the resulting `convergence` block in that existing state file without replacing `review-pr`'s finding state. Apply its result contract before recommending another review round or declaring the review converged.
+After authoritative posting and write-back, invoke `converge-reviews` (it ships in the same skills repository; report it missing and skip this handoff only after invoking it fails) with the PR request, base/current head and diff hash, reviewed paths, reviewer roster and lenses, current findings and dispositions, and `$STATE_FILE`. Store the resulting `convergence` block in that existing state file without replacing `review-pr`'s finding state. Apply its result contract before recommending another review round or declaring the review converged.
 
 ---
 

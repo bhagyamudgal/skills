@@ -41,7 +41,7 @@ PRIOR_REVIEW_STATE=$(echo "$PRIOR_REVIEWS_JSON" | jq -r '
   ')
 ```
 
-Before selecting a branch, derive `CURRENT_THREADED_FINDING_IDS` from every surviving finding with a file reference; body-fallback findings are excluded because they cannot own threads. A prior review is thread-complete only when all of these are true:
+Before selecting a branch, derive `CURRENT_THREADED_FINDING_IDS` from the `ids.json` that Step 1 of `${CLAUDE_SKILL_DIR}/references/github-posting.md` rendered: every entry whose `tier` is `line` or `file`. Body-routed findings are excluded because they cannot own threads. A prior review is thread-complete only when all of these are true:
 
 - the validated current cache records `publication_evidence.publication_mode: threaded`;
 - `last_posted_review_node_id` and `last_posted_review_id` equal the candidate prior review;
@@ -127,13 +127,12 @@ If this is a re-review AND `posted_comments` cache exists:
 When Step 0 found a recent prior `/review-pr` review whose state matches the required GitHub state and proved it owns every current thread:
 
 ```bash
-UPDATE_RESP=$(gh api graphql -f query='
-  mutation($id: ID!, $body: String!) {
-    updatePullRequestReviewBody(input: { pullRequestReviewId: $id, body: $body }) {
-      pullRequestReview { id databaseId state submittedAt }
-    }
-  }
-' -f id="$PRIOR_REVIEW_NODE_ID" -f body="$NEW_SUMMARY_BODY")
+UPDATE_RESP=$(jq -n \
+    --arg id "$PRIOR_REVIEW_NODE_ID" \
+    --rawfile body "<render dir>/summary.md" \
+    '{query: "mutation($id: ID!, $body: String!) { updatePullRequestReviewBody(input: {pullRequestReviewId: $id, body: $body}) { pullRequestReview { id databaseId state submittedAt } } }",
+      variables: {id: $id, body: $body}}' \
+  | gh api graphql --input -)
 
 if echo "$UPDATE_RESP" | jq -e '.errors' >/dev/null \
    || [ "$(echo "$UPDATE_RESP" | jq -r '.data.updatePullRequestReviewBody.pullRequestReview.id // empty')" = "" ]; then

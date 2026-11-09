@@ -21,29 +21,29 @@ import unittest
 import review_pr_load
 import review_pr_tokens
 
-CORPUS_CEILING = 213492
+CORPUS_CEILING = 216270
 CEILINGS = {
-    "parallel-standard/round-1": (152413, 152413, 15),
-    "parallel-chunked/round-1": (153948, 153948, 15),
-    "parallel-standard/with-step6-reload": (152413, 164685, 15),
+    "parallel-standard/round-1": (152261, 152261, 15),
+    "parallel-chunked/round-1": (153796, 153796, 15),
+    "parallel-standard/with-step6-reload": (152261, 164535, 15),
 }
 DELTA_CEILINGS = {"delta_distinct": 5755, "delta_with_repeats": 5755,
                   "network": 0}
 SECURITY_DELTA_CEILINGS = {"delta_distinct": 3344, "delta_with_repeats": 3344,
                            "network": 0}
-CHUNK_REVIEWER_CEILING = (30137, 30137)
+CHUNK_REVIEWER_CEILING = (31456, 31456)
 SUBAGENT_CEILINGS = {
     "silent-failure-hunter": (0, 0),
-    "cross-cutting": (5938, 5938),
-    "security-reviewer": (9406, 9406),
+    "cross-cutting": (7255, 7255),
+    "security-reviewer": (10723, 10723),
 }
-XREPO_REVIEWER_CEILING = (32755, 32755)
+XREPO_REVIEWER_CEILING = (34074, 34074)
 PROMPT_CEILINGS = {
-    "chunk-reviewer-prompt": 9675,
+    "chunk-reviewer-prompt": 9677,
     "silent-failure-hunter-prompt": 342,
     "cross-cutting-prompt": 1535,
     "security-reviewer-prompt": 3344,
-    "verifier-prompt": 5596,
+    "verifier-prompt": 5598,
 }
 
 

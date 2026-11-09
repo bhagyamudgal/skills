@@ -23,7 +23,7 @@ For each finding with a `File: <path:line>` reference, before expensive Step 2 v
 
 1. Compute `max_valid_line(path)` from `gh pr view --json files`:
    - NEW file: `max_valid_line = file.additions`
-   - MODIFIED file: `max_valid_line ≈ file.additions + file.deletions_original_side + ~200 buffer`. When suspicious, fetch HEAD file length via `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>`.
+   - MODIFIED file: `max_valid_line ≈ file.additions + file.deletions_original_side + ~200 buffer`. When suspicious, fetch HEAD file length via `gh api 'repos/<owner>/<repo>/contents/<path>?ref=<head-sha>'`.
    - Cheap heuristic: if `line > (file.additions + 500)` for a NEW file, almost certainly hallucinated.
 
 2. If `cited_line > max_valid_line`: drop and log `hallucinated reference (line <N> exceeds <M> available)`. Drop it as cited. A line that doesn't exist is not rescued by shifting it to one that does.

@@ -166,7 +166,7 @@ def network_calls(mode, chunks=1, hunter=True, linked_issues=0,
     through the Agent tool with staged files, so it costs zero gh calls in
     every mode. Phase 4 is the prior-review query, create, the create
     read-backs, submit, and the submit read-back, plus one GraphQL call per
-    file-level thread; hunk validation reuses the staged diff. The Step 0
+    file-level thread; the renderer routes findings against the staged diff. The Step 0
     collapse (one prior-review query instead of three) applies to re-runs
     only and stays out of the fresh-run counts. Evidence fetches inside
     V1/V2/V3, the per-finding blame and base comparison of step 4.57, the

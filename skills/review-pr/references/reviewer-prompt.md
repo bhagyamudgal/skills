@@ -124,7 +124,7 @@ If true, ALSO load and follow `<SKILL_DIR>/references/schema-design-checks.md` f
 - Point every finding at a `File: <path>`. Give the line when you can name it on the post-image side; leave it off for module-scope findings, which route to file-level review comments.
 - Raise missing tests only where this PR was expected to add them. Advice that would fit any PR belongs to no PR.
 - If a question has nothing to report, write "No issues", except Q6. That is a complete answer.
-- **Permission to abstain**: if answering needs code you haven't seen, fetch it via `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>` or write `Cannot assess: would need <file>`. Both are complete answers.
+- **Permission to abstain**: if answering needs code you haven't seen, fetch it via `gh api 'repos/<owner>/<repo>/contents/<path>?ref=<head-sha>'` or write `Cannot assess: would need <file>`. Both are complete answers.
 - Low-confidence findings at Moderate or Minor WILL be dropped by the critic. Only flag if a human should still take a second look.
 - Steps 4, 5 and 6 each require an audit field: `reusability_searches:`, `class_completeness:` and `Inverse risk:`. Write all three exactly as those steps specify, with real tool calls or the step's own N/A sentinel. What a missing one costs: an empty or missing `reusability_searches:` makes the Q6 claims INVALID, and a missing `class_completeness:` has the finding treated as UNSWEPT so the critic runs the sweep itself.
 
