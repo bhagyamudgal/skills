@@ -11,6 +11,7 @@ For "all open PRs", enumerate via `gh pr list --json number,url,title --limit 50
 - Main context is the **orchestrator**: oversight only. It never reviews a PR inline, regardless of `SIZE_MODE` (size routing applies inside each subagent, not in main).
 - Spawn **ONE `general-purpose` subagent PER PR**. Each subagent runs the single-PR flow (Phases 1-3) independently against its own PR and returns its Phase 4 terminal block as its result. Dispatch in parallel batches of 3-4.
 - Subagents NEVER post to GitHub and NEVER ask questions. They return the complete surviving finding set, semantic verdict, and `IS_SELF_REVIEW` value to the orchestrator, which posts each review after every subagent has returned.
+- When any nested dispatch from a per-PR subagent fails, it runs inline, in order, every lens its `SIZE_MODE` and flags would have dispatched: Subagent 1, Subagent 2 when `INCLUDE_SILENT_FAILURE_HUNTER = true`, Subagent 3 only in `parallel-chunked`, Subagent 4 when `INCLUDE_SECURITY_REVIEWER = true`, then the Phase 3 verifier checks. Its Timing block writes `Reviewers: inline (host blocks nested dispatch)` and marks each lens `run` or `skipped (<reason>)`. When a required lens could not run, the orchestrator posts `COMMENT` instead of `APPROVE` and names that lens and the reason in the body.
 
 ### `<SKILL_DIR>` on the batch branch
 
@@ -48,7 +49,7 @@ The run continues unattended through the WHOLE list. The user may be away in bat
 
 ## Automatic posting
 
-After every subagent returns, post each completed review in list order through the single-PR GitHub posting flow. For another author's PR, post a review with surviving introduced findings with `REQUEST_CHANGES`, a clean review with no open blockers with `APPROVE` (its pre-existing findings ride along as threads), and a clean review with open blockers on the blocked-by-open-threads path (Phase 3 step 8). For a self-review, post the complete result with `COMMENT`. Invoke `preflight-mutations` separately for each PR immediately before its first mutation, using the batch `/review-pr` request as the authorization source. Reconcile and record each result before moving to the next PR. Record each PR's reconciled `https://github.com/<owner>/<repo>/pull/<num>#pullrequestreview-<REVIEW_DB_ID>` (or `not posted (<reason>)` when nothing landed) and carry it into that PR's `**Review URL**` line and the consolidated posting-status entry.
+After every subagent returns, post each completed review in list order through the single-PR GitHub posting flow. For another author's PR, post a review with surviving introduced findings with `REQUEST_CHANGES`, a clean review with no open blockers with `APPROVE` (its pre-existing findings ride along as threads; `COMMENT` when a required lens did not run), and a clean review with open blockers on the blocked-by-open-threads path (Phase 3 step 8). For a self-review, post the complete result with `COMMENT`. Invoke `preflight-mutations` separately for each PR immediately before its first mutation, using the batch `/review-pr` request as the authorization source. Reconcile and record each result before moving to the next PR. Record each PR's reconciled `https://github.com/<owner>/<repo>/pull/<num>#pullrequestreview-<REVIEW_DB_ID>` (or `not posted (<reason>)` when nothing landed) and carry it into that PR's `**Review URL**` line, its table row, and the consolidated posting-status entry.
 
 A posting failure never asks immediately, and the `SKILL.md` unattended rule applies here only when its own trigger fires. Record the exact partial GitHub state and the recovery choices from `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` as `recovery-pending`, then continue with every untouched PR.
 
@@ -61,9 +62,9 @@ After automatic posting has attempted every completed review and recorded each c
 ```
 # Batch PR Review: <N> PRs (<date>)
 
-| PR | Title | Approval | Verdict | C | S | M | m |
-|----|-------|----------|---------|---|---|---|---|
-<one row per PR; "review failed" rows included>
+| PR | Title | Approval | Verdict | Reviewers | Review URL | C | S | M | m |
+|----|-------|----------|---------|-----------|------------|---|---|---|---|
+<one row per PR; "review failed" rows included; Reviewers is `dispatched` or `inline`, plus any skipped lens>
 
 ## Posting status
 <one entry per PR: posted request-changes + review URL, posted approve + review URL, posted self-review comment + review URL, review failed, posting failed, or recovery-pending>

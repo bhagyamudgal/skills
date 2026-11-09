@@ -5,7 +5,7 @@ description: Backend and database performance checklist. Use when writing or rev
 
 # Backend performance checklist
 
-I walk every check below against the code in hand and state a verdict on each one. Applied, clean, or not applicable and why. A check I did not name is a check I did not run.
+I walk every check below against the code in hand and state a verdict on each one: applied, clean, or not applicable and why. A check I did not name is a check I did not run.
 
 Checks marked `[pg]` are PostgreSQL-specific. I skip them on other stores rather than translating them.
 
@@ -17,4 +17,4 @@ Checks marked `[pg]` are PostgreSQL-specific. I skip them on other stores rather
 - **Select only needed columns**. List endpoints name their columns instead of selecting the whole row.
 - **Reuse fetched rows**. A row fetched for an ownership check is the row the handler returns. No second fetch by id.
 - **EXPLAIN before rewriting** `[pg]`. Any query restructure, batching, joining, indexing, or replacement of parallel-N with batched-1 ships `EXPLAIN (ANALYZE, BUFFERS)` numbers for current versus proposed shape on representative data. Keep the faster shape. A rewrite that looks faster in the diff can run 10-100× slower on real data.
-- **Race conditions**. When 2+ writers can touch one row, use a transaction. Async completion order is not source order. Order explicitly with `await` or `Promise.all` instead of relying on accidental serialization. A check plus a write that must stay atomic uses `SELECT ... FOR UPDATE` on `[pg]` or a unique constraint, not application-level locking.
+- **Race conditions**. When 2+ writers can touch one row, use a transaction. Async completion order is not source order. Order explicitly with `await` or `Promise.all` instead of relying on accidental serialization. A check plus a write that must stay atomic uses `SELECT ... FOR UPDATE` `[pg]` or a unique constraint, not application-level locking.

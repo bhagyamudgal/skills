@@ -41,7 +41,7 @@ openclaw backup --help
 openclaw backup create --help
 ```
 
-`--help` is the source of truth for this install. `docs.openclaw.ai` documents a `backup sqlite` subcommand that shipped builds may lack, so the docs site describes a capability the binary may not have.
+`--help` is the source of truth for this install. `docs.openclaw.ai` documents a `backup sqlite` subcommand that shipped builds may lack.
 
 Pass this step only when you recorded the subcommand list. If `sqlite` is present, prefer it over Step 3 and say so in the report.
 
@@ -88,7 +88,7 @@ tar --use-compress-program="zstd -3 -T0" \
 echo "EXIT=$?"
 ```
 
-`node_modules` is excluded as reinstallable and often a third of the total. Everything else stays. The volatile files Step 4 dropped are the point of this step.
+`node_modules` is reinstallable and often a third of the total, so the archive excludes it. Everything else stays. The volatile files Step 4 dropped are the point of this step.
 
 Then produce the evidence:
 
@@ -184,7 +184,7 @@ Re-read the receiving system's encryption and effective access controls after th
 
 Pass this step only when every checked file reports `OK`, encryption at rest remains enabled, effective access stays restricted to the approved recipient accounts, and the retention and deletion path remains available. A mismatched file clears the gate only through the fresh-card retry contract above. A failed security control blocks completion while the sensitive partial state is preserved or separately deleted. `--partial` makes the new transfer resume.
 
-Omitting the official archive from the pull is reasonable. Its contents are a subset of the raw archive. State that omission in the report.
+You may omit the official archive from the pull, since the raw archive holds all of its contents. State the omission in the report.
 
 ## Step 9: Report
 

@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Manage report lifecycle
 
-Establish one authoritative hosted report while preserving every source item and predecessor. This skill coordinates lifecycle semantics here, shared-state authorization through `preflight-mutations`, and final acceptance through `done`.
+Establish one authoritative hosted report while preserving every source item and predecessor. This skill owns lifecycle semantics. `preflight-mutations` authorizes shared-state writes, and `done` owns final acceptance.
 
 ## 1. Inventory the report set
 
@@ -16,7 +16,7 @@ Fetch the rendered content and stable URL of every source and canonical candidat
 
 Keep this working record inline during read-only inventory and staging. Before the multi-write publication begins, persist it in an existing durable ledger that the user authorized this workflow to write. Record its stable URL or path and require it to remain outside every canonical and predecessor publication target for the full run. When no such ledger exists, stop and name authorization of a suitable existing artifact as the next action. Create no lifecycle registry.
 
-The gate is that the exact discovery query and every classified match are recorded, every source, canonical candidate, and source item appears once, write authority is known, and competing authority claims are explicit.
+**Gate.** The exact discovery query and every classified match are recorded, every source, canonical candidate, and source item appears once, write authority is known, and competing authority claims are explicit.
 
 ## 2. Stage the canonical record
 
@@ -47,13 +47,13 @@ Select one disposition for every source item:
 |---|---|---|---|
 | <ID> | <URL> | carried \| merged \| dismissed \| retained-by-reference | <canonical item/anchor ID or dismissal rationale> |
 
-`carried` and `merged` name an existing canonical destination ID. `dismissed` records a reason. `retained-by-reference` names the canonical anchor that keeps the original evidence reachable. Merge only genuinely equivalent items. Preserve unique findings as distinct destinations or references rather than copying entire source reports.
+`carried` and `merged` name an existing canonical destination ID. `dismissed` records a reason. `retained-by-reference` names the canonical anchor that keeps the original evidence reachable. Merge only items with the same claim and the same evidence URLs. Preserve unique findings as distinct destinations or references rather than copying entire source reports.
 
 Finalize and validate the disposition map before rendering any publication payload. Require its source-item IDs to equal the inventory exactly, with no duplicate rows, and require every named canonical destination or anchor to exist in the staged canonical record.
 
 Render the complete canonical payload and every writable predecessor payload to separate immutable local staging paths, treating each path as write-once. Record each path and SHA-256 digest in the lifecycle ledger. Never overwrite or regenerate a frozen file. Changed bytes require a new path, digest, preview, and preflight.
 
-The gate is that an existing hosted writable canonical candidate and guard are known, every discovery match has its final classification, every noncanonical authority is bound as a predecessor, and the canonical payload, predecessor report-plus-marker payloads, and item map are fully staged with every source item assigned exactly one valid disposition.
+**Gate.** An existing hosted writable canonical candidate and guard are known, every discovery match has its final classification, every noncanonical authority is bound as a predecessor, and the canonical payload, predecessor report-plus-marker payloads, and item map are fully staged with every source item assigned exactly one valid disposition.
 
 ## 3. Preflight the publication plan
 
@@ -70,17 +70,19 @@ Partition that plan into one or more mutation cards exactly where `preflight-mut
 
 Apply each card's `preflight-mutations` result contract in the previewed dependency order. Preserve blocked or confirmation-required cards and their dependent writes as pending. A new target, marker, or content change returns the complete plan to preview. Re-preflight only invalidated cards.
 
-The gate is that the complete preview accounts for every lifecycle write, each write belongs to exactly one domain-correct card, and no unpreviewed or dependency-violating write can execute.
+**Gate.** The complete preview accounts for every lifecycle write, each write belongs to exactly one domain-correct card, and no unpreviewed or dependency-violating write can execute.
 
 ## 4. Publish and reconcile
 
-Apply the staged canonical payload and predecessor report-plus-marker payloads without regenerating them. Immediately before each write, rehash its frozen file and require the digest to match the ledger and current mutation card. A mismatch invalidates that card before the write. Atomically transition that item from `pending` to `attempting` in the durable ledger and continue only when the transition succeeds from the expected state. Follow `preflight-mutations`' execution and partial-state contract for each card while preserving the publication plan's dependency order and combined item ledger. After each attempted write, authoritatively read back the body and guard, then atomically persist that item's result, read-back guard, and observed body digest in the durable ledger before the next write. An unavailable or ambiguous ledger transition stops the dependent remainder. Mark an item `landed` only when its complete read-back body matches the frozen bytes. Require every predecessor's fetched content and attributed evidence to remain intact before recording its marker write as `landed`, and record the read-back guard as that target's expected post-write guard.
+Apply the staged canonical payload and predecessor report-plus-marker payloads without regenerating them. Immediately before each write, rehash its frozen file and require the digest to match the ledger and current mutation card. A mismatch invalidates that card before the write. Atomically transition that item from `pending` to `attempting` in the durable ledger and continue only when the transition succeeds from the expected state. Follow `preflight-mutations`' execution and partial-state contract for each card while preserving the publication plan's dependency order and combined item ledger.
 
-The gate is that every publication-plan item has an authoritative result, every landed payload matches its staged content, and the canonical report plus each writable predecessor has an expected post-write guard from authoritative read-back.
+After each attempted write, authoritatively read back the body and guard, then atomically persist that item's result, read-back guard, and observed body digest in the durable ledger before the next write. An unavailable or ambiguous ledger transition stops the dependent remainder. Mark an item `landed` only when its complete read-back body matches the frozen bytes. Require every predecessor's fetched content and attributed evidence to remain intact before recording its marker write as `landed`, and record the read-back guard as that target's expected post-write guard.
+
+**Gate.** Every publication-plan item has an authoritative result, every landed payload matches its staged content, and the canonical report plus each writable predecessor has an expected post-write guard from authoritative read-back.
 
 ## 5. Verify authority and evidence
 
-Re-fetch and reread the rendered canonical report and every predecessor. Exercise every canonical, source, predecessor, and evidence link. Repeat the exact Phase 1 discovery query and compare its stable host IDs and guards with the expected set. Use Phase 4's authoritative post-write guards for landed targets and Phase 1 guards for untouched matches. An expected landed guard is not drift. A missing stable ID, a new match, or any guard outside that expected set returns to inventory, staging, and preflight. Fetch every unexpected match before continuing.
+Re-fetch and reread the rendered canonical report and every predecessor. Exercise every canonical, source, predecessor, and evidence link. Repeat the exact section 1 discovery query and compare its stable host IDs and guards with the expected set. Use section 4's authoritative post-write guards for landed targets and section 1 guards for untouched matches. An expected landed guard is not drift. A missing stable ID, a new match, or any guard outside that expected set returns to inventory, staging, and preflight. Fetch every unexpected match before continuing.
 
 Completion requires:
 

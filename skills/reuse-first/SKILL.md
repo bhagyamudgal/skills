@@ -7,7 +7,7 @@ description: "Search before you write, sweep before you finish. Use BEFORE creat
 
 Every duplicate is a future divergence. A bug fixed in one copy stays broken in the other.
 
-Greenfield with no codebase to search yet. Run project-discovery first, then come back here.
+With no codebase to search yet, run `project-discovery` first, then come back here.
 
 ## 3-layer search
 

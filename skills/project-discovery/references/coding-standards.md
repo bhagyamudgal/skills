@@ -1,4 +1,4 @@
-# Code Patterns
+# Code patterns
 
 These are the project's laws. They hold in every file, in every session.
 
@@ -88,7 +88,7 @@ inferred from the DB schema (`type User = typeof users.$inferSelect`).
 **Run the project's type-check command and fix every error before reporting the
 task complete.** Run `/done` after completing a task.
 
-## 2. Functions & Files
+## 2. Functions & files
 
 **Functions are single-responsibility; compose them into operations.** 5-20 lines
 ideally, 30-40 at most. If you need comments to separate sections inside a
@@ -137,7 +137,7 @@ const label = STATUS_LABELS[status] ?? 'Unknown';
 - No comments in code. The only exceptions are a one-line docstring on an exported symbol and a one-line citation (URL, spec section, ADR or `docs/` path, issue number) for a constraint the code cannot express.
 - No emoji in logs or code.
 
-## 3. Error Handling
+## 3. Error handling
 
 Pick one pattern and hold it across the entire codebase.
 
@@ -201,7 +201,7 @@ in `lib/errors.ts`.
   (`/api/v1/medical-records`), verb suffix for actions
   (`POST /api/v1/appointments/:id/confirm`).
 
-## 5. Imports & Folder Structure
+## 5. Imports & folder structure
 
 **Path aliases, always**: `"paths": { "@/*": ["./src/*"] }` in tsconfig.
 
@@ -325,7 +325,7 @@ async function createAppointmentWithNotification(data: CreateAppointmentInput) {
 }
 ```
 
-## 8. React Components
+## 8. React components
 
 **`useEffect` synchronizes with an external system**: subscriptions, DOM,
 analytics, non-React libraries. Derived state is computed during render; state
@@ -448,19 +448,17 @@ const appointments = pgTable('appointments', {
 });
 ```
 
-## 13. Git & Documentation
+## 13. Git & documentation
 
-**Conventional commits**, imperative mood, 50-char subject: `feat:`, `fix:`,
+**Conventional commits**, imperative mood, 72-char subject: `feat:`, `fix:`,
 `refactor:`, `perf:`, `chore:`, `docs:`, `test:`, `style:`, with an optional
 scope, `feat(auth): add OAuth2 support`.
 
-**Document non-obvious behaviour**, and give each feature folder a README with
-overview, key files, domain rules and endpoints.
+**Document non-obvious behaviour** in a test name, the PR body or an ADR, never
+in a code comment, and give each feature folder a README with overview, key
+files, domain rules and endpoints.
 
 ```typescript
-/**
- * Returns appointments for the next 7 days.
- * Excludes cancelled appointments. Results are cached for 5 minutes.
- */
-async function getUpcomingAppointments(patientId: string) {}
+it('excludes cancelled appointments from the next 7 days', async () => {});
+it('serves repeat requests from a 5-minute cache', async () => {});
 ```

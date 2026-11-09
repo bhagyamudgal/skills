@@ -1,6 +1,6 @@
 ---
 name: executing-tickets-with-subagents
-description: Orchestrate ledger-tracked work through subagents. Use for a bundled GitHub ticket with 3+ sub-issues, a request for subagent-driven execution, resuming such a run after compaction, or explicit away/keep-going delegation even when only one task remains.
+description: Orchestrate ledger-tracked work through subagents. Use for a bundled GitHub ticket with 3+ sub-issues, a request for subagent-driven execution such as "use subagents", "you be the orchestrator", or "one subagent per PR or ticket", resuming such a run after compaction, or explicit away/keep-going delegation even when only one task remains.
 ---
 
 # Executing tickets with subagents
@@ -14,7 +14,7 @@ The main conversation only orchestrates. Every edit, review, and QA pass runs in
 - **Unattended.** When the user explicitly says they are stepping away and asks work to continue, read `${CLAUDE_SKILL_DIR}/references/unattended-scheduler.md` in full before the first dispatch. Its scheduling, transition, update, and handoff contract applies even to one task. Use the phases below only when the work is also a bundled GitHub ticket.
 - **Bundled ticket.** Use the phases below for the ticket's intake, waves, and endgame.
 
-Record the selected branch in the ledger before dispatching work. That is the gate.
+**Gate.** The selected branch is in the ledger before any dispatch.
 
 ## Phase 0: Intake
 
@@ -25,13 +25,13 @@ Record the selected branch in the ledger before dispatching work. That is the ga
 ## Phase 1: Lock, plan, instrument
 
 1. **Explore** the code with parallel read-only agents. Produce a per-sub-issue verdict of already-done, partially-done, or not-started, each with file:line evidence.
-2. **Grill the user.** Run `grill-me` on task order, PR strategy, done-bar per task, tracking method, and anything user-owned such as migrations and commit policy. Grilling ends when every item above has a locked answer written into the ledger. Locked answers are law for every later dispatch.
+2. **Grill the user.** Run `grill-me` on task order, PR strategy, done-bar per task, tracking method, and anything user-owned such as migrations and commit policy. Grilling ends when every item above has a locked answer written into the ledger. Every later dispatch follows the locked answers.
 3. **Spec then plan.** Write one brief per sub-issue and cover every sub-issue, each with exact code and 2-3 named risks the reviewer must check. Briefs locate by symbol, because line numbers drift as tasks land. Then run the `grill-me` verification pass against the brief set before task 1.
 4. **Instrument tracking** before task 1:
    - Keep a ledger, for example `docs/<ticket>-progress.md`. It is the recovery map, and the contract below defines it.
    - Keep the `tasks/todo.md` checklist.
    - Keep one editable GitHub checklist comment on the issue. It carries status plus root cause per item. Save its comment id in the ledger and update it via `gh api ... -X PATCH -F body=@file`. Render the complete initial comment to a file and freeze its SHA-256. Immediately before creating it, refresh the issue's URL, `updatedAt`, body, state, assignees, and comments. Confirm the intended checklist is still absent, then invoke `preflight-mutations` with those guards, the exact frozen file and digest, the locked tracking decision, the expected resulting comment body, and the authoritative comment read-back. Apply its result contract before continuing. Read back the created comment by ID and require its complete body to equal the frozen content. Retry only when authoritative read-back proves no effect. Empty stdout is not failure.
-   - Keep the harness todo list with `TodoWrite`.
+   - Keep the todo list with the harness todo tool.
 
 ## Ledger contract
 
@@ -49,6 +49,8 @@ Write the ledger for a reader with zero context. Assume the next writer remember
    Treat every report as unverified. Only evidence clears one: SHAs, counts, file:line references, and what ran versus what you only inspected.
 5. **`browser-qa`** for UI tasks. It records original data, restores it, and proves the restoration. Its artifacts go to scratchpad only. Run it between waves, with no implementer active. Hot reload contaminates the session mid-test.
 6. **Bookkeeping.** Tick `tasks/todo.md`. Immediately before each wave's checklist PATCH, invoke `preflight-mutations` with the exact issue and comment IDs, the replacement body, the current comment version and body, the locked tracking permission, and the read-back, then apply its result contract. Update the harness todo list and the ledger before the next task.
+
+During any wait longer than 10 minutes, for subagents or API pacing, post a one-line status, attended or not.
 
 Retire a wedged agent instead of re-nudging it. Record its terminal status or successful interrupt, preserve its worktree and diff location, then move the task from active to ready and dispatch a fresh owner. When you cannot prove inactivity, mark the task blocked instead of assigning a second owner.
 

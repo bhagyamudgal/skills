@@ -48,7 +48,7 @@ Phase 0 ends when you set the baseline and either route the delta to a mode or c
 
 5. Acknowledge the chosen mode in one short sentence, for example "Running Logo Concepts.".
 
-**Phase 1 ends** by setting `MODE`.
+Phase 1 ends when it sets `MODE`.
 
 ## Mode handoff
 
@@ -68,7 +68,7 @@ Phase 2 ends when every material field for the active route has a value. Echo th
 
 Run the mode's Output spec. On a continuation, produce the requested fields, every dependent output, and every invalidated check while you preserve unrelated values. Modes other than `finalize` print rich markdown to chat first. `finalize` follows its build lifecycle and prints the handoff summary only after its blocking checks pass.
 
-I hold every mode to one bar.
+Hold every mode to one bar.
 
 - Every recommendation is a spec. Name the element and the value: typeface, px, ratio, hex. "Use a serif for headlines" is not a spec. "Pair Söhne for UI with GT Sectra Display for headlines, 1.6 ratio between H1 and H2" is one.
 - Write in the imperative. Pair the typefaces. Cut the H1 to 48px. Make the call.
@@ -94,6 +94,6 @@ Print the mode's `Next step` verbatim, prefixed with `Next:`, on exactly one lin
 ## Out of scope
 
 - Marketing copy goes to `copywriting`.
-- Figma implementation goes to `figma-generate-library` or `figma-generate-design`.
-- Brand implementation in application UI code goes to `figma:figma-implement-design` or `frontend-design:frontend-design`.
+- Figma implementation goes to `figma:figma-generate-library` or `figma:figma-generate-design`.
+- Brand implementation in application UI code goes to `figma:figma-design-to-code` or `frontend-design:frontend-design`.
 - Naming, taglines, mood boards, and iconography systems sit outside this skill.

@@ -5,7 +5,7 @@ description: Prepare or block a shared-state write. Use immediately before chang
 
 # Preflight mutations
 
-I resolve permission, current state, dependencies, and recovery before a shared-state write. I produce a decision record here. I never perform the mutation itself. That separation is the point.
+Before a shared-state write I resolve permission, current state, dependencies, and recovery, and produce a decision record. I never perform the mutation itself.
 
 ## 1. Define the mutation batch
 
@@ -33,19 +33,27 @@ I render a simple card inline. For a multi-step or multi-batch run, I persist it
 - **Next action:** <one action permitted by the verdict>
 ```
 
-I keep the action, targets, environment, and batch-item IDs exact enough that another agent cannot select a broader resource by inference. A multi-step or multi-batch card needs an authorized durable home, and I state that as the gate. **Gate.** both: nothing selectable by inference, every multi-step card homed.
+I keep the action, targets, environment, and batch-item IDs exact enough that another agent cannot select a broader resource by inference.
 
 I name every target and guarded dependency by stable ID in **Read-back plan**. I never collapse them into "all targets" or "consumers" or another referential phrase.
 
+**Gate.** Nothing is selectable by inference, and every multi-step or multi-batch card has an authorized durable home.
+
 ## 2. Resolve authority and ownership
 
-I apply the target surface governing ownership policy. Technical write access does not expand the user requested scope and does not override assignee, author, resource-owner, or environment boundaries.
+I apply the target surface's ownership policy. Technical write access never widens the requested scope or overrides assignee, author, resource-owner, or environment boundaries.
 
 I state that access-versus-authority distinction in **Ownership policy** whenever the evidence shows technical access beyond the authorized boundary.
 
-A specific user request authorizes ordinary `reversible` writes only within its named action and targets. I require fresh explicit confirmation for restructuring like splitting, grouping, closing-with-successor, or rebasing a dependency, for production data or operations, service downtime, and off-box recipients, for resources outside the governing ownership boundary, for `compensating-only` or `irreversible` actions, and for rewriting or deleting published history.
+A specific user request authorizes ordinary `reversible` writes only within its named action and targets. These need fresh explicit confirmation:
 
-I do not treat approval for one action class as approval for another. I record the exact authorization source in the card.
+- restructuring, such as splitting, grouping, closing-with-successor, or rebasing a dependency;
+- production data or operations, service downtime, and off-box recipients;
+- resources outside the governing ownership boundary;
+- `compensating-only` or `irreversible` actions;
+- rewriting or deleting published history.
+
+Approval for one action class never covers another. I record the exact authorization source in the card.
 
 **Gate.** Ownership is resolved and authorization covers the exact batch, or the verdict cannot be `ready`.
 
@@ -56,12 +64,12 @@ I read current state from the authoritative system immediately before the batch.
 - For ordinary writes I inspect direct dependencies and current compare-before-write guards.
 - For deletion, closure, base changes, and history rewrites I traverse transitive consumers such as stacked PRs, dependent branches, linked issues, workflows, releases, umbrella records, and downstream services.
 - For Git history I compare local refs with their upstreams and consumers. When a commit or ref is published or consumed, I put the append-only corrective commit or successor-ref alternative in **Preview / exclusions** and surface that choice in **Next action**. I classify its rewrite or deletion as `compensating-only` at best because restoring a ref cannot undo publication or downstream consumption. It stays `confirmation-required`.
-- For production-like UI or operations I verify environment, record ownership, snapshot affected records when possible, and name the captured prior values plus restoration or compensation steps. When downstream billing, entitlement, notification, or audit effects persist after restoring the primary record, I classify the action as `compensating-only`.
+- For production-like UI or operations I verify environment, record ownership, and name the captured prior values plus restoration or compensation steps. I snapshot affected records, or state in **Recovery plan** why no snapshot exists. When downstream billing, entitlement, notification, or audit effects persist after restoring the primary record, I classify the action as `compensating-only`.
 - For off-box copies I resolve the recipient, included sensitive material, retention, and revocation or deletion path.
 
 I put every target stable ID plus every mutable fact that protects its write in **Current guards** and **Invalidators**.
 
-**Gate.** Required dependencies and consumers are enumerated from current evidence. An unknown dependency on a destructive action yields `blocked`.
+**Gate.** I enumerate required dependencies and consumers from current evidence. An unknown dependency on a destructive action yields `blocked`.
 
 ## 4. Preview blast radius and recovery
 
@@ -91,14 +99,14 @@ I pass the `ready` card to the workflow that owns the mutation. Immediately befo
 
 Every caller follows the same result contract. It continues only when **Verdict** is `ready` and **Invalidators** still match. On `confirmation-required` it presents the card and waits for the named confirmation. On `blocked` it stops the mutation and reports **Next action**.
 
-The execution handoff must use the surface native conditional-write mechanism when one exists, meaning expected versions, compare-and-swap tokens, exact-SHA leases, or idempotency keys. A recovery push for published Git history must also stay lease-guarded against the re-read remote head.
+The execution handoff must use the surface's native conditional write when one exists: expected versions, compare-and-swap tokens, exact-SHA leases, or idempotency keys. A recovery push for published Git history must also stay lease-guarded against the re-read remote head.
 
 After each attempted item, I record `landed`, `failed`, `skipped`, or `reconcile-required`. I use `reconcile-required` when the command result and authoritative read-back cannot establish whether the write landed. I stop that item. I do not retry it or classify it as `failed` until an authoritative query resolves its state.
 
-On interruption, invalidation, or `reconcile-required`, I preserve the item ledger, authoritatively re-read every `landed` item, record the observed partial external state, and create a new card whose **Targets** cover only the safe `pending` remainder, while **Batch items** carries the authoritative `landed`, `failed`, `skipped`, and unresolved `reconcile-required` history alongside those pending items.
+On interruption, invalidation, or `reconcile-required`, I preserve the item ledger, authoritatively re-read every `landed` item, and record the observed partial external state. Then I create a new card. Its **Targets** cover only the safe `pending` remainder. Its **Batch items** carry those pending items plus the authoritative `landed`, `failed`, `skipped`, and unresolved `reconcile-required` history.
 
-I exclude every `reconcile-required` item from the new card write targets. Its **Next action** is the exact authoritative query needed to resolve that item. Only the observed result may move it to `landed`, `failed`, or `pending`.
+I exclude every `reconcile-required` item from the new card's write targets. Its **Next action** is the exact authoritative query needed to resolve that item. Only the observed result may move it to `landed`, `failed`, or `pending`.
 
 I never restart from an assumed zero state. The execution workflow owns writes. `verify-claims` may validate consequential post-write claims, and the final completion workflow owns its acceptance-surface verdict.
 
-**Done.** The card is populated, its verdict matches the gates, and no shared-state mutation has been performed by this skill.
+**Done.** The card is populated, its verdict matches the gates, and this skill has performed no shared-state mutation.

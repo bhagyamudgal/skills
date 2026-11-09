@@ -3,7 +3,7 @@ name: done
 description: MANDATORY post-task acceptance verification. Fire before reporting ANY task complete. Route code, UI, documentation, global configuration or skills, external metadata or data, and publication or deployment to their user-facing boundaries.
 ---
 
-# Post-Task Verification (/done)
+# Post-task verification (/done)
 
 `done` is the single place a task closes. Send each check to the surface the user will touch and use repo checks only as evidence for surfaces they cover.
 
@@ -30,12 +30,14 @@ git merge-base HEAD "refs/remotes/origin/<base-ref>"
 
 For external-only work, bind currency to the authoritative targets instead. Record each stable target ID or URL, environment, version or revision when the system exposes one, and the exact read-back ledger. Git fields and commits are not applicable. Mixed Git and external work records both forms of currency.
 
+With the request summary and currency bound, take the no-lane exit only when all of these hold for the task, not the turn: no request item asks for a change, `git status --porcelain` is empty, the diff against the recorded base is empty when a base is recorded, no readiness card is open for this task, and the task made no external write or publication. Then record `no acceptance lane applies` in one line and stop. A post-publication run always resumes its card and never takes this exit.
+
 Work out the required lanes from the original request, the changed artifacts, and the actions already taken. Show the six-lane selection before you run checks, with one reason for every required or not-applicable lane. Keep going without asking for routine confirmation and apply any user correction before the final verdict.
 
 | Lane | Select when |
 |---|---|
 | Code | Source, tests, scripts, build behavior, or runtime logic changed |
-| UI | A user-visible interface or interaction changed |
+| UI | A user-visible interface or interaction changed, or the diff against the recorded base changes any `*.tsx`, `*.jsx`, `*.css`, `*.scss`, `*.less`, `*.vue`, or `*.svelte` file other than `*.test.*`, `*.spec.*`, and `*.stories.*` files |
 | Documentation | A document, generated artifact, link, asset, or navigation path changed |
 | Global configuration or skills | Agent rules, configuration, registration, discovery, or invocation changed |
 | External metadata or data | A board, issue, PR, database, remote record, or computed external result changed |
@@ -43,7 +45,7 @@ Work out the required lanes from the original request, the changed artifacts, an
 
 An unselected lane is `not-applicable`, with its exclusion reason. A selected lane stays required even when you cannot reach its boundary.
 
-**Gate.** request summary and applicable currency are exact, all six lanes carry a selection and reason, and every user-requested outcome maps to every lane that applies to it. Do not require unrelated lanes.
+**Gate.** Request summary and applicable currency are exact, all six lanes carry a selection and reason, and every user-requested outcome maps to every lane that applies to it. Do not require unrelated lanes.
 
 ## 2. Verify each required lane
 
@@ -53,20 +55,20 @@ When Code or Global configuration or skills is required, run `simplify` once aft
 
 | Lane | Minimum boundary evidence |
 |---|---|
-| Code | Run the affected repository-native type, lint, build, and test checks. Use `fix-ts-errors` when TypeScript applies; a scoped first pass is allowed, but always run the full workspace check at least once. Run `parallel-review` with the recorded merge-base SHA as its comparison base, apply its `converge-reviews` result, and account for the request against the diff. `simplify`'s added-comment scan is blocking here: any comment it prints that is still in the diff leaves this lane unverified. Run `reuse-first` in sweep mode and record what it returned, including nothing: `simplify` is scoped by its own gate to duplication *introduced by the change*, so duplication that already existed is invisible to every other check in this lane. PR-bound work that changes API or endpoint behavior also runs `browser-qa` endpoint QA, so the PR carries its QA Test Results. |
+| Code | Run the affected repository-native type, lint, build, and test checks. Use `fix-ts-errors` when TypeScript applies; a scoped first pass is allowed, but always run the full workspace check at least once. Run `parallel-review` with the recorded merge-base SHA as its comparison base, apply its `converge-reviews` result, and account for the request against the diff. `simplify`'s added-comment scan is blocking here: any comment it prints that is still in the diff leaves this lane unverified. Run `reuse-first` in sweep mode and record what it returned, including nothing. The lane stays `pending` until `parallel-review`, `simplify`, and the `reuse-first` sweep each have a recorded result line. The `parallel-review` line names every member it reported `unavailable(<reason>)`. PR-bound work that changes API or endpoint behavior also runs `browser-qa` endpoint QA, so the PR carries its QA Test Results. |
 | UI | Run the affected flow through `browser-qa`; require every affected step to pass and record browser output, screenshots, network results, and console state. For PR-bound work it also runs the base side and writes `.qa/pr-evidence.md`. |
 | Documentation | Inspect the rendered or generated final artifact and exercise affected links, assets, and navigation. Source text alone does not verify rendered output. |
 | Global configuration or skills | Parse the final configuration, verify registration and discovery, then check picker visibility, manual invocation, or actual consumer behavior wherever the change affects them. |
 | External metadata or data | Freshly re-fetch every changed target from the authoritative system and compare exact IDs, fields, counts, or totals with the request and mutation ledger. |
 | Publication or deployment | Inspect the published consumer or live target at the exact version and environment; a successful upload or deploy command alone is insufficient. |
 
-For the code lane, fix Critical and Serious review findings and apply `converge-reviews`: continue only on `continue`, proceed on `converged`, stop on `blocked-at-cap`, and present any `follow-up-proposed` approval boundary. Re-run only checks invalidated by a fix.
+For the code lane, fix Critical and Serious review findings and apply `converge-reviews`: continue only on `continue`, proceed on `converged`, stop on `blocked-at-cap`, and apply the `follow-up-proposed` filing rule from `converge-reviews`. Re-run only checks invalidated by a fix.
 
 For a completed shared-state mutation, reuse the exact authoritative read-back plan and landed-item ledger its execution workflow produced. When inference rather than direct observation supports a lane conclusion, run `verify-claims` and keep its evidence ceiling.
 
 Fix a failed check and rerun only the evidence it invalidates. If it remains unresolved, assign the lane `blocked`.
 
-**Gate.** every required lane has direct boundary evidence or a concrete gap, and every check an applicable lane names has a recorded result.
+**Gate.** Every required lane has direct boundary evidence or a concrete gap, and every check an applicable lane names has a recorded result.
 
 ## 3. Assign states
 
@@ -81,7 +83,7 @@ Use this vocabulary for every request item, lane, and evidence facet:
 
 Missing boundary evidence creates an evidence ceiling. It never becomes `verified` because another lane passed.
 
-**Gate.** each state follows from recorded evidence, and every non-verified required row names its exact gap and next action.
+**Gate.** Each state follows from recorded evidence, and every non-verified required row names its exact gap and next action.
 
 ## 4. Build the readiness card
 

@@ -5,13 +5,13 @@ description: Reduce unnecessary complexity in a completed code or workflow diff 
 
 # Simplify
 
-I make the smallest behavior-preserving cleanup that leaves the finished change easier to maintain. Less code, same behavior. That is the whole job.
+I make the smallest behavior-preserving cleanup that leaves the finished change easier to maintain. Less code, same behavior.
 
 ## 1. Bind the change
 
 I record the originating request, review baseline, changed paths, and current diff or content hash. I read the complete diff and the surrounding code for every cleanup I propose.
 
-The cleanup scope is the current task diff. Unrelated pre-existing code stays untouched, and I say so as the gate. I do not wander.
+The cleanup scope is the current task diff. I leave unrelated pre-existing code untouched and state that as the gate.
 
 ## 2. Find removable complexity
 

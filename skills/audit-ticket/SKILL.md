@@ -1,11 +1,11 @@
 ---
 name: audit-ticket
-description: Audit a stale GitHub issue against the current codebase, then update or sunset it. Use when the user says "audit this ticket", or asks whether an old issue is still needed or should be sunset.
+description: Audit a stale GitHub issue against the current codebase, then update or sunset it. Use when the user says "audit this ticket", asks whether an old issue is still needed or should be sunset, asks "do we still have this issue" or "is this already done or sorted", says "verify the gap is still there and close it", or hands over a batch of tickets to check.
 ---
 
 # /audit-ticket: audit a stale issue against current code
 
-I take a GitHub issue written weeks or months ago and check every requirement in it against the codebase as it is today. Old tickets rot. Half the items ship in unrelated PRs, some turn obsolete after a refactor, and the rest silently block planning because nobody trusts the ticket anymore. I produce a per-item verdict with evidence, then the user decides the ticket fate. I would rather do this audit once, properly, than argue about the ticket for another quarter.
+I take a GitHub issue written weeks or months ago and check every requirement in it against the codebase as it is today. Old tickets rot. Half the items ship in unrelated PRs, some turn obsolete after a refactor, and the rest silently block planning because nobody trusts the ticket anymore. I produce a per-item verdict with evidence, then the user decides the ticket fate.
 
 ## Usage
 
@@ -40,7 +40,7 @@ I extract attachment URLs from the body AND every comment.
 - `https://github.com/user-attachments/assets/<id>`
 - `https://user-images.githubusercontent.com/...`
 
-For each, I download with auth, since private-repo attachments 404 without it, then Read the file to actually look at it.
+For each, I download with auth, since private-repo attachments 404 without it, then Read the file.
 
 ```bash
 curl -fsSL -H "Authorization: token $(gh auth token)" -o /tmp/audit-ticket-<n>-img<i>.png "<url>"
@@ -87,7 +87,7 @@ verdict grounded in file:line evidence, not a guess.
 Issue: #<n>, <title> (opened <createdAt>)
 Goal (1 sentence): <from body>
 HEAD: <full Phase 1 SHA>
-Content snapshot: <verified_content_snapshot tree hash>
+Content snapshot: <tree ID from Phase 1>
 
 ## Requirement to verify
 <Rn>: <requirement text>
@@ -127,11 +127,11 @@ A failed or empty subagent does not stop the audit. I mark that requirement `unv
 
 ## Phase 3: Report (main)
 
-I verify each returned `file:line` exists in the recorded content snapshot before printing, by reading the cited range from `git show <verified_content_snapshot>:<path>`. I drop fabricated citations and downgrade that verdict confidence to `low`.
+I verify each returned `file:line` exists in the recorded content snapshot before printing, by reading the cited range from `git show <tree ID from Phase 1>:<path>`. I drop fabricated citations and downgrade that verdict confidence to `low`.
 
 Every `Rn` from Phase 1 appears exactly once in the table. N equals d + p + nd + o + u. A requirement with no returned verdict is `unverified`, not omitted. I put only evidence IDs in table cells, then render every complete `Rn → E<n>` edge in a block-form source map. Code citations remain separate verdict evidence.
 
-The audit is read by whoever inherits this ticket, and Phase 5 may post it to GitHub unchanged. I write it with no em or en dashes. `unslop` carries the rest of the rules where it is installed.
+Whoever inherits this ticket reads the audit, and Phase 5 may post it to GitHub unchanged. I write it with no em or en dashes and follow `unslop` where it is installed.
 
 Then I print this.
 
@@ -145,10 +145,10 @@ Then I print this.
 
 | # | Requirement | Source evidence | Verdict | Code evidence |
 |---|-------------|-----------------|---------|---------------|
-| R1 | <short text> | E1 | ✅ done | `<file:line>` |
-| R2 | <short text> | E2, E4 | 🟡 partial | `<file:line>`: <gap, short> |
-| R3 | <short text> | E3 | ❌ not done | none |
-| R4 | <short text> | E5 | 🪦 obsolete | <reason, short> |
+| R1 | <short text> | E1 | done | `<file:line>` |
+| R2 | <short text> | E2, E4 | partial | `<file:line>`: <gap, short> |
+| R3 | <short text> | E3 | not done | none |
+| R4 | <short text> | E5 | obsolete | <reason, short> |
 
 ## Source evidence map
 
@@ -207,7 +207,11 @@ First I reconcile every `attempting`, `reconcile-required`, or `landed` entry. I
 
 For each mutation card, I record every payload path and SHA-256 digest, exact title, label, and command options, fresh target guards, and per-step expected guard transition. I pass the exact targets, audit commit and tree IDs, ordered actions, Phase 4 approval, and split metadata to `preflight-mutations` immediately before that card first write. Before each later write, I advance guards only from the prior write authoritative read-back.
 
-After the successor lands, I apply the source-currency gate, then render and freeze the predecessor comment with the real successor URL. I obtain fresh explicit approval for its exact bytes and digest, the current predecessor and successor guards, and the ordered comment to close actions with the expected comment guard transition. After authoritative read-back proves the exact comment landed, I advance to the returned expected guard and permit close without reapproval. Any unexpected transition or changed external guard, source evidence, payload byte, scope, verdict, recommendation, or fate invalidates approval. I reconcile the landed successor through an explicit retain, edit, or close plan and return to Phase 4 when semantics changed. I never restart successor creation.
+After the successor lands, I apply the source-currency gate, then render and freeze the predecessor comment with the real successor URL. I obtain fresh explicit approval for its exact bytes and digest, the current predecessor and successor guards, and the ordered comment to close actions with the expected comment guard transition.
+
+After authoritative read-back proves the exact comment landed, I advance to the returned expected guard and permit close without reapproval.
+
+Any unexpected transition or changed external guard, source evidence, payload byte, scope, verdict, recommendation, or fate invalidates approval. I reconcile the landed successor through an explicit retain, edit, or close plan and return to Phase 4 when semantics changed. I never restart successor creation.
 
 ---
 

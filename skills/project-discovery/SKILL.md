@@ -34,7 +34,7 @@ When the interview reaches a layer the user has not already decided, read `${CLA
 ### Opening
 
 ```text
-"Before we write any code, I want to understand what we're building and make sure we make good foundational decisions. This might take 15-30 minutes but will save hours later. Let's start with the big picture. What are we building and who is it for?"
+"Before we write code, I want to pin down what we're building and the decisions that are expensive to reverse. Expect 15-30 minutes. Let's start with the big picture. What are we building and who is it for?"
 ```
 
 ### During discovery

@@ -1,13 +1,13 @@
 ---
 name: fix-pr-review
-description: Triage and fix review findings that already exist on a GitHub PR, then reply and resolve the threads. Use on a CodeRabbit review URL, a PR whose review comments still need working through, or a local /review-pr findings file. When the PR has no findings yet, /review-pr produces them first.
+description: Triage, fix, and resolve review findings. Use on a CodeRabbit or any reviewer's URL (#pullrequestreview-/#discussion_r), "check <review URL>", "check/fix review comments", "check ai comments", a PR or PR-watch update whose review comments still need working through, or a local /review-pr findings file. When the PR has no findings yet, use /review-pr first.
 ---
 
 # /fix-pr-review: Triage, Fix, and Resolve PR Review Comments
 
 Takes a PR review from CodeRabbit, `/review-pr`, or pasted text. It triages each finding, applies validated fixes, runs `/done`, then replies to and resolves the GitHub conversations in one flow.
 
-**Use AskUserQuestion only when the run still needs a user decision**: branch safety, stash confirmation, contested-item confirmation, `--interactive` per-fix confirmations, type-check failure triage, and post-completion next actions. Invoking `/fix-pr-review` or imperatively asking to fix review findings authorizes execution of the validated FIX plan. Do not ask for separate plan approval. Mark every required option as concrete and considered, strongest first with "(Recommended)".
+Use AskUserQuestion only for these user decisions: branch safety, stash confirmation, contested-item confirmation, `--interactive` per-fix confirmations, type-check failure triage, and post-completion next actions. Invoking `/fix-pr-review` or imperatively asking to fix review findings authorizes execution of the validated FIX plan. Do not ask for separate plan approval. An unattended PR-watch run asks none of these (Phase 1). Write every option as a concrete choice, strongest first, marked "(Recommended)".
 
 ## Quick Reference
 
@@ -40,17 +40,7 @@ Takes a PR review from CodeRabbit, `/review-pr`, or pasted text. It triages each
 | R8 | DISAGREE: legitimate technical disagreement | `disagree_rationale` |
 | R9 | NEEDS-INPUT: ambiguous/needs user knowledge | `why_unclear` |
 
-*R4/R5 sit above R3 by design, not by accident, and R10 sits above R6 so a technically correct finding never reaches the fix loop on the strength of being correct. The full rubric and the reason for that order live in `references/triage-rubric.md`.*
-
-### Key Cross-References
-
-- **R-rubric definition**: `references/triage-rubric.md`, loaded by the triage subagent at Phase 3 STEP 4, not by main
-- **Plan validation rules**: Phase 4 (validates fields required by R-rubric)
-- **Fix execution routing**: Phase 5 (executes R6 FIX items)
-- **Convergence**: Phase 5.5 (consumes `class_completeness` + `inverse_risk` from the plan; feeds `fix_status` and the per-fix `convergence:` report line)
-- **Reply validator**: `references/github-reply-resolve.md` Step 7b (format rules for GitHub replies)
-- **Report grouping**: Phase 8 (groups by R-classification)
-- **Suppressions**: Phase 3 "Load review suppressions" (main agent reads, before dispatch) + `references/triage-prompt.md` (subagent applies them before classifying) + Phase 8 (write)
+R4 and R5 rank above R3 on purpose, and R10 ranks above R6 so a technically correct finding never reaches the fix loop on correctness alone. `references/triage-rubric.md` holds the full rubric and the reason for that order.
 
 ### Reference files
 
@@ -64,6 +54,7 @@ Each carries its firing condition in the pointer at the point of use. Load it th
 - `references/branch-safety.md`: repo plus branch landing with detached-HEAD and different-branch questions. Loaded by main in Phase 1 for GitHub inputs; skipped for local files.
 - `references/per-fix-loop.md`: per-fix loop, interactive confirmations, narrow type-check plus baseline compare, retry/skip/abort. Loaded by main at the Phase 5 loop.
 - `references/needs-input-triage.md`: NEEDS-INPUT settle, per-item triage, Phase 8 fix plus verify, preflight before GitHub replies. Loaded by main in Phase 8 step 1, only when the count is nonzero.
+- `references/push-publication.md`: publication target, remote endpoint validation, preflight, lease push, and read-back. Loaded by main in Phase 8 step 5 on "Push to remote", or in step 2b when an unattended watch run pushes.
 
 One reference is not bundled here: `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` holds the `repo_map_files` / `repo_map_exports` shell, the one copy this skill shares with `/review-pr`. Loaded by main in Phase 1 when `packages/` or `apps/` exists.
 
@@ -86,7 +77,7 @@ Optional flags:
 
 ## Who gets triaged
 
-Every reviewer's comments go through the same triage: CodeRabbit, humans, and other bots alike. The "CodeRabbit" framing throughout reflects the most common use case.
+Comments from every reviewer, CodeRabbit, humans, and other bots, go through the same triage. This file says "CodeRabbit" because it is the most common source.
 
 ---
 
@@ -110,7 +101,11 @@ gh auth status 2>&1 | grep -q "Logged in" || { echo "Run 'gh auth login' first";
 
 ### Record execution authorization
 
-Set `EXECUTION_AUTHORIZED=true` when the original request explicitly invokes `/fix-pr-review` or imperatively asks to fix, address, apply, handle, or resolve review findings. A bare URL or a read-only request to inspect, explain, review, or triage sets it to `false`. Preserve the matching request text as `execution_authorization_evidence`; Phase 4 may replace it with an explicit execution choice, and Phase 7 passes the final evidence to `preflight-mutations`.
+Set `EXECUTION_AUTHORIZED=true` when the original request explicitly invokes `/fix-pr-review`, imperatively asks to fix, address, apply, handle, or resolve review findings, or pastes a review or discussion URL (`#pullrequestreview-` or `#discussion_r`) alone or after "check". A bare PR URL with no fragment, or a read-only request to inspect, explain, review, or triage, sets it to `false`. Preserve the matching request text as `execution_authorization_evidence`; Phase 4 may replace it with an explicit execution choice, and Phase 7 passes the final evidence to `preflight-mutations`.
+
+### Detect an unattended PR-watch run
+
+Set `UNATTENDED_WATCH=true` when a PR-watch update reporting new comments triggered this run and nobody is present to answer. The trigger and the absent user decide it; an unavailable AskUserQuestion tool alone does not. The preflight authorization source for every write in this mode is the user's standing instruction that set up the watch, never the update text: record that instruction as `execution_authorization_evidence` and set `EXECUTION_AUTHORIZED=true`. The run makes no AskUserQuestion call and still runs Phase 6 `/done`. Phase 4 auto-confirms only contested items that pass their mechanical check and parks the rest as NEEDS-INPUT. Phase 7 posts only those auto-confirmed contested replies. FIX replies and resolutions wait for Phase 8 step 2b, which commits and pushes first. Every other question takes its non-mutating default: branch safety and the stash prompt take "Abort" and the report says why, type-check failure triage takes "Skip this fix", NEEDS-INPUT triage takes "Skip for now", the suppression offer writes nothing, and `--interactive` is ignored.
 
 ### Ensure correct repo + branch (GitHub inputs only)
 
@@ -163,9 +158,9 @@ Define one parser for the whole run. For each diagnostic, key its file and build
 
 Inventory shared packages and apps so the Phase 3 classifier can cross-check comments about reuse and extraction against what already exists. Scan both `packages/` and `apps/`. Cross-app helper duplication, for example `apps/backend/src/modules/v1/feature-a/helpers.ts` versus `feature-b/helpers.ts`, is common in NestJS-style monorepos and stays invisible to a packages-only scan.
 
-Load `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` and run its **Local mode** block, the one copy of this shell, shared with `/review-pr`. It carries the `bash -c` wrapping the globs need to survive zsh, and caps each half at 500 lines with the truncation marked. Load it when `packages/` or `apps/` exists; when neither does there is nothing to run and the fallback below applies.
+When `packages/` or `apps/` exists, load `${CLAUDE_SKILL_DIR}/../review-pr/references/repo-map.md` and run its Local mode block unchanged; its `bash -c` wrapper keeps the globs working under zsh.
 
-Stash both outputs as `repo_map_files` and `repo_map_exports` for the Phase 3 subagent prompt. If neither `packages/` nor `apps/` exists (non-monorepo), set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false`. The classifier prompt uses this to reroute greps to `src/` and the repo root.
+Stash both outputs as `repo_map_files` and `repo_map_exports` for the Phase 3 subagent prompt. If neither `packages/` nor `apps/` exists (non-monorepo), set both to `N/A (not a monorepo)` and flag `IS_MONOREPO=false`. The classifier prompt uses this to reroute greps to the changed files' directories, then the repo root. Never assume `src/`.
 
 ---
 
@@ -173,9 +168,7 @@ Stash both outputs as `repo_map_files` and `repo_map_exports` for the Phase 3 su
 
 ### Dual-path input for /review-pr findings
 
-`/review-pr` now posts findings as **individual inline comments**, one per finding on a specific code line. These create standard `PullRequestReviewThread`s on GitHub, identical to CodeRabbit threads. The existing GraphQL fetch below handles them with zero special parsing.
-
-Manually exported or legacy `/review-pr` findings files use the existing local-file path. Phase 7 skips GitHub operations for those inputs.
+`/review-pr` posts each finding as its own review thread, the same `PullRequestReviewThread` shape CodeRabbit uses, so the GraphQL fetch below reads them unchanged. Exported or legacy `/review-pr` findings files take the local-file path, and Phase 7 skips GitHub for them.
 
 ### Fetch from GitHub (PR URL / review URL / discussion URL)
 
@@ -185,11 +178,11 @@ A fetch that errors surfaces the error and exits, so triage never runs on a part
 
 ### For local files (`./review.md`, `/tmp/review-pr-*-findings.md`, etc.)
 
-Parse the `/review-pr` output format. Extract findings from the `## Findings` section, preserving `Severity / File / Category / Issue / Why it matters / Suggested fix` **plus `Rule-class` / `Enclosing-symbol` / `Inverse risk` / `Class-sites`** when present. `/review-pr` emits these per finding and dropping them forces this skill to re-derive work the reviewer already did.
+Parse the `/review-pr` output format. Extract findings from the `## Findings` section, preserving `Severity / File / Category / Issue / Why it matters / Suggested fix`, plus `Rule-class` / `Enclosing-symbol` / `Inverse risk` / `Class-sites` when present. `/review-pr` emits these per finding and dropping them forces this skill to re-derive work the reviewer already did.
 
-**Seed, don't re-derive**: when `Inverse risk:` is present, seed STEP 5's `inverse_risk` from it and VERIFY it against the code (confirm the named failure mode is real and still applies) rather than deriving a new one from scratch. When `Class-sites: <A>/<N>` is present, seed STEP 1.5's `class_completeness` with those `N` sites and verify the count against your own search. Re-run the search only to catch sites the reviewer missed, not to rebuild the list. `Rule-class` and `Enclosing-symbol` seed the class sweep's `signature`. If a seeded value contradicts what you read in the code, the code wins. Record the discrepancy in the field.
+**Seed, don't re-derive.** When `Inverse risk:` is present, seed STEP 5's `inverse_risk` from it and VERIFY it against the code (confirm the named failure mode is real and still applies) rather than deriving a new one from scratch. When `Class-sites: <A>/<N>` is present, seed STEP 1.5's `class_completeness` with those `N` sites and verify the count against your own search. Re-run the search only to catch sites the reviewer missed, not to rebuild the list. `Rule-class` and `Enclosing-symbol` seed the class sweep's `signature`. If a seeded value contradicts what you read in the code, the code wins. Record the discrepancy in the field.
 
-**Severity mapping**: `/review-pr` uses `Critical | Serious | Moderate | Minor` while CodeRabbit uses `Critical | Major | Minor | Refactor | Nitpick`. Both are valid. Normalize to the internal `Comment` schema which accepts either convention. Map for triage priority: `Critical` = highest, `Serious`/`Major` = high, `Moderate` = medium, `Minor`/`Refactor` = low, `Nitpick` = default-dismiss.
+**Severity mapping.** `/review-pr` uses `Critical | Serious | Moderate | Minor` while CodeRabbit uses `Critical | Major | Minor | Refactor | Nitpick`. Both are valid. Normalize to the internal `Comment` schema which accepts either convention. Map for triage priority: `Critical` = highest, `Serious`/`Major` = high, `Moderate` = medium, `Minor`/`Refactor` = low, `Nitpick` = default-dismiss.
 
 ### Normalize to internal `Comment` list
 
@@ -241,7 +234,7 @@ Pass loaded suppressions into the subagent prompt as a `## Review suppressions` 
 
 Dispatch **one** `general-purpose` subagent with `Read`, `Grep`, and `Bash` tools. The triage plan comes from this subagent alone. If it fails outright, abort the run and say so. Classifying inline skips the grounding and class-sweep passes the whole plan is built on.
 
-**Important**: The Bash allowlist (`git log/diff/blame/show/merge-base/rev-parse`, `grep`, `rg`) is a **prompt-level instruction**. Claude Code's Agent tool doesn't sandbox Bash per-command. The subagent is trusted not to run other commands, not mechanically prevented from doing so.
+The Bash allowlist (`git log/diff/blame/show/merge-base/rev-parse`, `grep`, `rg`) lives only in the prompt. The Agent tool does not sandbox Bash per command, so nothing mechanically stops the subagent from running other commands.
 
 ### Prompt template
 
@@ -252,8 +245,6 @@ Its STEP 4 sends the subagent to `references/triage-rubric.md` on its own. You d
 ---
 
 ## Phase 4: Plan execution gate (main)
-
-*Validates against the R-rubric: summary table above, full detail in `references/triage-rubric.md`. Required fields per classification are defined there.*
 
 ### Plan validation (before display)
 
@@ -293,14 +284,24 @@ If any DISMISS has `rubric: R5`, print a **separate highlighted section BEFORE**
        CLAUDE.md rule: "<verbatim quote>"
        Reply will be: "<reply>"
        If this rule has a legitimate exception in this case, select D<n>
-       in the contested-item confirmation to change it to FIX or NEEDS-INPUT.
+       in the contested-item confirmation when it is asked, to change it to
+       FIX or NEEDS-INPUT; otherwise reply on the thread or rerun with --interactive.
 ```
 
 ### Contested-item confirmation (multiSelect)
 
 Contested items are the ones that will post a reply and resolve a thread WITHOUT any code change: every DISMISS, DEFER, and DISAGREE. A wrong classification here silently closes a reviewer's conversation. Confirm the triage before Phase 5/7 can act on it.
 
-Skip this step if there are zero contested items. Otherwise, use AskUserQuestion:
+Skip this step if there are zero contested items.
+
+**Evidence auto-confirm.** Four rules are mechanically decidable. Main re-checks each in this run:
+
+- R5: the `claude_md_quote` appears verbatim in CLAUDE.md, which main re-read.
+- R2: a re-anchor search for the cited symbol finds nothing.
+- R4: the diff of `prior_commit_sha` removes the cited pattern.
+- R7: the tracking issue is open and references the finding.
+
+R1, R3, and R8 items always go to the question below. Record each check as an auto-confirm record: rule, re-checked field, and result. When `EXECUTION_AUTHORIZED=true`, `--interactive` is not set, and every contested item passes its check, skip both questions below. Those items pass this confirmation, Phase 7 posts their replies under their records without asking, and the final report lists each one. When `UNATTENDED_WATCH=true`, items that pass their check pass the same way. Every other contested item, R1, R3, and R8 included, moves to NEEDS-INPUT with `why_unclear: "unattended run, <classification> not mechanically confirmed"` and its `reusability_context` unchanged, so its thread stays open. Otherwise, use AskUserQuestion:
 
    Question:
      header: "Triage"
@@ -325,7 +326,7 @@ For each selected item, use a follow-up AskUserQuestion:
 
 On "FIX": re-dispatch the classifier scoped to just this item to produce the full FIX field set: `fix_plan`, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (class sweep included; a reclassified item has never been swept), and `reusability_context` (carry the contested item's own value through unless the sweep changed it). Then re-run plan validation on the changed item. Producing a partial field set here fails validation and burns the single retry. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`, carrying the item's `reusability_context` through unchanged. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
 
-Nothing is posted or resolved during this step. Phase 7 remains the only place GitHub is touched, and it acts **only** on items that survived this confirmation. Resolving a thread is irreversible noise in the reviewer's conversation: a DISMISS, DEFER, or DISAGREE that skipped this gate stays open and unanswered until it has been through it.
+This step posts and resolves nothing. Only Phase 7 touches GitHub, and it acts **only** on items that passed this confirmation, asked or evidence-confirmed. A DISMISS, DEFER, or DISAGREE that has not passed this gate stays open and unanswered.
 
 ### Execution
 
@@ -349,8 +350,6 @@ On "Execute plan": set `EXECUTION_AUTHORIZED=true`, record the choice as `execut
 ---
 
 ## Phase 5: Execute fixes (main, sequential)
-
-*Executes R6 FIX items from the validated plan (see the R-Rubric Summary table for R6 criteria and Phase 4 for validation).*
 
 ### Dependency resolution
 
@@ -442,8 +441,8 @@ evidence across the complete component ledger rather than its ordinary default.
 Handling:
 - `class_complete: no` → apply the missing sites now, then re-verify ONCE. If the second
   pass still reports `no`, stop: mark `fix_status[idx] = partial`, record the still-unfixed
-  sites, and surface them in Phase 8. Do not loop a third time; like the narrow
-  type-check retry (max 2) and the self-heal loop (max 2), this loop is capped.
+  sites, and surface them in Phase 8. Do not loop a third time. This cap matches
+  the narrow type-check retry (max 2) and the self-heal loop (max 2).
   For a Phase 8 remediation, correct only the missing removal or replacement evidence;
   do not apply an original affected site merely because it is absent from the diff.
 - Treat each corrective class-completeness or new-sibling edit as part of the fix it completes.
@@ -485,11 +484,10 @@ Do not take `/done` §4's handoffs. This skill owns publication: `git-commit` an
 
 ```
 self_heal_iter = 0
-done_remaining = []
-while self_heal_iter < 2:
+while True:
     findings = run_parallel_review(diff="git diff HEAD")
     blockers = [f for f in findings if f.severity in ("Critical", "Serious")]
-    if not blockers:
+    if not blockers or self_heal_iter == 2:
         break
     # Dispatch fresh subagent per blocker with the finding + the diff
     for f in blockers:
@@ -497,13 +495,13 @@ while self_heal_iter < 2:
     run_fix_ts_errors()
     self_heal_iter += 1
 
-# After loop: record whatever blockers remain (if any)
 done_remaining = blockers
+done_moderate_minor = [f for f in findings if f.severity in ("Moderate", "Minor")]
 ```
 
-If `done_remaining` is non-empty after 2 iterations, record it for the final report and continue to Phase 7. The user sees the remaining issues in Phase 8 and decides there.
+The loop makes at most two edit rounds and always reviews the final state, so `done_remaining` holds the Critical and Serious findings of that last review. If it is non-empty, record it for the final report and continue to Phase 7. The user sees the remaining issues in Phase 8 and decides there.
 
-**Moderate/Minor findings** are recorded in `done_remaining` without self-heal. User decides at commit time.
+That last review's Moderate and Minor findings go to `done_moderate_minor` without self-heal, and the final report lists them. User decides at commit time.
 
 When every required lane is verified, materialize the exact fix content as the `done_verified_snapshot` required by `git-commit`'s Verified content snapshot contract. Build it with `/done` §4's path-scoped snapshot procedure (`create_verified_snapshot`): read `HEAD` into an isolated `GIT_INDEX_FILE`, hash only the declared paths with `git hash-object -w`, stage each with `git update-index --add --cacheinfo <mode>,<blob>,<path>`, `--force-remove` each declared deletion, then `git write-tree`. The declared-path set here is the union of every landed fix's declared paths; the auto-stashed WIP and any other dirty path stays out of it and out of the object database. Record the snapshot tree and included path manifest while the run-level stash is still untouched. A Phase 8 fix may update only its declared paths in this snapshot after that item's verification lands cleanly; rebuild the tree by reading the prior snapshot instead of `HEAD` into the isolated index and applying only those verified bytes through the same `update-index --cacheinfo` mechanism, never by recapturing the live worktree. If no valid `done_verified_snapshot` exists, Commit and Push are unavailable.
 
@@ -511,9 +509,11 @@ When every required lane is verified, materialize the exact fix content as the `
 
 ## Phase 7: Reply + resolve on GitHub (main)
 
-*Reply format rules live in `references/github-reply-resolve.md` and are referenced by Phase 4 validation. This skill does NOT read or write `/review-pr`'s cache (`~/.claude/skills/review-pr/cache/`). Thread resolution happens on GitHub. `/review-pr`'s re-review picks up resolved threads via its GraphQL prior-review timeline fetch.*
+This skill never reads or writes `/review-pr`'s cache (`~/.claude/skills/review-pr/cache/`). It resolves threads on GitHub, and `/review-pr`'s next run sees them through its GraphQL prior-review timeline fetch.
 
 Replying and resolving threads is this phase's entire GitHub footprint. The review's own `CHANGES_REQUESTED` state stays exactly as CodeRabbit left it. CodeRabbit clears it itself on its next auto-re-review, once the user pushes.
+
+When `UNATTENDED_WATCH=true`, post and resolve only the auto-confirmed contested items here. Record every FIX item's reply and resolution as `skipped` with the reason `held until push`; Phase 8 step 2b posts them only after the push lands.
 
 Define `has_github_surface[idx] = thread_id != null AND (can_reply OR can_resolve)`. Initialize every item without that surface to paired `not-applicable` states, regardless of input source. For `./review.md` or any other local-file input, all items meet that condition; initialize them, then skip the rest of this phase. Phase 8 still requires deterministic per-item state for its final report.
 
@@ -537,8 +537,6 @@ Derive `reply_ok=true` from `reply_state ∈ {landed, verified-existing, not-app
 ---
 
 ## Phase 8: Finalize (main)
-
-*Report groups by R-classification (see the R-Rubric Summary table). Includes suppressions write (learning loop).*
 
 ### 1. Settle NEEDS-INPUT
 
@@ -565,13 +563,17 @@ fi
 
 On `STASH_TOP_MISMATCH`, record `stash_restored: foreign-top` and continue to the final report: another stash now sits on top of ours, so nothing was applied and nothing was dropped. On `STASH_CONFLICT`, leave every conflict marker exactly as the apply left it and skip the drop: the entry stays stashed as the recovery source. Record `stash_restored: conflict` for the final report; resolving the user's WIP is the user's call. On `STASH_APPLY_FAILED`, the apply errored without conflict markers, so the worktree state is unknown: record `stash_restored: failed`, leave the worktree and every entry untouched, and continue to the report. When the drop reports `STASH_CHANGED_MID_RESTORE`, the content applied cleanly but the stack moved first: record `stash_restored: foreign-top`, leave the recorded entry for the user to drop by hand, and continue to the report. After a `conflict` or `failed` restoration, no edit, type-check, convergence check, Phase 6 check, commit, or push may run. Expose stash recovery as the only dependency-ready next action.
 
+### 2b. Publish an unattended watch run
+
+Runs only when `UNATTENDED_WATCH=true`, before the report. First compute `inverse_risk_blockers` exactly as step 5 defines it. Commit and push only when Phase 6 verified every required lane, `done_remaining` is empty, and step 5's Commit and Push requirements hold. Commit through `git-commit` in sealed-index mode as step 5 describes, then push per `${CLAUDE_SKILL_DIR}/references/push-publication.md` under `preflight-mutations`, with the watch's standing instruction as the authorization source. A question that reference would ask counts as a blocked push. Only after the push read-back records it landed, post the held FIX replies and resolve their threads through Phase 7's posting mechanics. When `/done` is not clean or the push is blocked, post nothing for FIX items and report each as `fixed locally, not pushed`.
+
 ### 3. Print the final report once
 
 Recompute every count from the final classification, `fix_status`, `convergence`, `needs_input_status`, and `gh_status` state. Load `${CLAUDE_SKILL_DIR}/references/final-report.md` now and render it exactly once. Render `inverse_risk_applied` under **Skipped / not landed clean**, count it as not converged, and state `risky fix remains applied`. Its dependency-ready action is `Remove the risky owned components or apply a replacement, then rerun Phase 5.5 and Phase 6 to rebuild done_verified_snapshot.` Interpret any legacy no-safe-revert rule for `reverted_inverse_risk` as `inverse_risk_applied`; the reverted status always means the fix was removed. The report's failure-first ordering includes every Phase 7 and Phase 8 GitHub outcome; its rendering rules decide which fix subsection each `[F<n>]` occupies and how the `Test:` line is emitted.
 
 ### 4. Offer to write suppressions (learning loop)
 
-After the final report, collect all current DISMISS and DISAGREE items. If any exist, offer to persist them as suppressions for future reviews.
+After the final report, collect all current DISMISS and DISAGREE items. If any exist, offer to persist them as suppressions for future reviews. When `UNATTENDED_WATCH=true`, skip the offer and write nothing.
 
 Use AskUserQuestion:
 
@@ -606,7 +608,7 @@ Skip this step entirely if:
 
 ### 5. Post-completion next actions
 
-After printing the final report and completing the suppression step when applicable, compute `inverse_risk_blockers` from every item whose current `fix_status` is `inverse_risk_applied`, independent of final classification or `needs_input_status`. When `stash_restored=conflict`, suppress the prompt and report `Resolve stash conflicts` as the sole dependency-ready next action; Commit and Push remain unavailable. When `stash_restored=foreign-top`, suppress the prompt and report `Reconcile the stash stack: the recorded auto-stash entry is still stashed` as the sole dependency-ready next action; Commit and Push remain unavailable. When `stash_restored=failed`, suppress the prompt and report `Recover the worktree and stash by hand` as the sole dependency-ready next action; Commit and Push remain unavailable. Otherwise, if `inverse_risk_blockers` is non-empty, suppress the prompt and report the dependency-ready removal/replacement action from Step 3; Commit and Push remain unavailable even when `done_verified_snapshot` exists. Skip the prompt if all fixes were aborted (nothing was applied); otherwise use AskUserQuestion.
+After printing the final report and completing the suppression step when applicable, compute `inverse_risk_blockers` from every item whose current `fix_status` is `inverse_risk_applied`, independent of final classification or `needs_input_status`. When `stash_restored=conflict`, suppress the prompt and report `Resolve stash conflicts` as the sole dependency-ready next action; Commit and Push remain unavailable. When `stash_restored=foreign-top`, suppress the prompt and report `Reconcile the stash stack: the recorded auto-stash entry is still stashed` as the sole dependency-ready next action; Commit and Push remain unavailable. When `stash_restored=failed`, suppress the prompt and report `Recover the worktree and stash by hand` as the sole dependency-ready next action; Commit and Push remain unavailable. Otherwise, if `inverse_risk_blockers` is non-empty, suppress the prompt and report the dependency-ready removal/replacement action from Step 3; Commit and Push remain unavailable even when `done_verified_snapshot` exists. Skip the prompt if all fixes were aborted (nothing was applied) or `UNATTENDED_WATCH=true`; otherwise use AskUserQuestion.
 
    Question:
      header: "Next"
@@ -623,23 +625,10 @@ After printing the final report and completing the suppression step when applica
 
 On "Commit changes" or "Push to remote", require `inverse_risk_blockers` to be empty, `stash_restored` to be none of `conflict`, `foreign-top`, or `failed`, and a valid `done_verified_snapshot`. Recompute the blocker set instead of trusting the rendered report; a non-empty set stops the action. Invoke `git-commit` in Verified content snapshot sealed-index mode with that snapshot; never stage or restage the live worktree. Require the created commit tree to equal the snapshot tree. Ordinary restored WIP remains in the worktree and outside the candidate commit.
 
-On "Push to remote", commit first, then require the commit tree to still equal the snapshot before freezing the publication branch and push-attempt SHA. For GitHub PR input, re-read the current PR's `headRefName` plus `headRepository.id` and `nameWithOwner`; freeze those authoritative values, require the Phase 1 expected PR branch and active branch to equal the frozen head name, and set `<exact-ref>` to `refs/heads/<frozen-headRefName>`. That head repository identity is the intended publication target and remains independent of the input/base repository. For local-file or other no-current-PR input, freeze the active branch and derive `<exact-ref>` as `refs/heads/<active-branch>`. Freeze the push-attempt SHA only when the active symbolic ref equals `<exact-ref>` and that branch ref and `HEAD` resolve to the same SHA. Resolve the intended publication target before binding `<preflighted-remote>`. For GitHub PR input, enumerate configured remotes and validate every endpoint in each ordered complete fetch/push set. Auto-select the only remote whose every endpoint matches the PR head identity; when multiple match, immediately use AskUserQuestion with concrete `<remote>: <nameWithOwner> (<id>)` options and pagination when needed; when none match, stop with `Configure a remote whose complete endpoint sets resolve to the current PR head repository, then choose Push to remote again.` The selected match becomes `<preflighted-remote>`.
+On "Push to remote", load `${CLAUDE_SKILL_DIR}/references/push-publication.md` now and follow it: commit first, then freeze the publication target, run `preflight-mutations`, push with a lease, and read back remote and local state.
 
-For local-file or other no-current-PR input, immediately follow the "Push to remote" choice with AskUserQuestion. Inventory every configured remote; capture without printing its ordered complete fetch and push endpoint sets, normalize and resolve every endpoint independently through authenticated `gh repo view ... --json id,nameWithOwner`, and retain a remote only when every endpoint resolves to the same repository ID and `nameWithOwner`. Show each retained remote as a concrete option labelled `<remote>: <nameWithOwner> (<id>)`; list rejected remotes with the failing endpoint or set mismatch but never make them selectable. If the option limit cannot hold every retained remote, paginate disjoint sets of concrete options with a `Show next remotes` choice until the user selects one. That selection freezes both complete sets, sets `<preflighted-remote>` and the explicit intended publication target, and joins the preflight authorization and guards. If no remote is valid, stop with: `Configure a remote whose complete fetch and push endpoint sets resolve to one authenticated GitHub repository, then choose Push to remote again.`
-
-Capture without printing the ordered complete sets from `git remote get-url --all <preflighted-remote>` and `git remote get-url --push --all <preflighted-remote>`, then normalize every endpoint to a credential-free URL identity. Preserve transport class, host, port, and owner/repository while treating equivalent spellings such as scp-like versus `ssh://`, default ports, trailing slash, and `.git` suffix alike. Independently resolve every normalized endpoint through authenticated `gh repo view ... --json id,nameWithOwner`; require every endpoint ID and `nameWithOwner` to equal the intended publication target. Retain only the ordered normalized sets or their digests and resolved IDs, never credentials. Record the remote name, both complete endpoint sets, and intended target; any addition, removal, reorder, resolution failure, or repository mismatch is `reconcile-required`. The named-remote push may target its configured complete push set only while that frozen set still matches.
-
-Query `<exact-ref>` and record its remote SHA or authoritative absence; when present, require it to be an ancestor of the frozen SHA. Immediately before `git push`, invoke `preflight-mutations` with the exact remote, both ordered complete endpoint sets and repository IDs, intended publication target, `<exact-ref>`, frozen local SHA, expected remote SHA or absence, upstream state, commit range, dependent refs, and the user's choice. Include the PR base, frozen `headRefName`, `<exact-ref>`, and head repository ID in its guards and invalidators when a PR exists. Include the active symbolic ref, branch-ref SHA, `HEAD`, frozen publication branch and exact ref, and complete selected-remote identity in those guards and invalidators, then re-enumerate and compare both endpoint sets before running the exact push:
-
-```bash
-git push --force-with-lease="<exact-ref>:<expected-sha-or-empty>" "<preflighted-remote>" "<frozen-local-sha>:<exact-ref>"
-git ls-remote --heads "<preflighted-remote>" "<exact-ref>"
-```
-
-After every attempted push, including a nonzero or ambiguous exit, establish remote state first: re-enumerate both complete endpoint sets and run the exact `git ls-remote` read-back for `<exact-ref>` once. Record the push as landed only when the authoritative remote SHA equals the frozen SHA, the ordered sets are unchanged, and every endpoint still equals the intended publication target. An old or unexpected SHA, unavailable read-back, added, removed, reordered, unresolved, or mismatched endpoint is `reconcile-required`; stop and never retry from the command result alone.
-
-After preserving the remote result, re-read the active symbolic ref, frozen publication branch-ref SHA, and `HEAD`. Continue only when the symbolic ref equals `<exact-ref>` and both local SHAs equal the frozen SHA. When the remote landed but any local value moved, record `remote landed / local publication moved`, set overall publication to `reconcile-required`, and stop without retrying the push. When the remote did not land, preserve its observed state and stop as `reconcile-required` regardless of local state. Only after both remote and local state pass may a GitHub PR input read `headRefName`, `headRefOid`, and `headRepository.id`; require them to equal the frozen head name, frozen SHA, and intended publication target ID. On "Re-run on remaining": if the original input was a local file, invoke `/fix-pr-review <original-file-path>` scoped to skipped/needs-input items; otherwise invoke `/fix-pr-review <url>` scoped to remaining items. On "Done": exit.
+On "Re-run on remaining": if the original input was a local file, invoke `/fix-pr-review <original-file-path>` scoped to skipped/needs-input items; otherwise invoke `/fix-pr-review <url>` scoped to remaining items. On "Done": exit.
 
 ### 6. Exit
 
-Committing happens only on an explicit "Commit changes" or "Push to remote" choice in the post-completion prompt above. Otherwise leave the working tree as it stands. The report's suggested commit message is the hand-off.
+Committing happens only on an explicit "Commit changes" or "Push to remote" choice in the post-completion prompt above, or in step 2b of an unattended watch run. Otherwise leave the working tree as it stands. The report's suggested commit message is the hand-off.

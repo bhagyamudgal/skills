@@ -12,7 +12,7 @@ Apply this branch when the user explicitly steps away and asks work to continue.
 4. Give a task a mutation owner only after dispatch success or authoritative worker-state read-back proves placement. Record stable task and agent IDs exposed by the harness; otherwise retain the ledger's existing task ID without inventing a provider ownership token. Independent reviewers may inspect that owner's result read-only. Apply the parent skill's wedged-owner retirement contract before `active → ready`; a replacement becomes the owner only after terminal or interrupt evidence proves the prior owner inactive and its worktree/diff location is preserved.
 5. Send the kickoff update with the fixed pool size and first runnable tasks, or the failed-initialization blocker with both attempts, plus authority boundaries and the next action.
 
-**Gate:** the ledger can reconstruct every task, dependency, state, active owner, per-task pool initialization attempt, authority boundary, and next action without conversation context; `worker_pool` remains unset until nonzero capacity fixes it, and each task receives at most one initialization retry.
+**Gate.** The ledger can reconstruct every task, dependency, state, active owner, per-task pool initialization attempt, authority boundary, and next action without conversation context; `worker_pool` remains unset until nonzero capacity fixes it, and each task receives at most one initialization retry.
 
 ## Run the scheduler
 
@@ -28,7 +28,7 @@ Repeat until no runnable task remains:
 
 Apply the governing global unattended authority contract to commits, pushes, PRs, merges, destructive actions, irreversible actions, and schema mutations. Queue any action outside that authority with exact ready-to-run instructions.
 
-**Gate:** every task transition is in the ledger, every active task has exactly one owner, every waiting-capacity task has none, every reconcile-required task is excluded from dispatch, and no dispatch exceeds the kickoff-fixed pool.
+**Gate.** Every task transition is in the ledger, every active task has exactly one owner, every waiting-capacity task has none, every reconcile-required task is excluded from dispatch, and no dispatch exceeds the kickoff-fixed pool.
 
 ## Bound capacity failures
 
@@ -40,7 +40,7 @@ A dispatcher capacity rejection consumes one of two attempts for that task. Pool
 
 A capacity retry is event-driven: do not poll, nudge the rejected dispatch, or create another retry. Only an explicit dispatcher capacity rejection consumes this path; an ambiguous result follows the reconcile-required contract instead. A worker's task failure is not a capacity rejection and follows the task's ordinary recovery policy.
 
-**Gate:** no task has more than two capacity attempts across its initialization or dispatch path, every capacity wait has no active owner, and every capacity-blocked record names both attempts.
+**Gate.** No task has more than two capacity attempts across its initialization or dispatch path, every capacity wait has no active owner, and every capacity-blocked record names both attempts.
 
 ## Surface material updates
 
@@ -49,10 +49,11 @@ Update the ledger after every transition. Message the user only for:
 - kickoff;
 - a task completion and its verification result;
 - a new blocker or authority boundary;
-- a materially changed plan; or
+- a materially changed plan;
+- a one-line status during any wait longer than 10 minutes; or
 - the final handoff.
 
-Do not send a user-facing update for routine dispatches, unchanged waits, or ledger-only bookkeeping.
+Do not send a user-facing update for routine dispatches, unchanged waits of 10 minutes or less, or ledger-only bookkeeping.
 
 ## Maintain the morning handoff
 
@@ -72,4 +73,4 @@ Keep one current `Morning handoff` section in the ledger:
 
 Refresh this section after every transition so interruption never leaves a stale handoff. The final user update summarizes it; the ledger remains authoritative.
 
-**Done:** every task is verified or explicitly blocked for the run, no runnable task remains, and the morning handoff matches the ledger's task records.
+**Done.** Every task is verified or explicitly blocked for the run, no runnable task remains, and the morning handoff matches the ledger's task records.

@@ -5,7 +5,7 @@ description: Generate, remix, and rank product or app names, then verify their e
 
 # Discover product domains
 
-Turn a product idea into memorable names whose exact `.com` domains are confirmed at a registrar. I treat human combinations such as `Vids` + `Jar` as a core discovery mechanism, not an afterthought.
+Turn a product idea into memorable names whose exact `.com` domains are confirmed at a registrar. User-made combinations such as `Vids` + `Jar` drive discovery.
 
 ## Mode
 
@@ -40,7 +40,13 @@ Capture these fields from the conversation before asking anything:
 - whether the name should describe the product or work as an abstract mark;
 - other languages the audience reads, the field whose jargon it speaks, and any existing brand this name must not collide with.
 
-Default unresolved preferences to warm, clear, credible, globally pronounceable, 5-10 characters, 2 syllables where natural, and no hyphens or digits. Default the describe-or-abstract field to no requirement to describe, and read `${CLAUDE_SKILL_DIR}/references/naming-lenses.md`, section "Description is optional", before generating. When the audience's other languages, jargon field, or brand-collision targets go unstated, default to the market language plus English, the audience's own field as the jargon source, and every brand the user has named in this conversation. Record those defaults, because the "Wart check" in `${CLAUDE_SKILL_DIR}/references/naming-lenses.md` runs on them. In guided mode, ask only when a different answer would materially change the candidate set.
+Apply these defaults to anything the user left unresolved:
+
+- Default unresolved preferences to warm, clear, credible, globally pronounceable, 5-10 characters, 2 syllables where natural, and no hyphens or digits.
+- Default the describe-or-abstract field to no requirement to describe, and read `${CLAUDE_SKILL_DIR}/references/naming-lenses.md`, section "Description is optional", before generating.
+- When the audience's other languages, jargon field, or brand-collision targets go unstated, default to the market language plus English, the audience's own field as the jargon source, and every brand the user has named in this conversation.
+
+Record those defaults, because the "Wart check" in `${CLAUDE_SKILL_DIR}/references/naming-lenses.md` runs on them. In guided mode, ask only when a different answer would materially change the candidate set.
 
 The step is complete when every field is answered or carries an explicit default.
 
@@ -86,7 +92,7 @@ The step is complete when eight non-cosmetic remixes have a recorded screened st
 
 ### 6. Control expansion
 
-A provisional name holds `candidate_available_rdap`. That means screened, not confirmed. That status permits registrar confirmation but does not prove anyone can buy the domain.
+A provisional name holds `candidate_available_rdap`: screened, not confirmed. It permits registrar confirmation and proves nothing about whether anyone can buy the domain.
 
 Use these transitions. Do not wait in step 6 for evidence that only step 7 can produce:
 

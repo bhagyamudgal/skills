@@ -1,0 +1,7 @@
+interface:
+  display_name: "OpenClaw Backup"
+  short_description: "Verified, restorable OpenClaw backup with a restore runbook"
+  default_prompt: "Use $openclaw-backup to back up my OpenClaw install and verify the archive."
+
+policy:
+  allow_implicit_invocation: false

@@ -39,6 +39,8 @@ git diff -U0 "$BASE" \
 
 Do not hand-roll a check for near-identical function bodies. A grep over declaration lines dedupes on text that contains the name, so two helpers with different names, the case worth finding, can never collide, and the check quietly reports nothing while looking like it ran. Structural similarity needs a clone detector. That is what `jscpd` above is for.
 
+`jscpd` also skips repeated sequences shorter than its minimum clone size. So for every function or API the diff calls at 3 or more sites, read the lines around each call with `printf '%s\n' "$FILES" | tr '\n' '\0' | xargs -0 grep -n -C3 -F '<callee>('` and compare them across sites. The same 3-line sequence at every site, for example a set-state call followed by a notify call at 7 call sites, is one helper the sweep should report.
+
 Commands here assume GNU-compatible `grep`. `ugrep`, `busybox` and BSD `grep` differ on bracket classes and `--exclude` ordering, so if a check returns suspiciously zero, verify it finds a planted duplicate before trusting it.
 
 Then ask, per hit:
