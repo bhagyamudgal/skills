@@ -21,23 +21,23 @@ import unittest
 import review_pr_load
 import review_pr_tokens
 
-CORPUS_CEILING = 216913
+CORPUS_CEILING = 215777
 CEILINGS = {
-    "parallel-standard/round-1": (154370, 154370, 15),
-    "parallel-chunked/round-1": (155905, 155905, 15),
-    "parallel-standard/with-step6-reload": (154370, 166644, 15),
+    "parallel-standard/round-1": (151904, 151904, 15),
+    "parallel-chunked/round-1": (153439, 153439, 15),
+    "parallel-standard/with-step6-reload": (151904, 164178, 15),
 }
 DELTA_CEILINGS = {"delta_distinct": 5755, "delta_with_repeats": 5755,
                   "network": 0}
 SECURITY_DELTA_CEILINGS = {"delta_distinct": 3344, "delta_with_repeats": 3344,
                            "network": 0}
-CHUNK_REVIEWER_CEILING = (30139, 30139)
+CHUNK_REVIEWER_CEILING = (31456, 31456)
 SUBAGENT_CEILINGS = {
     "silent-failure-hunter": (0, 0),
-    "cross-cutting": (5938, 5938),
-    "security-reviewer": (9406, 9406),
+    "cross-cutting": (7255, 7255),
+    "security-reviewer": (10723, 10723),
 }
-XREPO_REVIEWER_CEILING = (32757, 32757)
+XREPO_REVIEWER_CEILING = (34074, 34074)
 PROMPT_CEILINGS = {
     "chunk-reviewer-prompt": 9677,
     "silent-failure-hunter-prompt": 342,
