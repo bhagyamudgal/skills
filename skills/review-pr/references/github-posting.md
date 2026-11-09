@@ -131,19 +131,16 @@ A timeout, interrupted response, missing ID, or any HTTP error is `reconcile-req
 
 **Skip if `ROLLING_PATH=true`**: rolling eligibility proves there are no new threads to attach.
 
-For each entry in the frozen canonical file-level set, in order (the rendered `file_level.json`), use that entry's exact finding ID, path, and body:
+For each entry in the frozen canonical file-level set, in order (the rendered `file_level.json`), run `INDEX` from 0 to the file's length minus 1 and send that entry's exact path and body, recording the returned IDs against its `finding_id`. jq reads all three from the frozen file, so the shell never parses a body:
 
 ```bash
-THREAD_RESP=$(gh api graphql -f query='
-  mutation($reviewId: ID!, $path: String!, $body: String!) {
-    addPullRequestReviewThread(input: {
-      pullRequestReviewId: $reviewId, path: $path, body: $body, subjectType: FILE
-    }) {
-      thread { id comments(first: 1) { nodes { databaseId } } }
-    }
-  }
-' -f reviewId="$REVIEW_NODE_ID" -f path="<file>" -f body="<file-level body>")
-# -f (lowercase) forces string; -F would coerce numeric-looking values to JSON numbers
+THREAD_RESP=$(jq -n \
+    --arg reviewId "$REVIEW_NODE_ID" \
+    --slurpfile entries "<frozen file_level.json>" \
+    --argjson index "${INDEX:?}" \
+    '{query: "mutation($reviewId: ID!, $path: String!, $body: String!) { addPullRequestReviewThread(input: {pullRequestReviewId: $reviewId, path: $path, body: $body, subjectType: FILE}) { thread { id comments(first: 1) { nodes { databaseId } } } } }",
+      variables: {reviewId: $reviewId, path: $entries[0][$index].path, body: $entries[0][$index].body}}' \
+  | gh api graphql --input -)
 
 THREAD_NODE_ID=$(echo "$THREAD_RESP" | jq -r '.data.addPullRequestReviewThread.thread.id // empty')
 THREAD_COMMENT_ID=$(echo "$THREAD_RESP" | jq -r '.data.addPullRequestReviewThread.thread.comments.nodes[0].databaseId // empty')

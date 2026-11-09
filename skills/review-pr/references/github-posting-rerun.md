@@ -127,13 +127,12 @@ If this is a re-review AND `posted_comments` cache exists:
 When Step 0 found a recent prior `/review-pr` review whose state matches the required GitHub state and proved it owns every current thread:
 
 ```bash
-UPDATE_RESP=$(gh api graphql -f query='
-  mutation($id: ID!, $body: String!) {
-    updatePullRequestReviewBody(input: { pullRequestReviewId: $id, body: $body }) {
-      pullRequestReview { id databaseId state submittedAt }
-    }
-  }
-' -f id="$PRIOR_REVIEW_NODE_ID" -f body="$NEW_SUMMARY_BODY")
+UPDATE_RESP=$(jq -n \
+    --arg id "$PRIOR_REVIEW_NODE_ID" \
+    --rawfile body "<render dir>/summary.md" \
+    '{query: "mutation($id: ID!, $body: String!) { updatePullRequestReviewBody(input: {pullRequestReviewId: $id, body: $body}) { pullRequestReview { id databaseId state submittedAt } } }",
+      variables: {id: $id, body: $body}}' \
+  | gh api graphql --input -)
 
 if echo "$UPDATE_RESP" | jq -e '.errors' >/dev/null \
    || [ "$(echo "$UPDATE_RESP" | jq -r '.data.updatePullRequestReviewBody.pullRequestReview.id // empty')" = "" ]; then
