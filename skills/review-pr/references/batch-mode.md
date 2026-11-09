@@ -50,7 +50,7 @@ The run continues unattended through the WHOLE list. The user may be away in bat
 
 After every subagent returns, post each completed review in list order through the single-PR GitHub posting flow. For another author's PR, post a review with surviving introduced findings with `REQUEST_CHANGES`, a clean review with no open blockers with `APPROVE` (its pre-existing findings ride along as threads), and a clean review with open blockers on the blocked-by-open-threads path (Phase 3 step 8). For a self-review, post the complete result with `COMMENT`. Invoke `preflight-mutations` separately for each PR immediately before its first mutation, using the batch `/review-pr` request as the authorization source. Reconcile and record each result before moving to the next PR. Record each PR's reconciled `https://github.com/<owner>/<repo>/pull/<num>#pullrequestreview-<REVIEW_DB_ID>` (or `not posted (<reason>)` when nothing landed) and carry it into that PR's `**Review URL**` line and the consolidated posting-status entry.
 
-A posting failure never asks immediately. Record the exact partial GitHub state and the recovery choices from `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` as `recovery-pending`, then continue with every untouched PR.
+A posting failure never asks immediately, and the `SKILL.md` unattended rule applies here only when its own trigger fires. Record the exact partial GitHub state and the recovery choices from `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` as `recovery-pending`, then continue with every untouched PR.
 
 ---
 

@@ -13,7 +13,7 @@ Goal: produce an accurate, critical, actionable PR review, filter out noise (sty
 
 This skill expects CodeRabbit on the repo via `.coderabbit.yaml`. CodeRabbit handles style and convention findings first. `/review-pr` handles the deep semantic and codebase-wide review only it can do.
 
-**Use AskUserQuestion for user-facing decisions that still require judgment**: stop-and-ask and post-failure recovery. Posting is not a decision point. Invoking `/review-pr` authorizes submission of the complete review. Large PRs always proceed with chunked review without asking. Any sentence that offers the user 2+ labeled paths is an AskUserQuestion call. Options are cursor-selectable, concrete, and considered. Put the strongest first and mark it "(Recommended)".
+**Use AskUserQuestion for user-facing decisions that still require judgment**: stop-and-ask and post-failure recovery. Posting is not a decision point. Invoking `/review-pr` authorizes submission of the complete review. Large PRs always proceed with chunked review without asking. Any sentence that offers the user 2+ labeled paths is an AskUserQuestion call. Options are cursor-selectable, concrete, and considered. Put the strongest first and mark it "(Recommended)". In an unattended run (the AskUserQuestion tool is unavailable, or the invoking prompt says nobody can answer), take the first option of each question this skill defines, Step 7 posting recovery included, and print which one you took.
 
 ## Reference files
 
