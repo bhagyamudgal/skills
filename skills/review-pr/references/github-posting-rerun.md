@@ -41,7 +41,7 @@ PRIOR_REVIEW_STATE=$(echo "$PRIOR_REVIEWS_JSON" | jq -r '
   ')
 ```
 
-Before selecting a branch, derive `CURRENT_THREADED_FINDING_IDS` from the `ids.json` Step 1 rendered: every entry whose `tier` is `line` or `file`. Body-routed findings are excluded because they cannot own threads. A prior review is thread-complete only when all of these are true:
+Before selecting a branch, derive `CURRENT_THREADED_FINDING_IDS` from the `ids.json` that Step 1 of `${CLAUDE_SKILL_DIR}/references/github-posting.md` rendered: every entry whose `tier` is `line` or `file`. Body-routed findings are excluded because they cannot own threads. A prior review is thread-complete only when all of these are true:
 
 - the validated current cache records `publication_evidence.publication_mode: threaded`;
 - `last_posted_review_node_id` and `last_posted_review_id` equal the candidate prior review;
