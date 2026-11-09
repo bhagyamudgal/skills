@@ -71,6 +71,17 @@ def strip_prefix(path, prefix):
     return path[len(prefix):] if path.startswith(prefix) else path
 
 
+def header_target(rest):
+    if rest.startswith('"') or rest.endswith('"'):
+        tokens = re.findall(r'"(?:[^"\\]|\\.)*"|[^ "]+', rest)
+        return strip_prefix(unquote_path(tokens[1]), "b/") if len(tokens) == 2 else None
+    name_length = (len(rest) - len("a/ b/")) // 2
+    old_name, separator, new_name = rest[2:2 + name_length], rest[2 + name_length:5 + name_length], rest[5 + name_length:]
+    if rest.startswith("a/") and separator == " b/" and old_name == new_name:
+        return new_name
+    return None
+
+
 def parse_diff(diff_text):
     files = {}
     current = None
@@ -98,15 +109,14 @@ def parse_diff(diff_text):
                 continue
             old_left = new_left = 0
         if line.startswith("diff --git "):
-            current = None
             expect_new_header = False
-            target = line.rsplit(" b/", 1)
-            if len(target) == 2:
-                current = unquote_path(target[1])
+            current = header_target(line[len("diff --git "):])
+            if current is not None:
                 files.setdefault(current, set())
             continue
-        if line.startswith("rename to "):
-            current = unquote_path(line[len("rename to "):])
+        moved = next((prefix for prefix in ("rename to ", "copy to ") if line.startswith(prefix)), None)
+        if moved:
+            current = unquote_path(line[len(moved):])
             files.setdefault(current, set())
             continue
         if line.startswith("--- "):

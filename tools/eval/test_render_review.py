@@ -147,6 +147,45 @@ class DiffParsingTest(unittest.TestCase):
     def test_binary_file_is_known_without_lines(self):
         self.assertEqual(self.files["logo.png"], set())
 
+    def test_quoted_binary_header_without_hunks_is_kept(self):
+        diff = ('diff --git "a/images/caf\\303\\251.png" "b/images/caf\\303\\251.png"\n'
+                "index 1234567..abcdef0 100644\n"
+                'Binary files "a/images/caf\\303\\251.png" and "b/images/caf\\303\\251.png" differ\n')
+        self.assertEqual(render_review.parse_diff(diff), {"images/café.png": set()})
+
+    def test_quoted_mode_only_change_is_kept(self):
+        diff = 'diff --git "a/caf\\303\\251.sh" "b/caf\\303\\251.sh"\nold mode 100644\nnew mode 100755\n'
+        self.assertEqual(render_review.parse_diff(diff), {"café.sh": set()})
+
+    def test_embedded_b_slash_in_binary_path_invents_no_phantom(self):
+        diff = "diff --git a/foo b/bar b/foo b/bar\nBinary files a/foo b/bar and b/foo b/bar differ\n"
+        self.assertEqual(render_review.parse_diff(diff), {"foo b/bar": set()})
+
+    def test_embedded_b_slash_in_text_path_invents_no_phantom(self):
+        diff = "diff --git a/foo b/bar b/foo b/bar\n--- a/foo b/bar\n+++ b/foo b/bar\n@@ -1 +1 @@\n-a\n+b\n"
+        self.assertEqual(render_review.parse_diff(diff), {"foo b/bar": {1}})
+
+    def test_binary_copy_tracks_the_copy_target(self):
+        diff = "diff --git a/x.png b/y.png\nsimilarity index 100%\ncopy from x.png\ncopy to y.png\n"
+        self.assertEqual(render_review.parse_diff(diff), {"y.png": set()})
+
+    def test_mixed_quoted_header_reads_the_quoted_target(self):
+        self.assertEqual(render_review.parse_diff('diff --git a/cafe "b/caf\\303\\251"\nBinary files differ\n'), {"café": set()})
+
+    def test_escaped_quote_inside_quoted_path(self):
+        self.assertEqual(render_review.parse_diff('diff --git "a/say \\"hi\\".md" "b/say \\"hi\\".md"\nold mode 100644\nnew mode 100755\n'),
+                         {'say "hi".md': set()})
+
+    def test_quoted_copy_target_is_unquoted(self):
+        diff = 'diff --git a/x.png "b/caf\\303\\251.png"\ncopy from x.png\ncopy to "caf\\303\\251.png"\n'
+        self.assertEqual(render_review.parse_diff(diff), {"café.png": set()})
+
+    def test_finding_on_quoted_binary_file_gets_a_file_thread(self):
+        diff = 'diff --git "a/images/caf\\303\\251.png" "b/images/caf\\303\\251.png"\nBinary files differ\n'
+        review = example()
+        review["findings"] = [finding(file="images/café.png", line=None)]
+        self.assertEqual(render_review.render(review, diff, META)["ids.json"][0]["tier"], "file")
+
     def test_hunk_header_without_counts(self):
         self.assertEqual(render_review.parse_diff("--- a/f\n+++ b/f\n@@ -3 +3 @@\n-a\n+b\n")["f"], {3})
 
