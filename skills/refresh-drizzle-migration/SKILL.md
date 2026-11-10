@@ -20,6 +20,8 @@ Find every Drizzle config: `git ls-files '*drizzle.config.*'`, plus every path a
 
 List the head's own migrations per `out` folder, before anything merges, with `git diff --name-only --diff-filter=A <base-ref>...HEAD -- <out>`. The stale SQL is readable at `HEAD` as it stands now, so record that SHA as the **stale commit**. When this lists nothing, an earlier merge may have dropped the files, so fall back to `git log --full-history --no-merges --diff-filter=A --name-only --format= <base-ref>..HEAD -- <out>`, and take each file's stale commit from `git log -1 --no-merges --format=%H --full-history --diff-filter=AM <base-ref>..HEAD -- <path>`, the last commit that wrote it, so a hand edit made after generate is the version step 5 compares.
 
+Then run `git diff --name-only --no-renames --diff-filter=MD <base-ref>...HEAD -- <out>`. Git prints these paths from the repo root. Any path other than `<out>/meta/_journal.json` and the head migration's own `<out>/meta/<idx>_snapshot.json`, which an earlier hand merge may have resolved to the head side, means the head edited, renamed, or deleted a migration the base already has, which a refresh cannot repair, so stop and show those paths to the user.
+
 Count migrations, not files: `.sql` files in the journal layout, distinct `<timestamp>_<name>/` folders in the folder layout. Leave alone every config whose `out` folder holds none. When one `out` folder holds two or more, stop: show them to the user and ask how to proceed, since one generate run can only produce one migration.
 
 The step is done when every config is classified as untouched or as holding exactly one head migration, with its layout, stale SQL path, and stale commit recorded.
@@ -32,12 +34,12 @@ The step is done when `git merge-base --is-ancestor <base-ref> HEAD` exits 0 and
 
 ## 3. Drop the stale migration
 
-For each touched config, delete whatever of the head's migration is still present:
+For each touched config, return every path the head's migration occupies to the base's version, using `git restore --source=<base-ref> -- <path>` when the base has that path and deleting the path otherwise. A path both branches added belongs to the base.
 
-- **Journal layout**: the SQL file, its `meta/<idx>_snapshot.json` when the base does not own that name, and the journal entry whose `tag` equals the SQL file name without `.sql`.
-- **Folder layout**: the whole migration folder.
+- **Journal layout**: `meta/_journal.json`, which always comes back from the base, plus the SQL file and its `meta/<idx>_snapshot.json`.
+- **Folder layout**: the migration folder.
 
-The step is done when `git diff --name-only --diff-filter=A <base-ref> -- <out>`, which compares the working tree with the base, lists nothing, and the journal holds exactly the base's entries.
+The step is done when `git diff --name-only <base-ref> -- <out>`, which compares the working tree with the base, lists nothing.
 
 ## 4. Regenerate
 
@@ -66,4 +68,4 @@ Hand off to `done`, then commit the regenerated files through `git-commit`, sepa
 
 Pushing updates a shared ref, and the branch may belong to a teammate. Push to `<head-remote>`, the remote that resolves to the PR's `headRepository`, or the branch's upstream when there is no PR; on a fork PR it differs from the base's remote. When no configured remote resolves to it, stop and ask. Invoke `preflight-mutations` immediately before the push, with the branch, `<head-remote>`, the local and remote SHAs, and the branch owner (the PR author, or the head repository's owner) in its ownership field. Apply its result. Push without force, then read the remote ref back with `git ls-remote <head-remote> refs/heads/<branch>` and confirm it equals local `HEAD`.
 
-In the final report, tell the user what happens to a database that already applied the stale migration. Its next migrate runs the regenerated migration's DDL again, and it silently skips every base migration whose journal `when` is at or before the stale entry's, because the migrator only applies entries newer than the last one it recorded. Which databases those are, and how to repair them, is the user's call.
+In the final report, tell the user what happens to a database that already applied the stale migration. Its next migrate runs the regenerated migration's DDL again. In the journal layout, the 0.x migrator also silently skips every base migration whose journal `when` is at or before the stale entry's, because it only applies entries newer than the last one it recorded. For the folder layout, say this skill has not established which base migrations such a database skips. Which databases those are, and how to repair them, is the user's call.
