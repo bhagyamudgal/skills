@@ -131,6 +131,7 @@ Convergence: converged. All <F> fixes class-complete, inverse risk absent, no ne
   Readiness:        <ready | ready-to-publish | not ready> with the evidence ceiling
   Remaining after self-heal: <list or "none">
   Moderate/Minor after self-heal: <done_moderate_minor list or "none">
+  Not filed:        <follow-up-proposed items with their reasons, or "none">
 
 ## Contested replies posted without asking (<count>)
   [D2] src/auth/util.ts:12: DISMISS (R5), auto-confirm: claude_md_quote, found verbatim

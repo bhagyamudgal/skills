@@ -69,6 +69,9 @@ After automatic posting has attempted every completed review and recorded each c
 ## Posting status
 <one entry per PR: posted request-changes + review URL, posted approve + review URL, posted self-review comment + review URL, posted incomplete-coverage comment + review URL, review failed, posting failed, or recovery-pending>
 
+## Not filed (<count>)
+<one line per follow-up proposal: PR, finding and reason; omit when none>
+
 ## Pending review context (<count>)
 <one entry per review-only checkpoint that could not be resolved, such as:
   PENDING #<num>: intent was not grounded, re-run with intent text?>

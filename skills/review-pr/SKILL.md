@@ -629,7 +629,7 @@ Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT
 
 ### Convergence handoff
 
-After authoritative posting and write-back, invoke `converge-reviews` (it ships in the same skills repository; report it missing and skip this handoff only after invoking it fails) with the PR request, base/current head and diff hash, reviewed paths, reviewer roster and lenses, current findings and dispositions, and `$STATE_FILE`. Store the resulting `convergence` block in that existing state file without replacing `review-pr`'s finding state. Apply its result contract before recommending another review round or declaring the review converged.
+After authoritative posting and write-back, invoke `converge-reviews` (it ships in the same skills repository; report it missing and skip this handoff only after invoking it fails) with the PR request, base/current head and diff hash, reviewed paths, reviewer roster and lenses, current findings and dispositions, and `$STATE_FILE`. Store the resulting `convergence` block in that existing state file without replacing `review-pr`'s finding state. Apply its result contract before recommending another review round or declaring the review converged. On `follow-up-proposed`, file nothing, since each finding is already a thread and step 8c files pre-existing ones; print each proposal and its reason under `Not filed` after the Phase 4 output.
 
 ---
 
