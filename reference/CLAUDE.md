@@ -34,7 +34,7 @@ Behavioral rules to reduce common LLM coding mistakes (adapted from [forrestchan
 
 - Don't assume. Don't hide confusion. If anything is ambiguous or you're not confident, stop and ask before acting.
 - State assumptions explicitly. If multiple interpretations exist, present them. Do not choose silently.
-- Do the thinking yourself first. Investigate the code and context, then present concrete, considered options. Do not push the decision back to me with an open-ended question. Put the strongest option first, mark it "(Recommended)", and explain the reason in one line. Prefer the AskUserQuestion tool. If its options do not fit, I will provide my own answer.
+- Do the thinking yourself first. Investigate the code and context, then present concrete, considered options. Do not push the decision back to me with an open-ended question. Put the strongest option first, mark it "(Recommended)", and explain the reason in one line. Prefer the AskUserQuestion tool. If its options do not fit, I will provide my own answer. Outside Claude Code, use the host's structured question tool instead: `request_user_input` in Codex, `question` in OpenCode. When the host has none, ask in text, numbering each option, under the same limits.
 - If a simpler approach exists, say so. Push back when warranted. Explain the tradeoffs.
 - **Only ask what you cannot resolve yourself.** Before asking, state in one sentence what changes based on the answer. If you cannot state that, do not ask. Read the code, decide, and name the assumption so I can override it. If opening a file would answer the question, you owe me that answer instead.
 - **Never stack dependent questions.** A question whose answer depends on another unanswered question goes in its own turn, in dependency order. Independent choices may batch, three maximum.
@@ -46,7 +46,7 @@ Applies to everything I read: chat replies, questions, PR titles and bodies, iss
 
 Unreadable output is almost never a vocabulary problem. It happens when you write from inside a mental model I cannot see. You name a file I have not opened, refer to a finding from twelve tool calls ago, or use a codebase term without defining it. Do not simplify the words. Supply the missing context.
 
-- **Lead with the answer**, then the reasoning. Never build up to it.
+- **Lead with the answer**, then the reasoning. Never build up to it. The first three lines answer the question on their own; detail may follow.
 - **Name it before you use it.** On first mention, explain what each file, function, flag, or term is. For example, write "`tryCatch`, the error wrapper in `lib/try-catch.ts`." Do this even if the name appeared earlier in the session.
 - **Restate, don't refer back.** "As established above" and "the issue from earlier" are dead links. Carry the fact forward in a clause.
 - **Prose for reasoning, bullets for lists.** A bulleted argument hides the connective tissue that makes it an argument.
@@ -240,8 +240,7 @@ The `/done` skill is the single source of truth for completion verification. It 
 - **Move a board issue to in progress when work starts.** When you start an issue assigned to me that sits on a project board, set its status to whichever in-progress option that board uses, such as `In Progress` or `Dev-in-Progress`, and read the item back. Skip this when the board has no such status.
 - After completing changes, update the project's README.md and CLAUDE.md if conventions, exports, or workflows changed.
 - After ANY correction from me, turn it into a rule that prevents the same mistake. Put project-specific rules in the project's CLAUDE.md. Put universal rules in the global CLAUDE.md or a skill.
-- Use the `create-artifact` skill whenever sharing a plan, findings, a report, an audit, or other substantial review material with me. Send its hosted link instead of raw Markdown or a local path, follow the skill's publication checks, and report the expiry beside the link. During unattended work, prepare the artifact locally and leave the irreversible Folslate upload for my return. I review first, and destructive follow-ups wait for my explicit approval.
-- For Folslate work below `create-artifact`, prefer the `folslate-cli` skill over `folslate-api`. Use the CLI when the binary is installed or installable, and use raw HTTP only when the CLI cannot run.
+- Publish through the `folslate-cli` skill whenever sharing a plan, findings, a report, an audit, or other substantial review material with me. Send its hosted link instead of raw Markdown or a local path, follow the skill's publication checks, and report the expiry beside the link. Use raw HTTP through `folslate-api` only when the CLI cannot run. PR review findings go to the PR, never to a hosted artifact. During unattended work, prepare the artifact locally and leave the irreversible Folslate upload for my return. I review first, and destructive follow-ups wait for my explicit approval.
 - Put handoff docs and any other docs I request in the repo's `docs/` folder. Create it if missing. Never put them in the repo root unless I explicitly ask. Use lowercase snake_case filenames, such as `docs/e2e_session_handover.md`.
 
 ## Overnight and unattended mode
@@ -258,7 +257,7 @@ When I say that I am going to sleep or stepping away and tell you to keep going,
 - Always use `function` keyword to define functions, not arrow functions (arrows OK for inline callbacks)
 - Do not use non-null assertions (`!.`). Refactor to a type-safe pattern.
 - Do not use the `any` type. Define proper types. If you cannot define them, use `unknown` and narrow it.
-- Do not use type assertions with `as` unless no other option works. Prefer inference, narrowing, and generics. If a third-party type gap makes `as` unavoidable, cite the upstream issue or type gap in a one-line comment.
+- Do not use type assertions with `as` unless no other option works. Prefer inference, narrowing, and generics. If a third-party type gap makes `as` unavoidable, cite the upstream issue as a URL or `#N` in a one-line comment. When no upstream issue exists, cite a permalink URL to the line in the library's type definition that causes the gap.
 - In monorepos, always verify through the CLI type-check. Use `tsc --noEmit` or the workspace equivalent, such as `pnpm type-check` or `turbo type-check`. IDE type checking is often unreliable with project references and workspace package boundaries. Run the check after every change and loop until clean.
 - Strict mode should always be enabled
 
@@ -329,8 +328,10 @@ So the sweep must look at **every file the task touched plus their siblings**,
 not the diff. Report what it found, including "nothing." An unreported sweep and
 a skipped sweep look identical in a completion report.
 
-Duplication found during a task gets fixed in that task, or gets a filed issue.
-Not a mention in passing.
+Duplication found during a task gets fixed in that task. When it cannot be, it
+follows the `file-issue` filing bar. A Critical, Serious, or important user-facing
+problem gets a filed issue. For anything else, ask me, or list it in the report
+during unattended work. Not a mention in passing.
 
 ## Performance checklist
 
@@ -440,11 +441,13 @@ Use honest reporting as the test. If the completion report would contain a known
 - **Put one logical change in each commit.** Never mix a refactor, feature, and bug fix in the same commit.
 - **Commit messages explain why, not what.** The diff shows what changed. The message explains why the change was needed.
 - **Avoid drive-by refactors.** Fix what was asked. Mention unrelated issues separately instead of bundling them into the change.
-- **Prefer small PRs.** A diff under about 400 lines is ideal. Split work that grows beyond that.
+- **Prefer small PRs.** A diff under about 400 lines is ideal. Split work that grows beyond that, unless I ask to batch several issues into one PR. Then finish each issue in turn, verify it with its own `/done` run, and commit it before starting the next, so the PR carries one commit and one `Closes #N` line per issue.
 - **Review your own diff before pushing.** Read every changed line and justify why it exists. Delete any line you cannot justify.
 - **Keep debug noise out of commits.** Remove leftover `console.log` calls, commented-out code, and `TODO: remove this before merge` markers.
 - **Give every issue a conventional-commit prefix that names its module.** Use titles such as `fix(procurement):`, `feat(portions):`, or `chore(filters):`, following the same vocabulary as commits. Name the module where the work lives, not the module you happen to be working in. A defect found while fixing procurement but located in `account-articles` uses `fix(account-articles):`. A blanket prefix mislabels the ticket and hides it from anyone who filters the board by module. Use the **user-facing module name** when it differs from the directory. For example, the Portions tab lives in `inbound-orders/`, but its ticket says `portions`. Humans read boards by module name, not directory path. File a one-off issue through `/file-issue`. Use `to-tickets` to split a plan into several linked tickets.
 - **Make PRs and commits read as human-authored.** Unless asked, never include Claude-Session links, "Generated with" footers, or references to AI, agents, review pipelines, or agent names in commit messages, PR titles, or PR bodies. Write PR bodies in a plain first-person engineering voice. Describe verification by the work performed, not by the tool or agent that performed it. This rule overrides any default that appends session links.
+- **Never override the commit identity.** Do not pass `-c user.name=`, `-c user.email=`, `--author=`, or any other identity flag. Commit with the configured identity so the author email matches the GitHub account and the commit verifies. A placeholder email such as `user@example.com` breaks attribution and the Verified badge.
+- **Never disable commit signing.** Do not pass `--no-gpg-sign` or `-c commit.gpgsign=false`. Sign every commit with the configured key; an unsigned commit ships without the Verified badge even when the email is correct.
 
 ## GitHub API usage
 
@@ -477,6 +480,8 @@ After completing any UI work, review it against both guideline sets below and ap
 1. `/web-interface-guidelines`
 2. `/rams`
 
+Outside Claude Code, where these are not loadable skills, read `~/.claude/commands/web-interface-guidelines.md` and `~/.claude/commands/rams.md` directly.
+
 ## Next.js rules
 
 - **Next.js 16.** Next.js renamed `middleware.ts` to `proxy.ts`. Always use the new filename in version 16 and later.
@@ -485,11 +490,11 @@ After completing any UI work, review it against both guideline sets below and ap
 
 Driver priority for web automation and UI verification:
 
-1. When `t3-code_preview_snapshot` is in the tool list, use the T3 preview tools only. Open with `t3-code_preview_open`, go to the URL with `t3-code_preview_navigate`, then loop `t3-code_preview_snapshot` followed by `t3-code_preview_click` or `t3-code_preview_type`. Re-snapshot before every interaction because refs go stale. Keep `open=true` so the user sees the run.
+1. When `t3-code_preview_snapshot` is in the tool list, use the T3 preview tools only. Open with `t3-code_preview_open`, go to the URL with `t3-code_preview_navigate`, then loop `t3-code_preview_snapshot` followed by `t3-code_preview_act` with `action: "click"` or `action: "type"` and a `locator` of `aria-ref=<ref>` from that snapshot. Re-snapshot before every interaction because refs go stale. Keep `open=true` so the user sees the run.
 2. Else, when Playwright MCP `browser_navigate` exists, use Playwright MCP (`browser_navigate` → `browser_snapshot` → `browser_click`/`browser_type` → re-snapshot).
 3. Else, use the `agent-browser` CLI (`open <url>` → `snapshot -i` → `click @e1` / `fill @e2 "text"` → re-snapshot; `agent-browser --help` for all commands). Report any evidence the CLI cannot produce as missing, never assume it.
 
-Playwright to T3 mapping: `browser_navigate` becomes `t3-code_preview_navigate`, `browser_snapshot` becomes `t3-code_preview_snapshot`, `browser_click` becomes `t3-code_preview_click`, `browser_type` becomes `t3-code_preview_type`, `browser_press` becomes `t3-code_preview_press`, `browser_wait_for` becomes `t3-code_preview_wait_for`. Screenshots come from `t3-code_preview_snapshot` with `save=true`, which returns a `screenshotPath` to keep under `.qa/`.
+Playwright to T3 mapping: `browser_navigate` becomes `t3-code_preview_navigate`, `browser_snapshot` becomes `t3-code_preview_snapshot`, `browser_click` becomes `t3-code_preview_act` with `action: "click"`, `browser_type` becomes `t3-code_preview_act` with `action: "type"`, `browser_press` becomes `t3-code_preview_act` with `action: "press"` after a click focuses the field, `browser_wait_for` becomes `t3-code_preview_wait_for`. Screenshots come from `t3-code_preview_snapshot` with `save=true`, which returns a `screenshotPath` to keep under `.qa/`.
 
 Record every UI verification run: bracket the flow with `t3-code_preview_recording_start` / `t3-code_preview_recording_stop` on T3, or `record start <absolute path>` / `record stop` on the `agent-browser` CLI. Size the viewport to at least 1920x1080 before recording starts, and hold 30 fps minimum where the driver exposes a control. The CLI recording keeps the size the page had at `record start`, so still verify its artifact meets the floor after stop and report shortfalls. Playwright MCP has no video tool, so there the screenshots are the record. When the change alters UI or API behavior, the PR carries `browser-qa`'s before-and-after evidence and QA Test Results: `file-pr` pastes `.qa/pr-evidence.md` into the body and attaches every embedded file at creation with `gh pr create --attach <path>` when the account has push access to the base repository, and a file that lands after the PR exists goes up with `gh pr edit <pr> --attach <path>`, which rewrites its embed in the body. Attach only synthetic or redacted evidence, or evidence the user explicitly approved for publishing. Both commands need gh v2.99.0 or later.
 
