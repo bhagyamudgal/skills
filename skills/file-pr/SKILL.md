@@ -33,7 +33,17 @@ When the user asked to batch several issues into one PR, each issue arrives as i
 
 When you choose `Refs #N` over a closing keyword, the final report says the issue will not show as linked in GitHub's Development panel, which lists only closing-keyword links, and names the reason from the list above.
 
-**Gate.** The base ref, remote base tip, and merge base match the refreshed remote state, the issue link comes from issue output, not assumption, and every batched `Closes #N` has a `verified` card row and its own commit, with at most one sealed in section 6.
+### Record what is left after this merges
+
+From the same issue output, list the work this PR leaves open. Each linked issue supplies its `- [ ]` items when it has them, and otherwise each distinct outcome its body asks for, such as under "What should happen instead", "Done looks like", or "Acceptance criteria", minus anything it marks out of scope. The user's original prompt in the conversation supplies anything else it asked for, since the card's **Originating request** often covers only this PR's part. When that prompt is out of view, as in a dispatched subagent or after compaction, use the card in place of the prompt and end the line with `(original prompt not visible)`, even after `none`. An item is left when no request row on the card finishes it, where a row finishes its item when it is `verified` or `pending` only on a `PR-dependent` gap. Every issue linked with `Refs #N` appears, with its open part, or as `#N (finished, close by hand)` when the batch rule alone kept it from `Closes`. Name each item in a few words, tagged `#N` or `prompt`. An issue the prompt names that this PR does not link appears once, as a whole:
+
+```text
+Left after this merges: #101 export button; #102 (not started); prompt: rename the CLI flag
+```
+
+With nothing left, the line reads `Left after this merges: none`. Record the line in the publication evidence returned to `done`.
+
+**Gate.** The base ref, remote base tip, and merge base match the refreshed remote state, the issue link comes from issue output, not assumption, every batched `Closes #N` has a `verified` card row and its own commit, with at most one sealed in section 6, and the leftover line names exactly the issue and visible prompt items that no card row finishes, plus every `Refs #N` issue.
 
 ### Revalidate card currency and handoff eligibility
 
@@ -181,6 +191,6 @@ Require `headRepository.id` to equal the selected head repository ID, `headRefNa
 
 When only title or body differs while repository, base, head, state, and draft mode still match, preflight an exact edit of that existing PR and read it back. A base mismatch enters `done`'s existing-PR rebind path with that URL and its observed values. Never issue another create. A state or draft mismatch stops for an explicit publication decision. Never silently reopen, close, convert, or create another PR. Record both single-step cards, the landed push, the PR observations, the ordered commit list, and the exact commands as publication evidence for the next `done` run. When authoritative search cannot identify whether a PR was created, mark the create `reconcile-required` and do not retry.
 
-Print the URL and return to `done` for CI, review, publication-lane, and final row evaluation. Never merge. Opening the PR is a publication transition, not overall task completion.
+End the final report with the URL, then the leftover line from section 2 as its last line. Return to `done` for CI, review, publication-lane, and final row evaluation. Never merge. Opening the PR is a publication transition, not overall task completion.
 
 The handoff holds when the preconditions held, base currency and issue link came from real output, the title and body passed the cold read, the remote branch and PR matched the local publication, and the evidence went back to `done` without claiming overall completion.

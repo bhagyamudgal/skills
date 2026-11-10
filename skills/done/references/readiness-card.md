@@ -166,6 +166,8 @@ git rev-list --first-parent --reverse <pre-verification-head>..HEAD
 
 The first command must succeed, the merge list must be empty, and the ordered first-parent list must exactly equal **Expected append-only commits**. A failed ancestry check is a rebase; a merge or unrecorded commit makes the card stale. For PR-bound work, refresh the recorded base again and require its ref, base-tip SHA, and merge-base SHA to match the card. Freshly re-fetch every mixed external target and compare its recorded version and read-back. Consume `file-pr`'s authoritative publication evidence, verify required CI and review evidence, and re-evaluate every row. Only PR-bound work uses this post-publication run before final `ready`.
 
+The post-publication card ends with the `Left after this merges:` line from `file-pr`'s publication evidence, placed after the evidence index and copied unchanged. `done` never derives it. When the evidence holds no such line, the card ends with `Left after this merges: not recorded by file-pr`.
+
 New unresolved review threads or review-body findings on the PR, including ones a PR-watch update reports, go through `fix-pr-review` with the review or discussion URL (`#pullrequestreview-` or `#discussion_r`), not the bare PR URL. This post-publication handoff authorizes `fix-pr-review` to execute. Never edit, reply to, or resolve them inline. A thread left open as NEEDS-INPUT keeps the card from final `ready`.
 
 Before final `ready`, repeat the post-commit content seal:
