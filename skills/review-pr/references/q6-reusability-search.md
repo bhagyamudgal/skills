@@ -1,6 +1,6 @@
 # Q6a Reusability: search algorithm and audit format
 
-**Subagent 1** loads this when the diff has 1+ new definitions of any STEP A kind below, for STEP A onward. The main SKILL.md keeps only the Q6a header and reporting format. This reference explains HOW to search.
+Subagent 1 loads this when the diff has 1+ new definitions of any STEP A kind below, for STEP A onward.
 
 STEP B searches against `repo_map_files` / `repo_map_exports`, which main computes in Phase 1. That shell is in `${CLAUDE_SKILL_DIR}/references/repo-map.md`, the copy `/fix-pr-review` shares.
 

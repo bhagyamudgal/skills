@@ -8,4 +8,4 @@
   - **Hierarchy**: a type scale table, H1 / H2 / H3 / Body / Small / Caption, with size in px, weight, line-height, tracking. Use a 1.25 or 1.333 scale by default.
   - **Usage guidelines**: 4-6 bullet rules (e.g., "Headlines never wrap below 80% line-length", "Body uses 1.5 line-height; UI elements use 1.2").
 - **File save**: yes
-- **Next step**: → `/figma-generate-library` to add as text styles / variables
+- **Next step**: → `/figma:figma-generate-library` to add as text styles / variables

@@ -6,7 +6,7 @@ Loaded by main in Phase 8 only after every NEEDS-INPUT item has a non-pending st
 
 ## Failure section (TOP, only if any Phase 7 or Phase 8 GitHub op failed)
 
-If any applicable `gh_status[idx]` has `reply_ok == false` OR `resolve_ok == false`, print this section at the **top** of the report. Exclude entries whose reply and resolution states are both `not-applicable`:
+If any applicable `gh_status[idx]` has `reply_ok == false` OR `resolve_ok == false`, print this section at the **top** of the report. Exclude entries whose reply and resolution states are both `not-applicable`, and FIX entries `skipped` with the reason `held until push`, which the main body's held line covers:
 
 ```
 ## ⚠ GitHub operations needing attention (<count>)
@@ -28,6 +28,15 @@ and its exact settling query. Hold every retry until that query settles.
 
 ```
 # Fix PR Review, PR #<num>: <title>
+
+<Only when UNATTENDED_WATCH=true:>
+Unattended watch run: committed <yes, <sha> | no, <reason>>; pushed <yes, <sha> | no, <reason>>;
+  posted <n> auto-confirmed contested replies and <n> FIX replies;
+  held <n> FIX threads as fixed locally, not pushed; parked <n> items as NEEDS-INPUT
+
+<Only when UNATTENDED_WATCH is not true and any FIX reply is held:>
+Held <n> FIX replies until push. "Push to remote" below posts them once the push lands;
+  after pushing any other way, rerun `/fix-pr-review <url>` to reply to and resolve those threads.
 
 Convergence: converged. All <F> fixes class-complete, inverse risk absent, no new siblings
              | NOT converged. <n> of <F> fixes partial or reverted (see below)
@@ -121,6 +130,16 @@ Convergence: converged. All <F> fixes class-complete, inverse risk absent, no ne
   Other lanes:      <lane: state, then evidence, or "none required">
   Readiness:        <ready | ready-to-publish | not ready> with the evidence ceiling
   Remaining after self-heal: <list or "none">
+  Moderate/Minor after self-heal: <done_moderate_minor list or "none">
+  Filed:            <follow-up issue URLs step 2c filed, or "none">
+  Not filed:        <follow-up-proposed items with their reasons, or "none">
+
+## Contested replies posted without asking (<count>)
+  [D2] src/auth/util.ts:12: DISMISS (R5), auto-confirm: claude_md_quote, found verbatim
+
+# Render only for items that passed Phase 4 by evidence auto-confirm, with the
+# auto-confirm record (rule, re-checked field, result). Omit the section when
+# the user answered the question.
 
 ## GitHub reply/resolve (<count>)
   [1]  posted ✓  resolved ✓  src/db/schema/meal-menu-portions.ts:53

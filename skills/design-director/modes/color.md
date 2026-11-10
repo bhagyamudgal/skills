@@ -14,4 +14,4 @@
   - **Contrast proof**: classify each intended use, then apply the WCAG 2.2 criteria in the main skill to measured mark, text, and accent pairings in both themes. Label presentation-only colors instead of treating them as accessible text colors.
   - **Usage ratio**: a one-line 60/30/10 or similar split. It shows how the palette balances in real layouts
 - **File save**: yes
-- **Next step**: → `/figma-generate-library` to add as color variables
+- **Next step**: → `/figma:figma-generate-library` to add as color variables

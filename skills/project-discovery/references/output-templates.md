@@ -1,4 +1,4 @@
-# Output Templates
+# Output templates
 
 ## 1. CLAUDE.md (or PROJECT.md)
 
@@ -9,11 +9,11 @@
 [2-3 sentences on what this is]
 
 ## Tech stack
-- Frontend: Next.js 15 (App Router)
+- Frontend: Next.js 16 (App Router)
 - Backend: Next.js API Routes
 - Database: PostgreSQL (Supabase)
 - ORM: Drizzle
-- Auth: Lucia + GitHub OAuth
+- Auth: Better Auth + GitHub OAuth
 - Styling: Tailwind + shadcn/ui
 - Hosting: Vercel
 
@@ -35,7 +35,7 @@
 Every category in `stack-menu.md` gets a line here, including the ones decided as
 "not needed" and why.
 
-## 2. Initial Folder Structure
+## 2. Initial folder structure
 
 ```
 src/
@@ -52,7 +52,7 @@ src/
   types/
 ```
 
-## 3. Config Files
+## 3. Config files
 
 - `tsconfig.json` with strict mode + path aliases
 - `.env.example` with all required vars

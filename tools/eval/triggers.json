@@ -251,6 +251,26 @@
 
     { "utterance": "I'm starting a new inventory app and need to plan its requirements and technical architecture before we write code.",
       "expect": "project-discovery",
-      "why": "collision: a bare new-app utterance asking for requirements and architecture stays with project-discovery rather than routing to naming" }
+      "why": "collision: a bare new-app utterance asking for requirements and architecture stays with project-discovery rather than routing to naming" },
+
+    { "utterance": "check https://github.com/acme/shop/pull/42#pullrequestreview-2318845",
+      "expect": "fix-pr-review",
+      "why": "the user's most common review request: a bare review URL after check, from any reviewer, routes to fix-pr-review" },
+
+    { "utterance": "resolve conflicts on https://github.com/acme/shop/pull/42, it can't merge into dev",
+      "expect": "resolving-merge-conflicts",
+      "why": "a conflict request before any merge has started still routes here; the skill starts the merge itself" },
+
+    { "utterance": "i think we sorted this out already, do we still have this issue? https://github.com/acme/shop/issues/7",
+      "expect": "audit-ticket",
+      "why": "the user's own phrasing for an audit: asking whether an old issue still holds" },
+
+    { "utterance": "implement issues 12, 13 and 14 and raise a pr for each using subagents, you be the orchestrator",
+      "expect": "executing-tickets-with-subagents",
+      "why": "attended multi-ticket work requested by its subagent phrasing rather than a bundled parent ticket" },
+
+    { "utterance": "this pr needs proper browser qa https://github.com/acme/shop/pull/42",
+      "expect": "browser-qa",
+      "why": "COLLISION: a PR URL with a browser QA ask belongs to browser-qa, not review-pr" }
   ]
 }

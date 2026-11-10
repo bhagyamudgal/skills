@@ -26,9 +26,9 @@ Complete each phase before the next.
 Before attempting ANY fix:
 
 1. Read the error message. This is step zero. The stack trace tells you which line, and the message tells you what invariant broke. Read every error and warning in the output. They often contain the exact answer.
-2. Reproduce consistently. `/diagnosing-bugs` Phase 2 is the playbook for building the repro loop.
+2. Reproduce consistently. `/diagnosing-bugs` Phases 1 and 2 are the playbook for building the repro loop and minimising it.
 3. Check recent changes. Look at the git diff, recent commits, new dependencies, config changes, and environment differences.
-4. Instrument the boundaries. In a multi-component system, log what enters and exits each boundary and verify env and config propagation. Redact secrets, tokens, credentials, and personal data before anything lands in a log. Keep metadata like names and sizes, never values. Two examples are CI to build to signing, and API to service to database. Run once and read the evidence. It shows where the chain breaks. For example, the evidence may show secrets reaching the workflow but not the build. Then investigate that component. Full technique: [TECHNIQUES.md](${CLAUDE_SKILL_DIR}/TECHNIQUES.md#root-cause-tracing).
+4. Instrument the boundaries. In a multi-component system, such as CI to build to signing or API to service to database, log what enters and exits each boundary and verify env and config propagation. Redact secrets, tokens, credentials, and personal data before anything lands in a log. Keep metadata like names and sizes, never values. Run once and read where the chain breaks, for example secrets that reach the workflow but not the build. Then investigate that component. Full technique: [TECHNIQUES.md](${CLAUDE_SKILL_DIR}/TECHNIQUES.md#root-cause-tracing).
 5. Trace the data flow backward. When the error is deep in the call stack, the crash site is a symptom. Where does the bad value originate? Keep tracing up until you find the source, and fix it there.
 
 Phase 1 is done when you can name the line that produces the bad value and the input that made it bad. If you can only name where it crashed, you are not done.
@@ -52,8 +52,6 @@ Find the pattern before fixing:
 Phase 2 is done when you can name the working example you compared against and account for every difference on the list, each one either ruled out by evidence or carried into Phase 3 as a hypothesis. When you found no working example, or a difference still sits there unexplained, you are not done.
 
 ### Phase 3: Hypothesis and testing
-
-Scientific method:
 
 1. Rank 3-5 falsifiable hypotheses, then test the top one. Each states its prediction. For example: "If X is the cause, changing Y makes the bug disappear." Write them down. A prediction can fail; an explanation cannot.
 2. Test minimally. Make the smallest change that tests the hypothesis. Change one variable per run so the result isolates the cause.

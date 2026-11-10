@@ -65,7 +65,7 @@ The state and ownership checks keep body-only re-reviews compact without droppin
 
 ## Step 0b: Verdict-body sync check (re-runs)
 
-If `last_posted_review_id` exists in cache, map the last-posted body verdict through the current self-review status before comparing it with GitHub state:
+If `last_posted_review_id` exists in cache, map the last-posted body verdict through the current self-review status and the cache's `incomplete_coverage` before comparing it with GitHub state:
 
 ```bash
 LAST_POSTED_REVIEW_ID=$(jq -r '.last_posted_review_id // empty' "$CACHE_FILE")
@@ -81,6 +81,9 @@ if [ -n "$LAST_POSTED_REVIEW_ID" ]; then
     *) LAST_POSTED_BODY_REQUIRED_STATE=UNKNOWN ;;
   esac
   if [ "$IS_SELF_REVIEW" = "true" ] && [ "$LAST_POSTED_BODY_REQUIRED_STATE" != "UNKNOWN" ]; then
+    LAST_POSTED_BODY_REQUIRED_STATE=COMMENTED
+  fi
+  if [ "$(jq -r '.incomplete_coverage // false' "$CACHE_FILE")" = "true" ] && [ "$LAST_POSTED_BODY_REQUIRED_STATE" = "APPROVED" ]; then
     LAST_POSTED_BODY_REQUIRED_STATE=COMMENTED
   fi
 fi

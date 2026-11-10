@@ -5,13 +5,13 @@ description: Reduce unnecessary complexity in a completed code or workflow diff 
 
 # Simplify
 
-I make the smallest behavior-preserving cleanup that leaves the finished change easier to maintain. Less code, same behavior. That is the whole job.
+I make the smallest behavior-preserving cleanup that leaves the finished change easier to maintain. Less code, same behavior.
 
 ## 1. Bind the change
 
 I record the originating request, review baseline, changed paths, and current diff or content hash. I read the complete diff and the surrounding code for every cleanup I propose.
 
-The cleanup scope is the current task diff. Unrelated pre-existing code stays untouched, and I say so as the gate. I do not wander.
+The cleanup scope is the current task diff. I leave unrelated pre-existing code untouched and state that as the gate.
 
 ## 2. Find removable complexity
 
@@ -27,7 +27,7 @@ I prefer deletion and direct code over a new helper. I reuse an existing local p
 
 ### Added-comment scan
 
-I inspect every comment the change adds under the global comment rule. A comment stays only when it is a one-line `/** */` contract on an exported symbol, or a one-line citation carrying a URL, a spec section, an ADR or `docs/` path, or an issue number. I delete everything else on sight, including any comment that explains what the code does, why it has its shape, or what would break. I run the rule's grep over the diff and delete every comment it prints. A project rule may tighten this scan, never loosen it.
+I inspect every comment the change adds under the global comment rule. A comment stays only when it is a one-line `/** */` contract on an exported symbol, or a one-line citation carrying a URL, a spec section, an ADR or `docs/` path, or an issue number. I delete everything else on sight, including any comment that explains what the code does, why it has its shape, or what would break. I run the rule's grep over the diff and delete every comment it prints, except a `// @ts-expect-error`, bare or with a `-- <reason>` description, in a test file (`*.test.*`, `*.spec.*`, `*.test-d.ts`) whose enclosing test's name states that the compiler rejects that line, or that sits at the top level of a `*.test-d.ts` file, which is a `fix-ts-errors` type test and code, not a comment. A project rule may tighten this scan, never loosen it.
 
 Every proposed edit names what turns simpler and why observable behavior stays equivalent, and no uncited comment the change adds remains. This scan blocks. The caller cannot report the work complete while one remains in the diff.
 

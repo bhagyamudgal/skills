@@ -1,8 +1,8 @@
-# Supporting Techniques
+# Supporting techniques
 
 Reached from `SKILL.md` at the point each one fires.
 
-## Root-Cause Tracing
+## Root-cause tracing
 
 Bugs often manifest deep in the call stack (file created in the wrong directory, database opened with the wrong path). The instinct is to fix where the error appears. That's the symptom. Trace backward until you find the original trigger:
 
@@ -20,7 +20,7 @@ When you can't trace by reading, instrument: log directory, cwd, relevant env, a
 
 For test pollution where you don't know which test is the culprit, bisect: run the suite one file at a time and stop at the first polluter.
 
-## Defense in Depth
+## Defense in depth
 
 After fixing at the source, validate at EVERY layer the data passes through. A single check gets bypassed by other code paths, refactors, or mocks:
 
@@ -31,7 +31,7 @@ After fixing at the source, validate at EVERY layer the data passes through. A s
 
 Different layers catch different bypasses.
 
-## Condition-Based Waiting
+## Condition-based waiting
 
 Flaky, timing-dependent test failures usually come from arbitrary sleeps, guesses that pass on a fast machine and fail under CI load. Wait for the actual condition instead:
 

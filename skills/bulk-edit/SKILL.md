@@ -7,9 +7,9 @@ description: Plan and run one mechanical edit across a whole population of recor
 
 I turn "change this field on all of them" into a transform that refuses what it cannot prove, a run that survives interruption, and a verification that also covers the records I was never meant to touch. `preflight-mutations` authorizes the writes; I own everything around them.
 
-The failure I exist to prevent is not a crash. It is a run that reports success while having silently flattened a distinction the population depended on. Every gate below exists because that failure is quiet.
+The failure I prevent is a run that reports success after silently flattening a distinction the population depended on. Every gate below exists because that failure makes no noise.
 
-`${CLAUDE_SKILL_DIR}/references/worked-example.md` walks one real 638-record run, including the four near-misses that put these gates here. Read it when a gate below looks like overhead.
+`${CLAUDE_SKILL_DIR}/references/worked-example.md` walks one real 638-record run, including the four near-misses that put these gates here. Read it before skipping or shortening any gate.
 
 ## 1. Fix the population and the field
 
@@ -23,7 +23,7 @@ I count the population and the candidate subset separately. Most requests name t
 
 The example in the request is one variant, never the specification. I dump the whole population locally, once, and enumerate the real shapes by frequency. I do not sample, and I do not eyeball.
 
-I count the separators, delimiters, prefixes and joiners that actually occur, then read the long tail. The frequent shapes are the ones I already knew about. **The rare shapes are the ones that break the transform**, and they are invisible in a sample: a joiner appearing four times in three thousand records is exactly the case whose meaning differs from the common one.
+I count the separators, delimiters, prefixes and joiners that actually occur, then read the long tail. The frequent shapes are the ones I already knew about. The rare shapes are the ones that break the transform, and they are invisible in a sample: a joiner appearing four times in three thousand records is exactly the case whose meaning differs from the common one.
 
 For each distinct shape I ask what it means, not what it looks like. Two shapes that render similarly and mean differently are the trap. A chain arrow and an ampersand can sit in the same position and read as "then" and "and", and collapsing both the same way destroys the second.
 
@@ -45,7 +45,7 @@ I take a fresh snapshot of the whole population's current value immediately befo
 
 I dry run against the live system, not against the dump. The dry run's job is to prove the transform still applies to what is actually there.
 
-Whitespace and encoding drift will show up here as false mismatches. When a record fails an equality check against the dump, I re-derive the transform from the live value and compare the *result*. If the result matches the plan, the record is fine and my guard was too strict. That check is better than equality anyway: it validates against what exists rather than against what I remember.
+Whitespace and encoding drift will show up here as false mismatches. When a record fails an equality check against the dump, I re-derive the transform from the live value and compare the *result*. If the result matches the plan, the record is fine and my guard was too strict. That check beats equality because it validates against what exists, not what I remember.
 
 **Gate.** The snapshot is timestamped, stored outside the working tree, and covers the whole population. The dry run ran against live values and its counts reconcile with section 3.
 
@@ -101,7 +101,7 @@ The account behind the writes tells me a job exists, not where it runs. A machin
 
 When someone names the job's location, I verify the location separately from the schedule. Those two claims fail independently, and the schedule being right is not evidence that the path is. A recalled path from an unavailable memory system is a hypothesis.
 
-**Sequencing matters more than speed here.** If the producer rewrites records whose field disagrees with some source of truth, then an edit that makes *every* record disagree hands that job the largest possible batch. The cleanup and the producer change have an order, and doing them backwards costs more churn than doing nothing. I say so plainly rather than proceeding.
+**Sequencing matters more than speed here.** If the producer rewrites records whose field disagrees with some source of truth, then an edit that makes *every* record disagree hands that job the largest possible batch. The cleanup and the producer change have an order, and doing them backwards costs more churn than doing nothing. I say so instead of proceeding.
 
 **Gate.** I have named the producer with evidence, or stated that I looked and found none. If a producer exists and is still live, I report the sequencing constraint before recommending any follow-up edit.
 

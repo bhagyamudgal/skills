@@ -1,14 +1,14 @@
-# Stack Menu: Discovery Categories 2-10
+# Stack menu: discovery categories 2-10
 
-Category 1 (PROJECT OVERVIEW) is in `SKILL.md`. Use the option list and the
+Category 1 (Project overview) is in `SKILL.md`. Use the option list and the
 separating questions for whichever layer the interview has reached.
 
-### 2. TECH STACK
+### 2. Tech stack
 
 Open each category with a recommendation fitted to their constraints; let them push back.
 
 **Frontend Framework**
-- Next.js (App Router): Full-stack, great DX, Vercel-optimized
+- Next.js (App Router): full-stack React with server components, deploys natively on Vercel
 - Remix: Better data loading patterns, more control
 - SvelteKit: Simpler mental model, less boilerplate
 - Astro: Content-heavy sites, partial hydration
@@ -38,7 +38,7 @@ Open each category with a recommendation fitted to their constraints; let them p
 - TypeScript relaxed: Faster iteration, gradual adoption
 - Multiple languages: Right tool for each job
 
-### 3. DATABASE
+### 3. Database
 
 This decision affects everything downstream.
 
@@ -73,7 +73,7 @@ This decision affects everything downstream.
 - In-memory: Simple apps, single instance
 - None: Start without, add when needed
 
-### 4. AUTH & SECURITY
+### 4. Auth & security
 
 Get this wrong and you're rebuilding later.
 
@@ -85,7 +85,7 @@ Get this wrong and you're rebuilding later.
 - API keys: Service-to-service, developer platforms
 
 **Auth Library**
-- Lucia: Flexible, self-hosted, good DX
+- Better Auth: self-hosted TypeScript library that stores users and sessions in your own database, with built-in OAuth providers and plugins for 2FA and organizations
 - NextAuth/Auth.js: Quick setup, many providers
 - Clerk: Managed, beautiful UI, costs money
 - Supabase Auth: If using Supabase already
@@ -120,7 +120,7 @@ Get this wrong and you're rebuilding later.
 - Data retention policies?
 - Encryption at rest/in transit?
 
-### 5. API DESIGN
+### 5. API design
 
 How frontend talks to backend.
 
@@ -146,7 +146,7 @@ How frontend talks to backend.
 - Rate limiting requirements?
 - Documentation approach?
 
-### 6. FRONTEND ARCHITECTURE
+### 6. Frontend architecture
 
 **Styling**
 - Tailwind: Utility-first, consistent, great DX
@@ -178,7 +178,7 @@ How frontend talks to backend.
 - Accessibility requirements?
 - i18n needed?
 
-### 7. INFRASTRUCTURE
+### 7. Infrastructure
 
 **Hosting**
 - Vercel: Best Next.js DX, preview deploys, costs scale
@@ -210,7 +210,7 @@ How frontend talks to backend.
 - API subdomain? (api.example.com)
 - Separate marketing site?
 
-### 8. INTEGRATIONS
+### 8. Integrations
 
 **Email**
 - Resend: Best DX, React Email
@@ -229,7 +229,7 @@ How frontend talks to backend.
 - AI/LLM (OpenAI, Anthropic, local models)
 - Analytics (PostHog, Mixpanel, Plausible)
 
-### 9. CODE PATTERNS
+### 9. Code patterns
 
 Establish conventions early.
 
@@ -274,7 +274,7 @@ Decide here; the type is defined there, once.
 - Feature branches: `feature/add-auth`
 - Trunk-based: direct to main with feature flags
 
-### 10. TESTING
+### 10. Testing
 
 **Strategy**
 - Unit + Integration: Test business logic, API contracts

@@ -152,8 +152,9 @@ If reusability-flagged, run these searches using the repo map + your tools
       searching for `format` does not automatically mean duplication)
 
   Non-monorepo mode (`repo_map_files == "N/A (not a monorepo)"`):
-    - Grep("<new-symbol-name>", "src/"): primary source root
+    - Grep("<new-symbol-name>", "<changed-file-dir>"): each changed file's directory
     - Grep("<new-symbol-name>", "."): repo root fallback
+    - Never assume `src/` exists
     - Read candidate matches to confirm
 
 Store the findings as `reusability_context:` on the comment. Use

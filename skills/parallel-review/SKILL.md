@@ -5,11 +5,11 @@ description: Run every code reviewer in parallel over a local diff and merge the
 
 # Parallel code review
 
-I run every reviewer at once over the local diff and merge what they find into one ranked list. Fast, and no reviewer sees another one work, so the findings stay independent.
+I run every reviewer at once over the local diff and merge what they find into one ranked list. No reviewer sees another's work, so the findings stay independent.
 
 ## Workflow
 
-### Step 1: Determine Scope
+### Step 1: Determine scope
 
 - When the user specifies files, I review those files.
 - Otherwise I review all unstaged and staged changes through `git diff HEAD`.
@@ -20,11 +20,15 @@ I run every reviewer at once over the local diff and merge what they find into o
 
 I name the roster first, then launch every member in parallel with the Agent tool.
 
-Members 1-3 below are `subagent_type` values, and I pass them to the Agent tool as-is. Member 4 is a skill-running agent. `/web-interface-guidelines` and `/rams` are skills, not agent types, so they cannot go as `subagent_type`. I dispatch a `general-purpose` agent that invokes them instead.
+Every member is an Agent tool `subagent_type`. `/web-interface-guidelines` and `/rams` are skills, not agent types, so member 4 is a `general-purpose` agent prompted to invoke them.
+
+On a host without Claude Code agent types, such as Codex or OpenCode, I dispatch each member as the host's general agent (Codex `spawn_agent`, OpenCode `general`) with that member's lens in the prompt. The CodeRabbit member runs `coderabbit review --agent --uncommitted --include-untracked`, which reviews tracked uncommitted changes plus untracked files, and returns its findings. When Step 1 named specific files or a fix delta, I check what the run would upload. `git status --porcelain` lists files, not hunks, so I read the diff of every changed or untracked file it lists. When every change lies inside the scoped delta, I run as above and keep only its findings on those paths. When the out-of-scope changes all sit outside one directory that holds every scoped file, I add `--dir <dir>`. When any file the run would upload holds a change outside the scoped delta, the member is `unavailable(scope cannot be restricted)` and does not run, so nothing outside the scope leaves the machine. It never passes `--base-commit`, which would widen the review past that scope.
+
+On every host, a member whose run exits non-zero, hits an auth or rate limit, times out, or returns empty output is `unavailable(<reason>)`. A missing CodeRabbit CLI counts the same way. I never fill an unavailable member's place with a stand-in.
 
 I size the roster to the diff before I name it. `done` runs this skill after every task, so an unsized roster charges a one-line fix what a rewrite costs. I measure the Step 1 scope with `git diff --shortstat HEAD -- <paths>` when files were specified, or bare `git diff --shortstat HEAD` when they were not.
 
-- One file and under roughly 50 changed lines, or the user asked for a quick review, then the roster is `pr-review-toolkit:code-reviewer` alone and the rest of this step does not apply.
+- One file and under 50 changed lines, or the user asked for a quick review, then the roster is `pr-review-toolkit:code-reviewer` alone and the rest of this step does not apply.
 - Anything larger builds the roster from the members below.
 
 A re-review after fixing findings covers the fix delta, never the whole diff again, and I size it by that delta.
@@ -37,7 +41,7 @@ Always on the roster:
 I add to the roster when the condition holds:
 
 3. Silent Failure Hunter with `subagent_type: "pr-review-toolkit:silent-failure-hunter"`. I add it when the diff touches error handling, try-catch, or fallback logic.
-4. UI Review Agent with `subagent_type: "general-purpose"`. I add it when the diff touches frontend or UI code. I prompt it to invoke `/web-interface-guidelines` and `/rams` against the diff and return their merged findings.
+4. UI Review Agent with `subagent_type: "general-purpose"`. I add it when the diff touches frontend or UI code. I prompt it to invoke `/web-interface-guidelines` and `/rams` against the diff and return their merged findings. When either is not loadable as a skill, it reads `~/.claude/commands/web-interface-guidelines.md` or `~/.claude/commands/rams.md` by path instead. When neither the skill nor that file exists, member 4 is `unavailable(<reason>)`, never skipped silently.
 
 The shared prompt, plus the per-agent lens, reads "Review these changed files for bugs, logic errors, and adherence to project CLAUDE.md conventions: [files]. The review target is [scope diff command] only, the Step 1 scope or the fix delta. The comparison base, [merge-base SHA], is context for the product-intent check alone: `git show [merge-base SHA]:<file>` is what the base branch has."
 
@@ -47,7 +51,7 @@ I state the roster before dispatching. It is the checklist Step 3 merges against
 
 ### Step 3: Merge
 
-The merge is not done while any reviewer on the roster is outstanding. I account for every member by name, reported or failed and re-dispatched.
+The merge is not done while any reviewer on the roster is outstanding. I account for every member by name as reported, failed and re-dispatched, or `unavailable(<reason>)`, and I emit one roster coverage line that lists each member as reported or unavailable with its reason.
 
 1. I merge all findings, collapsing duplicates across reviewers. A `product-intent` tag on any source finding survives the collapse, and its evidence carries into the merged finding.
 2. I assign each merged finding a stable ID from its file, enclosing symbol, normalized defect class, and defect-instance fingerprint. I derive the fingerprint from the smallest stable semantic code anchor, such as a callee, accessed field, branch label, or data-flow endpoints, plus the violated invariant. When two defects still share an anchor, I extend it with the nearest distinct semantic parent or operand. I normalize incidental formatting, literals, and reviewer wording, and I exclude raw line numbers. I merge only when all four parts match, and I preserve every source reviewer. The caller owns these IDs and their dispositions. I do not create a shared finding-ID authority.

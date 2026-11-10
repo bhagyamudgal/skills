@@ -49,7 +49,7 @@ I choose the lane matching the consequence. I inspect the current target. Prior 
 
 I use observations from distinct surfaces. I run the distinguishing observation from step 2 when its surface is available. I record commands, targets, timestamps, file locations, or result identifiers precisely enough for another agent to recheck them.
 
-**Gate.** Each evidence field contains an observation or a concrete reason it is missing or inconclusive, and the distinguishing-observation field contains either its result or the concrete reason it was unavailable.
+**Gate.** Each evidence field holds an observation or a concrete reason it is missing or inconclusive. The distinguishing-observation field holds its result or the concrete reason it was unavailable.
 
 ## 4. Assign exactly one state
 
@@ -71,7 +71,7 @@ For a material reversal, I dispatch a fresh reviewer who did not produce the ori
 
 When no fresh reviewer is available, I set the replacement claim to `blocked` and name the missing recheck.
 
-**Gate.** A non-reversal is recorded as not applicable. Otherwise the independent card is reconciled or reliance on the replacement conclusion is blocked.
+**Gate.** I record a non-reversal as `not applicable`. Otherwise the independent card is reconciled or reliance on the replacement conclusion is blocked.
 
 ## 6. Persist before reliance
 

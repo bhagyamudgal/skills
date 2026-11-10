@@ -28,5 +28,5 @@
 Reach this section only after all three layers have returned.
 
 - **Two unrelated domains** that happen to look similar. DRY is about shared knowledge, not shared appearance. A `userId` validator and a `productId` validator can both be `z.string().uuid()` independently. Coupling them creates fake polymorphism
-- **Premature abstraction.** Three similar lines are fine. Abstract on the fourth occurrence, not the second
+- **Premature abstraction.** Three similar single lines are fine. Abstract on the fourth. A multi-line call sequence repeated at 3 or more sites is different: the sweep reports it as one helper.
 - **Tests.** Explicit setup in each test often beats shared fixtures that hide what is being tested

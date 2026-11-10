@@ -73,7 +73,7 @@ fi
 
 Record `$verified_content_snapshot` only after the reverse scope check passes for every declared path and every changed hunk or logical change within it. Every index operation uses the isolated temporary index, so the real index stays untouched. `GIT_INDEX_FILE` redirects the index but not the object database, which is shared. Only the declared paths are ever hashed with `git hash-object -w`, so undeclared worktree content is never written into the repository. The command fails closed if setup, hashing, staging, tree creation, or cleanup fails. Its exit trap removes the temporary index on both success and failure. The snapshot is `HEAD` plus exactly the declared paths. It carries their current bytes where they exist and their removal where they were deleted. External-only work uses its target currency and read-back ledger instead of a Git snapshot.
 
-Every prose cell below is read by someone deciding what to do next. Write it with no em or en dashes. `unslop` carries the rest of the rules where it is installed.
+Someone deciding what to do next reads every prose cell below. Write it with no em or en dashes. `unslop` carries the rest of the rules where it is installed.
 
 Render the drafted mapping with every originating request item exactly once, in request order, and name all lanes that apply to it:
 
@@ -165,6 +165,8 @@ git rev-list --first-parent --reverse <pre-verification-head>..HEAD
 ```
 
 The first command must succeed, the merge list must be empty, and the ordered first-parent list must exactly equal **Expected append-only commits**. A failed ancestry check is a rebase; a merge or unrecorded commit makes the card stale. For PR-bound work, refresh the recorded base again and require its ref, base-tip SHA, and merge-base SHA to match the card. Freshly re-fetch every mixed external target and compare its recorded version and read-back. Consume `file-pr`'s authoritative publication evidence, verify required CI and review evidence, and re-evaluate every row. Only PR-bound work uses this post-publication run before final `ready`.
+
+New unresolved review threads or review-body findings on the PR, including ones a PR-watch update reports, go through `fix-pr-review` with the review or discussion URL (`#pullrequestreview-` or `#discussion_r`), not the bare PR URL. This post-publication handoff authorizes `fix-pr-review` to execute. Never edit, reply to, or resolve them inline. A thread left open as NEEDS-INPUT keeps the card from final `ready`.
 
 Before final `ready`, repeat the post-commit content seal:
 

@@ -10,4 +10,4 @@
   - **Spacing & rhythm**, notes on whitespace, density, and the alignment grid
   - **Visual balance**, where the weight sits and what counterweights it
 - **File save**: no
-- **Next step**: → `/figma-generate-design`
+- **Next step**: → `/figma:figma-generate-design`

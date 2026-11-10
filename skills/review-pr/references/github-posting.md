@@ -6,7 +6,7 @@ Main loads this in Phase 4 for every completed review. It owns the fresh-review 
 
 ## Event mapping
 
-Before posting, map the semantic verdict to its normal event and required GitHub state, then override both for a self-review:
+Before posting, map the semantic verdict to its normal event and required GitHub state, then override both for a self-review and for an approval with incomplete coverage. Batch mode sets `INCOMPLETE_COVERAGE` for every PR; a single-PR run sets it to `false`:
 
 ```bash
 case "$verdict" in
@@ -16,6 +16,11 @@ case "$verdict" in
 esac
 
 if [ "$IS_SELF_REVIEW" = "true" ]; then
+  REVIEW_EVENT=COMMENT
+  REQUIRED_REVIEW_STATE=COMMENTED
+fi
+
+if [ "${INCOMPLETE_COVERAGE:?}" = "true" ] && [ "$REVIEW_EVENT" = "APPROVE" ]; then
   REVIEW_EVENT=COMMENT
   REQUIRED_REVIEW_STATE=COMMENTED
 fi
@@ -200,7 +205,7 @@ elif [ "$SUBMIT_RESPONSE_HAS_ERRORS" = "true" ] \
 fi
 ```
 
-**Event mapping**: another author's `approve` verdict uses `APPROVE`, and `request-changes` uses `REQUEST_CHANGES`. A self-review uses `COMMENT` for either semantic verdict because GitHub forbids authors from approving their own pull requests.
+**Event mapping**: another author's `approve` verdict uses `APPROVE`, and `request-changes` uses `REQUEST_CHANGES`. A self-review uses `COMMENT` for either semantic verdict because GitHub forbids authors from approving their own pull requests. An `approve` with `INCOMPLETE_COVERAGE=true`, which batch mode sets when a required lens did not run, also uses `COMMENT`.
 
 A Phase C failure is the worst case: pending review has all threads but is never submitted, lingering as a draft.
 

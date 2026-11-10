@@ -2,15 +2,13 @@
 
 Loaded by Subagent 1 when `INCLUDE_SCHEMA_CHECKS = true`, and by V3 when the Phase 3 gap check covers Q7-Q9 (PR adds new database tables, detected in Phase 1 by grepping the diff for `pgTable\(`, `createTable\(`, `CREATE TABLE`, `knex.schema.createTable`, etc.).
 
-The main SKILL.md keeps a 5-line conditional that loads this file. Loading it inline on every run wastes context on non-schema PRs.
-
 `SCHEMA_DIR` is set in Phase 1, typically `db/schema/`, `drizzle/schema/`, `src/schema/`, or `migrations/`. If unset, defaults to `.` (repo root) and limits searches to files matching the detected table-definition pattern.
 
 ---
 
 ## Q7. Schema Overlap
 
-**Question**. Does a new table duplicate an existing table's domain?
+Question: does a new table duplicate an existing table's domain?
 
 For each new `pgTable()` (or equivalent) definition in the diff:
 
@@ -34,7 +32,7 @@ Substring matches alone (e.g., `item` matching many unrelated tables) are NOT su
 
 ## Q8. Table Consolidation
 
-**Question**. Could a simple 1:1 table be a column on an existing table?
+Question: could a simple 1:1 table be a column on an existing table?
 
 For each new table definition in the diff, detect where:
 
@@ -58,7 +56,7 @@ d. **Flag ONLY** if a candidate settings/config table EXISTS. Do NOT suggest "cr
 
 ## Q9. Cross-Table Field Consistency
 
-**Question**. Are entity reference columns complete?
+Question: are entity reference columns complete?
 
 When a new table has entity reference FKs (to `orderTable`, `productTable`, `invoiceTable`, `customerTable`, etc.):
 

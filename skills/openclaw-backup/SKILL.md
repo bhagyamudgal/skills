@@ -41,7 +41,7 @@ openclaw backup --help
 openclaw backup create --help
 ```
 
-`--help` is the source of truth for this install. `docs.openclaw.ai` documents a `backup sqlite` subcommand that shipped builds may lack, so the docs site describes a capability the binary may not have.
+`--help` is the source of truth for this install. `docs.openclaw.ai` documents a `backup sqlite` subcommand that shipped builds may lack.
 
 Pass this step only when you recorded the subcommand list. If `sqlite` is present, prefer it over Step 3 and say so in the report.
 
@@ -88,7 +88,7 @@ tar --use-compress-program="zstd -3 -T0" \
 echo "EXIT=$?"
 ```
 
-`node_modules` is excluded as reinstallable and often a third of the total. Everything else stays. The volatile files Step 4 dropped are the point of this step.
+`node_modules` is reinstallable and often a third of the total, so the archive excludes it. Everything else stays. The volatile files Step 4 dropped are the point of this step.
 
 Then produce the evidence:
 
@@ -163,17 +163,22 @@ A backup on the same disk as the thing it protects survives config mistakes, not
 
 Before `rsync`, verify from the receiving system that the destination is encrypted at rest, accessible only to the intended recipient accounts, and governed by a known retention period and tested deletion path. Confirm the destination host key against a known-good value before the first transfer, so a mistyped host or a first-connect interception cannot divert the copy. A destination missing any of those controls is blocked.
 
-Immediately before `rsync`, invoke `preflight-mutations` with that evidence, the exact source and destination host and path, included artifact inventory and credential sensitivity, recipient, retention and deletion path, current destination state, checksum and access-control read-back, and the user's off-box-copy approval. Apply its result contract before copying.
+Decide before the preflight whether the official archive goes off-box. Pull it unless this run lists its contents with `tar -tzf` and confirms every path in it appears in a fresh listing of the raw archive. Set `OFFICIAL_PULLED=yes` when it goes, or `OFFICIAL_PULLED=no` and add `--exclude='official/'` to the `rsync` below when it is omitted. When omitting, append a line to `RESTORE.md`, which the manifest does not hash, saying the off-box copy has no `official/`, so its manifest entry and the official-archive fallback apply only on the source host at `$BACKUP_DIR`. Record in the report which applied.
+
+Immediately before `rsync`, invoke `preflight-mutations` with the destination evidence, the exact source and destination host and path, included artifact inventory with `official/` in or out per that decision, credential sensitivity, recipient, retention and deletion path, current destination state, checksum and access-control read-back, and the user's off-box-copy approval. Apply its result contract before copying.
 
 ```bash
 rsync -avh --partial -e ssh <source> <destination>
 ```
 
-Verify on the receiving side against the manifest:
+Verify on the receiving side against the manifest. Set `OFFICIAL_PULLED` there to the value recorded at the pull-or-omit decision, since that shell is a different one. Each branch checks exactly the entries that were copied, and any other value fails without checking anything. On macOS, use `shasum -a 256 -c` in place of `sha256sum -c`:
 
 ```bash
-grep -v ' \./official/' MANIFEST.sha256 > /tmp/check.sha256   # if official/ was not pulled
-sha256sum -c /tmp/check.sha256    # macOS: shasum -a 256 -c
+case "${OFFICIAL_PULLED:?set to the pull-or-omit decision}" in
+  yes) sha256sum -c MANIFEST.sha256 ;;
+  no) grep -v ' \./official/' MANIFEST.sha256 | sha256sum -c - ;;
+  *) echo "OFFICIAL_PULLED must be yes or no" >&2; false ;;
+esac
 ```
 
 Confirm the checksum output covers a non-empty file list before reading it as a pass. A verifier fed an empty list reports success having checked nothing.
@@ -183,8 +188,6 @@ A checksum mismatch retires that transfer card. Preserve its `failed` result and
 Re-read the receiving system's encryption and effective access controls after the copy. When either differs from the preflight evidence, preserve and report the copy as sensitive partial state. The copy approval does not authorize deletion. Render a separate compensating deletion card with the exact destination, observed failure, deletion action, and absence read-back. Delete only after fresh explicit confirmation and a current `ready` preflight result.
 
 Pass this step only when every checked file reports `OK`, encryption at rest remains enabled, effective access stays restricted to the approved recipient accounts, and the retention and deletion path remains available. A mismatched file clears the gate only through the fresh-card retry contract above. A failed security control blocks completion while the sensitive partial state is preserved or separately deleted. `--partial` makes the new transfer resume.
-
-Omitting the official archive from the pull is reasonable. Its contents are a subset of the raw archive. State that omission in the report.
 
 ## Step 9: Report
 
@@ -204,6 +207,7 @@ Artifacts (<total size>, mode 0700):
   MANIFEST.sha256 + RESTORE.md
 
 Official archive skipped <N> volatile files, covered by the raw archive.
+Official archive off-box: <pulled | omitted, every listed path found in the raw archive listing> (only when Step 8 ran)
 
 VERIFIED:  <what was run, and the evidence each produced>
 ASSUMED:   <what was inspected but not executed>

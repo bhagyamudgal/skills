@@ -123,7 +123,7 @@ domain knowledge. Concrete examples:
 Anti-examples (these are NOT NEEDS-INPUT):
   - "Rename variable for clarity" → R3 style (or R6 if genuinely confusing)
   - "Missing null check" → you CAN verify by reading the file → R6 or R1
-  - "Consider extracting helper" → R3 or R6 based on readability impact
+  - "Consider extracting helper" → R6 when `reusability_context.flagged` is true, otherwise R3
 
 Err toward FIX for mechanical low-risk changes you can verify. Err toward
 NEEDS-INPUT when the comment hinges on domain knowledge or runtime behavior.
