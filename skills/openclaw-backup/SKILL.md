@@ -163,7 +163,7 @@ A backup on the same disk as the thing it protects survives config mistakes, not
 
 Before `rsync`, verify from the receiving system that the destination is encrypted at rest, accessible only to the intended recipient accounts, and governed by a known retention period and tested deletion path. Confirm the destination host key against a known-good value before the first transfer, so a mistyped host or a first-connect interception cannot divert the copy. A destination missing any of those controls is blocked.
 
-Decide before the preflight whether the official archive goes off-box. Pull it unless this run lists its contents with `tar -tzf` and confirms every path in it appears in a fresh listing of the raw archive. When omitted, add `--exclude='official/'` to the `rsync` below. Record in the report which applied.
+Decide before the preflight whether the official archive goes off-box. Pull it unless this run lists its contents with `tar -tzf` and confirms every path in it appears in a fresh listing of the raw archive. Set `OFFICIAL_PULLED=yes` when it goes, or `OFFICIAL_PULLED=no` and add `--exclude='official/'` to the `rsync` below when it is omitted. Record in the report which applied.
 
 Immediately before `rsync`, invoke `preflight-mutations` with the destination evidence, the exact source and destination host and path, included artifact inventory with `official/` in or out per that decision, credential sensitivity, recipient, retention and deletion path, current destination state, checksum and access-control read-back, and the user's off-box-copy approval. Apply its result contract before copying.
 
@@ -171,12 +171,14 @@ Immediately before `rsync`, invoke `preflight-mutations` with the destination ev
 rsync -avh --partial -e ssh <source> <destination>
 ```
 
-Verify on the receiving side against the manifest. Run the `cp` line when `official/` was pulled and the `grep -v` line when it was omitted above, never both:
+Verify on the receiving side against the manifest. Set `OFFICIAL_PULLED` there to the value recorded at the pull-or-omit decision, since that shell is a different one. Each branch checks exactly the entries that were copied, and any other value fails without checking anything. On macOS, use `shasum -a 256 -c` in place of `sha256sum -c`:
 
 ```bash
-cp MANIFEST.sha256 /tmp/check.sha256
-grep -v ' \./official/' MANIFEST.sha256 > /tmp/check.sha256
-sha256sum -c /tmp/check.sha256    # macOS: shasum -a 256 -c
+case "${OFFICIAL_PULLED:?set to the pull-or-omit decision}" in
+  yes) sha256sum -c MANIFEST.sha256 ;;
+  no) grep -v ' \./official/' MANIFEST.sha256 | sha256sum -c - ;;
+  *) echo "OFFICIAL_PULLED must be yes or no" >&2; false ;;
+esac
 ```
 
 Confirm the checksum output covers a non-empty file list before reading it as a pass. A verifier fed an empty list reports success having checked nothing.
