@@ -87,7 +87,7 @@ On failure: dispatch a 1-off `general-purpose` subagent with the original commen
 
 ## Step 7c: Post loop
 
-In Phase 7 this loop posts contested items only and holds every FIX item. After a push read-back records the push landed, Phase 8 step 5 or step 2b runs it again over the held FIX items with their frozen `reply_final`, under a new `preflight-mutations` card.
+In Phase 7 this loop posts contested items only and holds every FIX item. After a push read-back records the push landed, Phase 8 step 5 or step 2b runs it again over the held FIX items with their frozen `reply_final`, under a new `preflight-mutations` card that guards on the landed push SHA. Immediately before each reply and each resolve, require the PR head to equal that SHA. When it moved, post nothing more, record each remaining held item as `skipped` with the reason `PR head moved after push`, and report them.
 
 Immediately before the first reply in this authorized batch, invoke `preflight-mutations`. Pass the exact PR URL, base and current head SHA, every target thread ID, ordered reply/resolve actions, final validated reply text and classification per item, and the authorization evidence that covers each item. FIX items use `execution_authorization_evidence`, plus their per-fix confirmation when `--interactive` was set. DISMISS, DEFER, and DISAGREE items use their contested-item confirmation. An auto-confirmed contested item uses `execution_authorization_evidence` plus its Phase 4 auto-confirm record: rule, re-checked field, and result. Apply the result contract before continuing.
 

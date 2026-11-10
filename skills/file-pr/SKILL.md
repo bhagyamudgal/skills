@@ -29,7 +29,7 @@ Choose exactly one issue link:
 
 Never `Closes` an issue this diff does not finish.
 
-When the user asked to batch several issues into one PR, each issue arrives as its own commit, verified by its own `done` run before the next issue starts. Before writing more than one `Closes #N`, confirm for each issue that the card holds a `verified` request row for it and that it has its own commit in `git log <merge-base>..HEAD` whose message contains `#N`. At most one batched issue may instead rely on the sealed commit section 6 will create for its row. An issue missing either gets `Refs #N`, and the final report names which is missing. The body carries one link line per issue: `Closes #N` for every issue the diff finishes that passed this check, and the list above for any other.
+When the user asked to batch several issues into one PR, each issue arrives as its own commit, verified by its own `done` run before the next issue starts. Before writing more than one `Closes #N`, confirm for each issue that the card holds a `verified` request row for it and that the row's evidence names its own commit: a SHA in `git log <merge-base>..HEAD` that no other batched issue's row names. At most one batched issue may instead rely on the sealed commit section 6 will create for its row. An issue missing either gets `Refs #N`, and the final report names which is missing. The body carries one link line per issue: `Closes #N` for every issue the diff finishes that passed this check, and the list above for any other.
 
 When you choose `Refs #N` over a closing keyword, the final report says the issue will not show as linked in GitHub's Development panel, which lists only closing-keyword links, and names the reason from the list above.
 

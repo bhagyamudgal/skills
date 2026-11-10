@@ -171,10 +171,11 @@ Immediately before `rsync`, invoke `preflight-mutations` with the destination ev
 rsync -avh --partial -e ssh <source> <destination>
 ```
 
-Verify on the receiving side against the manifest:
+Verify on the receiving side against the manifest. Run the `cp` line when `official/` was pulled and the `grep -v` line when it was omitted above, never both:
 
 ```bash
-grep -v ' \./official/' MANIFEST.sha256 > /tmp/check.sha256   # only when official/ was omitted above
+cp MANIFEST.sha256 /tmp/check.sha256
+grep -v ' \./official/' MANIFEST.sha256 > /tmp/check.sha256
 sha256sum -c /tmp/check.sha256    # macOS: shasum -a 256 -c
 ```
 
