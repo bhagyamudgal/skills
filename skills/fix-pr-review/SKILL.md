@@ -7,7 +7,7 @@ description: Triage, fix, and resolve review findings. Use on a CodeRabbit or an
 
 Takes a PR review from CodeRabbit, `/review-pr`, or pasted text. It triages each finding, applies validated fixes, runs `/done`, then replies to and resolves the GitHub conversations in one flow.
 
-Use AskUserQuestion only for these user decisions: branch safety, stash confirmation, contested-item confirmation, `--interactive` per-fix confirmations, type-check failure triage, and post-completion next actions. Invoking `/fix-pr-review` or imperatively asking to fix review findings authorizes execution of the validated FIX plan. Do not ask for separate plan approval. An unattended PR-watch run asks none of these (Phase 1). Write every option as a concrete choice, strongest first, marked "(Recommended)".
+Use AskUserQuestion only for these user decisions: branch safety, stash confirmation, contested-item confirmation, `--interactive` per-fix confirmations, type-check failure triage, follow-up filing (Phase 8 step 2c), and post-completion next actions. Invoking `/fix-pr-review` or imperatively asking to fix review findings authorizes execution of the validated FIX plan. Do not ask for separate plan approval. An unattended PR-watch run asks none of these (Phase 1). Write every option as a concrete choice, strongest first, marked "(Recommended)".
 
 ## Quick Reference
 
@@ -23,7 +23,7 @@ Use AskUserQuestion only for these user decisions: branch safety, stash confirma
 | 5.5 | Convergence subagent: class completeness, inverse risk, new siblings | Per-fix verdicts; missing sites applied |
 | 6 | `/done` acceptance verification scoped to the fix diff, no commit or publish handoff | Verified fix diff, `done_verified_snapshot` |
 | 7 | Reply + resolve contested items on GitHub, FIX replies held until a push lands (skipped for local files) | Contested threads resolved, FIX replies frozen |
-| 8 | Finalize: settle NEEDS-INPUT, restore stash, report, suppressions write, next actions | Final report |
+| 8 | Finalize: settle NEEDS-INPUT, restore stash, file follow-ups, report, suppressions write, next actions | Final report |
 
 ### R-Rubric Summary (Phase 3 STEP 4; first match wins)
 
@@ -326,7 +326,7 @@ For each selected item, use a follow-up AskUserQuestion:
 
 On "FIX": re-dispatch the classifier scoped to just this item to produce the full FIX field set: `fix_plan`, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (class sweep included; a reclassified item has never been swept), and `reusability_context` (carry the contested item's own value through unless the sweep changed it). Then re-run plan validation on the changed item. Producing a partial field set here fails validation and burns the single retry. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`, carrying the item's `reusability_context` through unchanged. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
 
-This step posts and resolves nothing. Only Phase 7, the held FIX posting after a landed push, and Phase 6's follow-up filing after the final report touch GitHub, and contested items post **only** when they passed this confirmation, asked or evidence-confirmed. A DISMISS, DEFER, or DISAGREE that has not passed this gate stays open and unanswered.
+This step posts and resolves nothing. Only Phase 7, the held FIX posting after a landed push, and Phase 8 step 2c's follow-up filing touch GitHub, and contested items post **only** when they passed this confirmation, asked or evidence-confirmed. A DISMISS, DEFER, or DISAGREE that has not passed this gate stays open and unanswered.
 
 ### Execution
 
@@ -476,7 +476,7 @@ note `convergence checked inline`.
 
 After all fixes are applied, run `/done` on the pending fix diff (`git diff HEAD`). `/done` is a four-section acceptance workflow, not a fixed three-command pipeline: §1 binds the run and selects the acceptance lanes, §2 verifies each required lane at its boundary, §3 assigns a state to every request item, lane, and evidence facet, and §4 builds the readiness card. Bind the originating request to the validated fix plan and scope every check to the fix diff, not the entire PR.
 
-The Code lane always applies here. It runs `/fix-ts-errors` to green (catching the cross-file errors a per-file narrow check cannot see, and running the full workspace check at least once), runs `/parallel-review` over the fix diff and applies its `converge-reviews` result (on `follow-up-proposed` it applies that skill's filing rule after the final report prints, since these local findings have no review thread, and the report lists every unfiled proposal under Not filed), runs `/simplify` including its blocking added-comment scan, and accounts for each fix against the diff. Using the rule `/done` §1 states, select every other lane the fixes actually touched: UI, documentation, global configuration or skills, external metadata or data, publication or deployment. Record the rest as `not-applicable` with their exclusion reason.
+The Code lane always applies here. It runs `/fix-ts-errors` to green (catching the cross-file errors a per-file narrow check cannot see, and running the full workspace check at least once), runs `/parallel-review` over the fix diff and applies its `converge-reviews` result (on `follow-up-proposed` it records the proposals for Phase 8 step 2c, since these local findings have no review thread), runs `/simplify` including its blocking added-comment scan, and accounts for each fix against the diff. Using the rule `/done` §1 states, select every other lane the fixes actually touched: UI, documentation, global configuration or skills, external metadata or data, publication or deployment. Record the rest as `not-applicable` with their exclusion reason.
 
 Do not take `/done` §4's handoffs. This skill owns publication: `git-commit` and `file-pr` are unavailable in Phase 6, and Phase 8's post-completion prompt is the only place a commit or push may start.
 
@@ -566,6 +566,10 @@ On `STASH_TOP_MISMATCH`, record `stash_restored: foreign-top` and continue to th
 ### 2b. Publish an unattended watch run
 
 Runs only when `UNATTENDED_WATCH=true`, before the report. First compute `inverse_risk_blockers` exactly as step 5 defines it. Commit and push only when Phase 6 verified every required lane, `done_remaining` is empty, and step 5's Commit and Push requirements hold. Commit through `git-commit` in sealed-index mode as step 5 describes, then push per `${CLAUDE_SKILL_DIR}/references/push-publication.md` under `preflight-mutations`, with the watch's standing instruction as the authorization source. A question that reference would ask counts as a blocked push. Only after the push read-back records it landed, post the held FIX replies and resolve their threads through Phase 7's posting mechanics. When `/done` is not clean or the push is blocked, post nothing for FIX items and report each as `fixed locally, not pushed`.
+
+### 2c. File follow-up proposals
+
+Runs before the report when Phase 6 recorded `follow-up-proposed`. Apply `converge-reviews`' filing rule to each proposal: file the automatic class through `file-issue` after `preflight-mutations`, ask about the rest, and in an unattended watch run file only the automatic class. Record each outcome as `filed <issue URL>` or the reason it stays unfiled; the report's Not filed line lists the unfiled ones.
 
 ### 3. Print the final report once
 

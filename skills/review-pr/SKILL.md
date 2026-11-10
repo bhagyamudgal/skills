@@ -555,6 +555,9 @@ Every Phase 4 path reaches **Convergence handoff** after main submits the GitHub
 ## Filtered out (<count>)
 <dropped findings with reasons, for auditability>
 
+## Not filed (<count>)
+<one line per follow-up proposal: finding and reason; omit when none>
+
 ## Multi-round status
 <for each finding in PRIOR_STATE: id, file, status, round_resolved/dismissed, dismissal_reason. Useful for "did I really ship M3 in round 5?" scanning.>
 ```
@@ -629,7 +632,7 @@ Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT
 
 ### Convergence handoff
 
-After authoritative posting and write-back, invoke `converge-reviews` (it ships in the same skills repository; report it missing and skip this handoff only after invoking it fails) with the PR request, base/current head and diff hash, reviewed paths, reviewer roster and lenses, current findings and dispositions, and `$STATE_FILE`. Store the resulting `convergence` block in that existing state file without replacing `review-pr`'s finding state. Apply its result contract before recommending another review round or declaring the review converged. On `follow-up-proposed`, file nothing, since each finding is already a thread and step 8c files pre-existing ones; print each proposal and its reason under `Not filed` after the Phase 4 output.
+After authoritative posting and write-back, invoke `converge-reviews` (it ships in the same skills repository; report it missing and skip this handoff only after invoking it fails) with the PR request, base/current head and diff hash, reviewed paths, reviewer roster and lenses, current findings and dispositions, and `$STATE_FILE`. Store the resulting `convergence` block in that existing state file without replacing `review-pr`'s finding state. Apply its result contract before recommending another review round or declaring the review converged. On `follow-up-proposed`, file nothing, since each finding is already a thread and step 8c files pre-existing ones; print the Phase 4 terminal block only after this handoff returns, listing each proposal with its reason under `Not filed`.
 
 ---
 
