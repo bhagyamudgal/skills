@@ -22,7 +22,7 @@ Use AskUserQuestion only for these user decisions: branch safety, stash confirma
 | 5 | Execute fixes: sequential edits + per-file narrow type-check | Modified files, `fix_status` per item |
 | 5.5 | Convergence subagent: class completeness, inverse risk, new siblings | Per-fix verdicts; missing sites applied |
 | 6 | `/done` acceptance verification scoped to the fix diff, no commit or publish handoff | Verified fix diff, `done_verified_snapshot` |
-| 7 | Reply + resolve on GitHub (skipped for local files) | Threads resolved |
+| 7 | Reply + resolve contested items on GitHub, FIX replies held until a push lands (skipped for local files) | Contested threads resolved, FIX replies frozen |
 | 8 | Finalize: settle NEEDS-INPUT, restore stash, report, suppressions write, next actions | Final report |
 
 ### R-Rubric Summary (Phase 3 STEP 4; first match wins)
@@ -49,7 +49,7 @@ Each carries its firing condition in the pointer at the point of use. Load it th
 - `references/fetch-review-data.md`: per-input-type GraphQL/REST fetch, CodeRabbit review-body anatomy, `Comment` schema. Loaded by main in Phase 2, at the GitHub fetch step, and again at the `Comment`-schema normalisation step if the local-file path meant it was not read there.
 - `references/triage-prompt.md`: the whole Phase 3 subagent prompt (STEP 0 → STEP 6 + output format). Read by main in Phase 3, placeholder-substituted, passed verbatim.
 - `references/triage-rubric.md`: R1-R10 detail, NEEDS-INPUT calibration, `change_class` worked examples, reply formats. Loaded by the triage SUBAGENT at STEP 4.
-- `references/github-reply-resolve.md`: Steps 7a-7d posting/resolving mechanics. Loaded by main in Phase 7; never loaded for local-file input.
+- `references/github-reply-resolve.md`: Steps 7a-7d posting/resolving mechanics. Loaded by main in Phase 7, and its Step 7c runs again after a landed push in Phase 8 step 5 or step 2b; never loaded for local-file input.
 - `references/final-report.md`: the Phase 8 report template and its rendering rules. Loaded by main in Phase 8 before printing.
 - `references/branch-safety.md`: repo plus branch landing with detached-HEAD and different-branch questions. Loaded by main in Phase 1 for GitHub inputs; skipped for local files.
 - `references/per-fix-loop.md`: per-fix loop, interactive confirmations, narrow type-check plus baseline compare, retry/skip/abort. Loaded by main at the Phase 5 loop.
@@ -298,7 +298,7 @@ Skip this step if there are zero contested items.
 
 - R5: the `claude_md_quote` appears verbatim in CLAUDE.md, which main re-read.
 - R2: a re-anchor search for the cited symbol finds nothing.
-- R4: the diff of `prior_commit_sha` removes the cited pattern.
+- R4: `prior_commit_sha` is an ancestor of HEAD (`git merge-base --is-ancestor <prior_commit_sha> HEAD`), its diff removes the cited pattern, `git cat-file -e HEAD:<path>` succeeds for the cited file, and that file at HEAD no longer contains the pattern. Any git exit above 1 fails the check.
 - R7: the tracking issue is open and references the finding.
 
 R1, R3, and R8 items always go to the question below. Record each check as an auto-confirm record: rule, re-checked field, and result. When `EXECUTION_AUTHORIZED=true`, `--interactive` is not set, and every contested item passes its check, skip both questions below. Those items pass this confirmation, Phase 7 posts their replies under their records without asking, and the final report lists each one. When `UNATTENDED_WATCH=true`, items that pass their check pass the same way. Every other contested item, R1, R3, and R8 included, moves to NEEDS-INPUT with `why_unclear: "unattended run, <classification> not mechanically confirmed"` and its `reusability_context` unchanged, so its thread stays open. Otherwise, use AskUserQuestion:
@@ -326,7 +326,7 @@ For each selected item, use a follow-up AskUserQuestion:
 
 On "FIX": re-dispatch the classifier scoped to just this item to produce the full FIX field set: `fix_plan`, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (class sweep included; a reclassified item has never been swept), and `reusability_context` (carry the contested item's own value through unless the sweep changed it). Then re-run plan validation on the changed item. Producing a partial field set here fails validation and burns the single retry. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`, carrying the item's `reusability_context` through unchanged. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
 
-This step posts and resolves nothing. Only Phase 7 touches GitHub, and it acts **only** on items that passed this confirmation, asked or evidence-confirmed. A DISMISS, DEFER, or DISAGREE that has not passed this gate stays open and unanswered.
+This step posts and resolves nothing. Only Phase 7 and the held FIX posting after a landed push touch GitHub, and contested items post **only** when they passed this confirmation, asked or evidence-confirmed. A DISMISS, DEFER, or DISAGREE that has not passed this gate stays open and unanswered.
 
 ### Execution
 
@@ -513,7 +513,7 @@ This skill never reads or writes `/review-pr`'s cache (`~/.claude/skills/review-
 
 Replying and resolving threads is this phase's entire GitHub footprint. The review's own `CHANGES_REQUESTED` state stays exactly as CodeRabbit left it. CodeRabbit clears it itself on its next auto-re-review, once the user pushes.
 
-When `UNATTENDED_WATCH=true`, post and resolve only the auto-confirmed contested items here. Record every FIX item's reply and resolution as `skipped` with the reason `held until push`; Phase 8 step 2b posts them only after the push lands.
+In every run, post and resolve only contested items here; when `UNATTENDED_WATCH=true`, only the auto-confirmed ones. Steps 7a and 7b still run for every FIX item now, while the fix is uncommitted, and freeze its validated reply. Record every FIX item's reply and resolution as `skipped` with the reason `held until push`; Phase 8 step 1 adds each NEEDS-INPUT item it fixes to the same held set. Held FIX replies post, and their threads resolve, only after a push read-back records the push landed: in Phase 8 step 5 after "Push to remote", or in step 2b of an unattended watch run.
 
 Define `has_github_surface[idx] = thread_id != null AND (can_reply OR can_resolve)`. Initialize every item without that surface to paired `not-applicable` states, regardless of input source. For `./review.md` or any other local-file input, all items meet that condition; initialize them, then skip the rest of this phase. Phase 8 still requires deterministic per-item state for its final report.
 
@@ -615,9 +615,9 @@ After printing the final report and completing the suppression step when applica
      text: "Fix run complete. <F> fixes applied, <S> skipped, <N> needs-input. What next?"
      options:
        - label: "Commit changes"
-         description: "Stage and commit using the suggested commit message"
+         description: "Stage and commit using the suggested commit message; FIX threads stay open until a push"
        - label: "Push to remote"
-         description: "Commit and push to update the PR"
+         description: "Commit and push to update the PR, then post the held FIX replies"
        - label: "Re-run on remaining"
          description: "Run /fix-pr-review again for skipped/needs-input items"
        - label: "Done"
@@ -625,10 +625,12 @@ After printing the final report and completing the suppression step when applica
 
 On "Commit changes" or "Push to remote", require `inverse_risk_blockers` to be empty, `stash_restored` to be none of `conflict`, `foreign-top`, or `failed`, and a valid `done_verified_snapshot`. Recompute the blocker set instead of trusting the rendered report; a non-empty set stops the action. Invoke `git-commit` in Verified content snapshot sealed-index mode with that snapshot; never stage or restage the live worktree. Require the created commit tree to equal the snapshot tree. Ordinary restored WIP remains in the worktree and outside the candidate commit.
 
-On "Push to remote", load `${CLAUDE_SKILL_DIR}/references/push-publication.md` now and follow it: commit first, then freeze the publication target, run `preflight-mutations`, push with a lease, and read back remote and local state.
+On "Push to remote", load `${CLAUDE_SKILL_DIR}/references/push-publication.md` now and follow it: commit first, then freeze the publication target, run `preflight-mutations`, push with a lease, and read back remote and local state. When that read-back records the push landed, post the held FIX replies and resolve their threads through Phase 7's posting mechanics, then print each FIX item's reply and resolution state, failures first in the final report's failure-section format. When the push does not land, post nothing for FIX items.
+
+On "Commit changes", "Re-run on remaining", or "Done", held FIX threads stay open; the final report already says to rerun posting after pushing.
 
 On "Re-run on remaining": if the original input was a local file, invoke `/fix-pr-review <original-file-path>` scoped to skipped/needs-input items; otherwise invoke `/fix-pr-review <url>` scoped to remaining items. On "Done": exit.
 
 ### 6. Exit
 
-Committing happens only on an explicit "Commit changes" or "Push to remote" choice in the post-completion prompt above, or in step 2b of an unattended watch run. Otherwise leave the working tree as it stands. The report's suggested commit message is the hand-off.
+Committing happens only on an explicit "Commit changes" or "Push to remote" choice in the post-completion prompt above, or in step 2b of an unattended watch run. Otherwise leave the working tree as it stands. Held FIX replies post only after a landed push in step 5 or step 2b; until then their threads stay open. The report's suggested commit message is the hand-off.

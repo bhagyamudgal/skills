@@ -625,7 +625,7 @@ An explicit `/review-pr <PR URL>` invocation is fresh authorization to submit th
 
 Load `${CLAUDE_SKILL_DIR}/references/github-posting.md` now: rendering every body with `scripts/render_review.py`, Phases A through C, and the write-back. Also load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` when a prior `/review-pr` review or cache entry exists for this PR, and `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` if any posting phase fails.
 
-Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, `IS_SELF_REVIEW`, a new render-directory path inside an existing directory (the renderer creates it in Step 1 of `github-posting.md` and refuses a path that already exists), the complete surviving finding list (line-level + file-level), `PRIOR_STATE` (Step 0c in the rerun file compares against it), `$CACHE_FILE` path, `$STATE_FILE` path, and the `/review-pr` invocation as the posting authorization source.
+Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, `IS_SELF_REVIEW`, `INCOMPLETE_COVERAGE` (`false` outside batch mode), a new render-directory path inside an existing directory (the renderer creates it in Step 1 of `github-posting.md` and refuses a path that already exists), the complete surviving finding list (line-level + file-level), `PRIOR_STATE` (Step 0c in the rerun file compares against it), `$CACHE_FILE` path, `$STATE_FILE` path, and the `/review-pr` invocation as the posting authorization source.
 
 ### Convergence handoff
 

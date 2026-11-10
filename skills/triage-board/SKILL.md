@@ -64,7 +64,7 @@ I apply the board's ownership policy unprompted. A co-assigned, unassigned, or a
 
 I ask **once**, in a single question, before judging the batch. `${CLAUDE_SKILL_DIR}/references/calibration.md` carries the defaults I propose: the estimate unit, scale, rounding and cap; worked anchors spanning the range; the priority rubric; and any project-specific priority lift the requester wants for this run.
 
-The estimate unit defaults to human active time, which `calibration.md` defines and anchors.
+The estimate unit defaults to human active time, which `${CLAUDE_SKILL_DIR}/references/calibration.md` defines and anchors.
 
 An approved rubric is not an approved number. So I then estimate three to five real tickets from this scope, covering the smallest, the typical, the largest, and any umbrella, and show them with their reasoning and subtotal. A scope with fewer than three candidates previews all of them. A scope with none skips calibration, judgment, and every write, and goes straight to a report with zero totals and its exclusion list. Ledger rows move from `candidate` to `pending` only after the requester approves the preview. Without it, the first applied number they see arrives after every write has landed.
 

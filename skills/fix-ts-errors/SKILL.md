@@ -46,11 +46,11 @@ git ls-files --others --exclude-standard -- '*.ts' '*.tsx' | tr '\n' '\0' | xarg
 
 The `[!]` groups match a postfix assertion: a value character, closing quote, bracket, or paren before the bang and no equals after it, so `value!`, `value!.x`, `value![0]`, `value!()`, `"value"!`, and backtick-quoted receivers all hit while `!=`, `!==`, and prefix negation like `!ready` stay out. The trailing `sed` neutralizes only the `as const` idiom into a marker instead of dropping whole lines, so co-occurring hatches on the same line survive. A line whose only match is the `__AS_CONST__` marker needs no action.
 
-I skip import aliases like `import { x as y }`. For every remaining hit I attempt removal with proper typing, meaning inference, narrowing, type guards, generics, or schema-derived types with `z.infer`. I re-run the check after each removal, and when errors appear I go back to Step 3. A hatch survives only with a one-line comment citing the upstream issue as a URL or `#N`. When no upstream issue exists, the comment cites a permalink URL to the line in the library's type definition that causes the gap.
+I skip import aliases like `import { x as y }`. For every remaining hit I attempt removal with proper typing, meaning inference, narrowing, type guards, generics, or schema-derived types with `z.infer`. I re-run the check after each removal, and when errors appear I go back to Step 3. A hatch survives only with a one-line comment citing the upstream issue as a URL or `#N`. When no upstream issue exists, the comment cites a permalink URL to the line in the library's type definition that causes the gap. A `@ts-expect-error` in a test file (`*.test.*`, `*.spec.*`, `*.test-d.ts`) whose enclosing test's name states that the compiler rejects that line is a type test, not a hatch. The directive is code, not a comment, and stays with no added comment.
 
 ### Step 6: Report
 
-Once green, I briefly report how many errors I found, what I fixed, and the surviving escape hatches, `as` casts, `@ts-ignore`, `@ts-expect-error`, and non-null assertions, with the count of each and the citation for each survivor. My target is 0.
+Once green, I briefly report how many errors I found, what I fixed, and the surviving escape hatches, `as` casts, `@ts-ignore`, `@ts-expect-error`, and non-null assertions, with the count of each and the citation for each survivor. My target is 0. I report type tests separately, as "type tests" with their count.
 
 ## Loop breaker
 

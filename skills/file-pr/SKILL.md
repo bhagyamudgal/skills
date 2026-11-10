@@ -29,11 +29,11 @@ Choose exactly one issue link:
 
 Never `Closes` an issue this diff does not finish.
 
-When the user asked to batch several issues into one PR, each issue already arrives as its own commit, verified by its own `done` run before the next issue starts. The body carries one link line per issue: `Closes #N` for every issue the diff finishes, and the list above for any other.
+When the user asked to batch several issues into one PR, each issue arrives as its own commit, verified by its own `done` run before the next issue starts. Before writing more than one `Closes #N`, confirm for each issue that the card holds a `verified` request row for it and that it has its own commit in `git log <merge-base>..HEAD` whose message contains `#N`. At most one batched issue may instead rely on the sealed commit section 6 will create for its row. An issue missing either gets `Refs #N`, and the final report names which is missing. The body carries one link line per issue: `Closes #N` for every issue the diff finishes that passed this check, and the list above for any other.
 
 When you choose `Refs #N` over a closing keyword, the final report says the issue will not show as linked in GitHub's Development panel, which lists only closing-keyword links, and names the reason from the list above.
 
-**Gate.** The base ref, remote base tip, and merge base match the refreshed remote state, and the issue link comes from issue output, not assumption.
+**Gate.** The base ref, remote base tip, and merge base match the refreshed remote state, the issue link comes from issue output, not assumption, and every batched `Closes #N` has a `verified` card row and its own commit, with at most one sealed in section 6.
 
 ### Revalidate card currency and handoff eligibility
 
@@ -82,8 +82,9 @@ Then include only the sections that have content:
 
 - **What changed.** Derive one outcome-focused bullet from each verified request row. Do not infer additions from the diff.
 - **Before and after, and QA test results.** When the change alters UI or API behavior, the card's Browser facet names `.qa/pr-evidence.md` from `browser-qa`. Paste it here verbatim, except for embed lines left out on the user's first choice when push access is missing. Its SHA-256 must equal the recorded digest. A missing fragment, another digest, or a cold-read bar that fails inside the fragment returns to `done` with the failure named, because `done` regenerates the fragment through `browser-qa`.
-- **How to verify.** Derive only from the evidence index's exact observations. Include applicable `not-applicable` reasons and do not invent evidence. A PR without the fragment says here in one line why browser QA does not apply, for example `No UI or API behavior changed, so there is no browser QA.` When the card's Code lane records a `parallel-review` member as `unavailable(<reason>)`, say here which member and why. It does not block the PR.
+- **How to verify.** Derive only from the evidence index's exact observations. Include applicable `not-applicable` reasons and do not invent evidence. A PR without the fragment says here in one line why browser QA does not apply, for example `No UI or API behavior changed, so there is no browser QA.` When the card's Code lane records a `parallel-review` member as `unavailable(<reason>)`, say here which review coverage did not run and why, named by the work it covers, for example `No accessibility review ran on this diff because the review tool was rate limited.` Name no agent, tool, or member. It does not block the PR. The final report names the member and its reason.
 - **Risk or scope notes.** Only when something is uncertain, migrated, or deferred on purpose.
+- **Not filed.** Only when `converge-reviews` left proposed follow-up issues unfiled: one line each with the finding and why it was not filed.
 - The issue link from section 2.
 
 The attach list is the target of every `![...](...)` embed in the fragment outside code, each once, in fragment order, and each file's SHA-256 must equal the digest the Browser facet recorded. A PR with no fragment attaches nothing. The data approval covers the whole fragment, its text as well as its files: paste and attach only when it holds synthetic or redacted data or the user explicitly approved publishing it. Without that approval, stop before any push, create, or body-edit side effect and ask the user to approve the listed files and text, or return to `done` to regenerate on synthetic data. Attaching requires gh v2.99.0 or later; confirm the floor with `gh --version` before any push or create side effect. When the install is older, return to `done` for a gh upgrade instead of publishing a UI or API PR without its evidence. Publish bare only on explicit user decision, then upload the fragment's files through section 6's `gh pr edit --attach` step after upgrading; `done` holds Browser `deferred` until they land.

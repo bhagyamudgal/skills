@@ -229,6 +229,8 @@ REVIEW_CACHE_CONTRACT_VERSION=3
   "base_sha": "def456...",
   "last_run_timestamp": "2026-04-11T13:29:50Z",
   "last_run_verdict": "request-changes",
+  "incomplete_coverage": false,
+  "skipped_lenses": [],
   "findings": [...],
   "filtered_out": [...],
   "last_posted_review_id": 12345678,
@@ -253,7 +255,7 @@ REVIEW_CACHE_CONTRACT_VERSION=3
 
 ### Three replay branches
 
-These branches apply only after the contract-version check succeeds.
+These branches apply only after the contract-version check succeeds. A cache recording `incomplete_coverage: true` skips branches 1 and 2 for a full fresh review.
 
 1. **`last_run_sha == CURRENT_HEAD` with stored `base_sha` equal to the pinned base OID**: no new commits on either side. Reuse the cached review result, subject to the blocker check below. If authoritative cache evidence confirms the same review body, head SHA, required GitHub state, and threaded publication ownership are already posted, print the cached result and exit. Otherwise continue directly to Phase 4 and post the cached complete finding set; do not ask whether to replay or post.
 

@@ -128,7 +128,7 @@ How frontend talks to backend.
 - REST: Universal, cacheable, well understood
 - tRPC: End-to-end type safety, Next.js native
 - GraphQL: Flexible queries, higher complexity
-- Server Actions: Next.js 16+, simplest for forms
+- Server Actions: Next.js 14+, simplest for forms
 
 **Validation**
 - Zod: TypeScript-first, great inference

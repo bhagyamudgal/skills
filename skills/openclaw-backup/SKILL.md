@@ -163,7 +163,9 @@ A backup on the same disk as the thing it protects survives config mistakes, not
 
 Before `rsync`, verify from the receiving system that the destination is encrypted at rest, accessible only to the intended recipient accounts, and governed by a known retention period and tested deletion path. Confirm the destination host key against a known-good value before the first transfer, so a mistyped host or a first-connect interception cannot divert the copy. A destination missing any of those controls is blocked.
 
-Immediately before `rsync`, invoke `preflight-mutations` with that evidence, the exact source and destination host and path, included artifact inventory and credential sensitivity, recipient, retention and deletion path, current destination state, checksum and access-control read-back, and the user's off-box-copy approval. Apply its result contract before copying.
+Decide before the preflight whether the official archive goes off-box. Pull it unless this run lists its contents with `tar -tzf` and confirms every path in it appears in a fresh listing of the raw archive. When omitted, add `--exclude='official/'` to the `rsync` below. Record in the report which applied.
+
+Immediately before `rsync`, invoke `preflight-mutations` with the destination evidence, the exact source and destination host and path, included artifact inventory with `official/` in or out per that decision, credential sensitivity, recipient, retention and deletion path, current destination state, checksum and access-control read-back, and the user's off-box-copy approval. Apply its result contract before copying.
 
 ```bash
 rsync -avh --partial -e ssh <source> <destination>
@@ -172,7 +174,7 @@ rsync -avh --partial -e ssh <source> <destination>
 Verify on the receiving side against the manifest:
 
 ```bash
-grep -v ' \./official/' MANIFEST.sha256 > /tmp/check.sha256   # if official/ was not pulled
+grep -v ' \./official/' MANIFEST.sha256 > /tmp/check.sha256   # only when official/ was omitted above
 sha256sum -c /tmp/check.sha256    # macOS: shasum -a 256 -c
 ```
 
@@ -183,8 +185,6 @@ A checksum mismatch retires that transfer card. Preserve its `failed` result and
 Re-read the receiving system's encryption and effective access controls after the copy. When either differs from the preflight evidence, preserve and report the copy as sensitive partial state. The copy approval does not authorize deletion. Render a separate compensating deletion card with the exact destination, observed failure, deletion action, and absence read-back. Delete only after fresh explicit confirmation and a current `ready` preflight result.
 
 Pass this step only when every checked file reports `OK`, encryption at rest remains enabled, effective access stays restricted to the approved recipient accounts, and the retention and deletion path remains available. A mismatched file clears the gate only through the fresh-card retry contract above. A failed security control blocks completion while the sensitive partial state is preserved or separately deleted. `--partial` makes the new transfer resume.
-
-You may omit the official archive from the pull, since the raw archive holds all of its contents. State the omission in the report.
 
 ## Step 9: Report
 
@@ -204,6 +204,7 @@ Artifacts (<total size>, mode 0700):
   MANIFEST.sha256 + RESTORE.md
 
 Official archive skipped <N> volatile files, covered by the raw archive.
+Official archive off-box: <pulled | omitted, every listed path found in the raw archive listing> (only when Step 8 ran)
 
 VERIFIED:  <what was run, and the evidence each produced>
 ASSUMED:   <what was inspected but not executed>
