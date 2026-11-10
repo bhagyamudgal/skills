@@ -326,7 +326,7 @@ For each selected item, use a follow-up AskUserQuestion:
 
 On "FIX": re-dispatch the classifier scoped to just this item to produce the full FIX field set: `fix_plan`, `change_class`, `test_scenario`, `inverse_risk`, `class_completeness` (class sweep included; a reclassified item has never been swept), and `reusability_context` (carry the contested item's own value through unless the sweep changed it). Then re-run plan validation on the changed item. Producing a partial field set here fails validation and burns the single retry. On "NEEDS-INPUT": move to NEEDS-INPUT with `why_unclear: "user contested the <classification> classification"`, carrying the item's `reusability_context` through unchanged. On "Keep as-is": no change. On "Other": treat the freeform text as the reclassification instruction.
 
-This step posts and resolves nothing. Only Phase 7, the held FIX posting after a landed push, and Phase 8 step 2c's follow-up filing touch GitHub, and contested items post **only** when they passed this confirmation, asked or evidence-confirmed. A DISMISS, DEFER, or DISAGREE that has not passed this gate stays open and unanswered.
+This step posts and resolves nothing. Only Phase 7, Phase 8 step 1's Defer and Dismiss replies, the Phase 8 push, the held FIX posting after it lands, and Phase 8 step 2c's follow-up filing touch GitHub, and contested items post **only** when they passed this confirmation, asked or evidence-confirmed. A DISMISS, DEFER, or DISAGREE that has not passed this gate stays open and unanswered.
 
 ### Execution
 
@@ -513,7 +513,7 @@ This skill never reads or writes `/review-pr`'s cache (`~/.claude/skills/review-
 
 Replying and resolving threads is this phase's entire GitHub footprint. The review's own `CHANGES_REQUESTED` state stays exactly as CodeRabbit left it. CodeRabbit clears it itself on its next auto-re-review, once the user pushes.
 
-In every run, post and resolve only contested items here; when `UNATTENDED_WATCH=true`, only the auto-confirmed ones. Steps 7a and 7b still run for every FIX item now, while the fix is uncommitted, and freeze its validated reply. Record every FIX item's reply and resolution as `skipped` with the reason `held until push`; Phase 8 step 1 adds each NEEDS-INPUT item it fixes to the same held set. Held FIX replies post, and their threads resolve, only after a push read-back records the push landed: in Phase 8 step 5 after "Push to remote", or in step 2b of an unattended watch run.
+In every run, post and resolve only contested items here; when `UNATTENDED_WATCH=true`, only the auto-confirmed ones. Steps 7a and 7b still run for every FIX item now, while the fix is uncommitted, and freeze its validated reply. Record every FIX item's reply and resolution as `skipped` with the reason `held until push`, except a `has_github_surface` item Step 7b logs as `reply_invalid`, whose reply and resolution are recorded `skipped` with `reply_invalid` as `reply_err` and `resolve_err`, and which stays out of the held set; Phase 8 step 1 adds each NEEDS-INPUT item it fixes to the same held set. Held FIX replies post, and their threads resolve, only after a push read-back records the push landed: in Phase 8 step 5 after "Push to remote", or in step 2b of an unattended watch run.
 
 Define `has_github_surface[idx] = thread_id != null AND (can_reply OR can_resolve)`. Initialize every item without that surface to paired `not-applicable` states, regardless of input source. For `./review.md` or any other local-file input, all items meet that condition; initialize them, then skip the rest of this phase. Phase 8 still requires deterministic per-item state for its final report.
 
@@ -569,7 +569,7 @@ Runs only when `UNATTENDED_WATCH=true`, before the report. First compute `invers
 
 ### 2c. File follow-up proposals
 
-Runs before the report when Phase 6 recorded `follow-up-proposed`. Apply `converge-reviews`' filing rule to each proposal: file the automatic class through `file-issue` after `preflight-mutations`, ask about the rest, and in an unattended watch run file only the automatic class. Record each outcome as `filed <issue URL>` or the reason it stays unfiled; the report's Not filed line lists the unfiled ones.
+Runs before the report when Phase 6 recorded `follow-up-proposed`. First drop any proposal whose finding a Phase 8 fix resolved, checked against the final `done_verified_snapshot`. Apply `converge-reviews`' filing rule to each proposal: file the automatic class through `file-issue` after `preflight-mutations`, ask about the rest, and in an unattended watch run file only the automatic class. Record each outcome as `filed <issue URL>` or the reason it stays unfiled; the report's Not filed line lists the unfiled ones.
 
 ### 3. Print the final report once
 
