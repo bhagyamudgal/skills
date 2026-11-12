@@ -11,7 +11,7 @@ If I invoke you with a file path argument, read that file first and grill its co
 
 Ask every question through the AskUserQuestion tool, so each decision reaches me as a selectable option.
 
-- Before the first question, read the code the plan touches and check the files, symbols, and behavior its decisions rest on. Then enumerate the open decisions as a numbered list and print it. Leave out any decision the code already settles, and name the `file:line` that settled it.
+- Before the first question, read the code the plan touches and check the files, symbols, and behavior its decisions rest on. Then enumerate the open decisions as a numbered list and print it. Leave out any decision the code already settles and the plan does not change, and name the `file:line` that settled it.
 - When the open list holds more than 10 decisions, group them by area and offer to settle a whole group in one answer.
 - Ask decision zero first: is this approach even right. Offer one credible alternative drawn from the codebase or the issue, and grill it before the rest.
 - Ask one question at a time. Make one AskUserQuestion call per turn, then wait for my answer.
@@ -22,7 +22,7 @@ Ask every question through the AskUserQuestion tool, so each decision reaches me
 - After each answer, acknowledge the choice in 1 sentence max, ending with `<n> of <total> resolved`, then ask the next question.
 - If my answer is non-committal, something like "not sure" or "whatever you think" or "both", do not record it. Restate the trade-off in one sentence and re-ask the same decision once. Record the second answer either way.
 - When an answer contradicts an earlier one or leaves a dependency unresolved, say which one and re-ask before moving on.
-- Ground every question in the code before asking it: read the files and symbols it rests on. When the code answers it, record that answer with its `file:line` and move on without asking. Otherwise build the options and the recommendation from what you found, and cite the `file:line` in the context line. When no code bears on the decision, say so in the context line.
+- Ground every question in the code before asking it: read the files and symbols it rests on. When the code answers it and the plan does not propose changing that behavior, record that answer with its `file:line` and move on without asking. Otherwise build the options and the recommendation from what you found, and cite the `file:line` in the context line. When no code bears on the decision, say so in the context line.
 - If I say "enough" or "done" or "stop" or "skip the rest", append per the file rule and post per the issue rule below with the decisions captured so far, then announce "Grill complete." and exit.
 - Every "Grill complete." announcement ends with a `Pending on you:` line that names each decision or action still waiting on me, or reads `Pending on you: nothing`.
 - When every numbered decision has a recorded answer and no answer has opened a new one, move to the verification pass below instead of closing out. If an answer opens a new decision, append it to the list and say so.
