@@ -13,7 +13,7 @@ A migration is **stale** when the base branch gained migrations after the head b
 
 Resolve the base branch the way `resolving-merge-conflicts` step 1 does. Fetch it, and use the remote-tracking ref `refs/remotes/<remote>/<base>` as `<base-ref>` in every command below; a local branch of the same name can lag the remote. When the base comes from the PR, require `<base-ref>` to equal the PR's `baseRefOid`. Require a clean worktree with the head branch checked out, as that skill does.
 
-Find every Drizzle config: `git ls-files '*drizzle.config.*'`, plus every path a `package.json` script passes to `drizzle-kit` through `--config`. Read each config's `out` folder (default `./drizzle`) and resolve it against the config's own directory, so it works as a repo-root pathspec. Identify the layout per `out` folder:
+Find every Drizzle config: `git ls-files '*drizzle.config.*'`, plus every path a `package.json` script passes to `drizzle-kit` through `--config`. Record each config's **generate script**, the `package.json` script that runs `drizzle-kit generate` for it, and its **generate directory**, where drizzle-kit runs when that script runs. That is the script's `package.json` directory unless the script changes directory first (`cd`, `--filter`, `--prefix`, `--cwd`, `-C`), and the config's own directory when no script reaches it. Resolve a script's `--config` path against the generate directory too. When scripts reach one config from two different generate directories, stop and ask which one the project uses. drizzle-kit resolves `out`, `schema`, and `.env` from the directory it runs in, not from the config's. Read each config's `out` folder (default `./drizzle`) and resolve it against the generate directory, so it works as a repo-root pathspec. Identify the layout per `out` folder:
 
 - **Journal layout** (drizzle-kit 0.x): `meta/_journal.json`, `<idx>_<name>.sql`, `meta/<idx>_snapshot.json`.
 - **Folder layout** (drizzle-kit v1): one `<timestamp>_<name>/` folder per migration holding `migration.sql` and `snapshot.json`, and no journal.
@@ -28,7 +28,7 @@ The step is done when every config is classified as untouched or as holding exac
 
 ## 2. Merge the base
 
-Skip this step when `git merge-base --is-ancestor <base-ref> HEAD` exits 0. Otherwise merge the base into the head branch through `resolving-merge-conflicts`, whose step 1 owns how a conflicted Drizzle `meta/` file resolves. That skill ends the merge with its own commit and readiness card, and leaves the push to step 6 here.
+Skip this step when `git merge-base --is-ancestor <base-ref> HEAD` exits 0. Otherwise merge the base into the head branch through `resolving-merge-conflicts`, whose step 1 owns how a conflicted Drizzle `meta/` file resolves. That skill ends the merge with its own commit, skips its own `done` run when the merge dropped the head's migration because step 6 here runs it after regeneration, and leaves the push to step 6 here.
 
 The step is done when `git merge-base --is-ancestor <base-ref> HEAD` exits 0 and `git status --porcelain` is empty.
 
@@ -43,7 +43,7 @@ The step is done when `git diff --name-only <base-ref> -- <out>`, which compares
 
 ## 4. Regenerate
 
-Read the `package.json` of the config's package and find the script that runs `drizzle-kit generate`. Run that script through the project's package manager only when it runs nothing but `drizzle-kit generate` and targets this config, through a `--config` that resolves to it or, with no `--config`, because this config is the package's default `drizzle.config.*`. Otherwise run the installed binary directly from the config's own directory, since drizzle-kit resolves `schema`, `out`, and `.env` from where it runs: `<bin> generate --config <absolute config path>`, where `<bin>` is the nearest `node_modules/.bin/drizzle-kit` from the package directory up to the repo root. When no such binary exists, stop and tell the user to install dependencies. Fetching drizzle-kit on the fly, through `npx`, `bunx`, or `npm exec`, pulls unreviewed code.
+Take the generate script step 1 recorded for this config. Run that script through the project's package manager only when all three hold. It runs nothing but `drizzle-kit generate`. It targets this config, through a `--config` that resolves to it or, with no `--config`, because this config is the package's default `drizzle.config.*`. Its `package.json` has no `pre<script>` or `post<script>` entry for it, since npm runs those hooks with the script. Otherwise run the installed binary directly from the config's generate directory, recorded in step 1: `<bin> generate --config <absolute config path>`, where `<bin>` is the nearest `node_modules/.bin/drizzle-kit` from the package directory up to the repo root. When no such binary exists, stop and tell the user to install dependencies. Fetching drizzle-kit on the fly, through `npx`, `bunx`, or `npm exec`, pulls unreviewed code.
 
 Run generate with stdin from `/dev/null` and a two-minute limit. drizzle-kit asks "created or renamed?" whenever a diff drops one column or table and adds another, and an agent shell has no TTY to answer it. When generate errors on a prompt or TTY, or hits the limit, stop and hand the user:
 
@@ -60,11 +60,11 @@ Both checks must pass before anything is committed. A failure stops the run and 
 
 **Order.** In the journal layout, the new entry's `idx` is one past the base's highest, its `when` is greater than every base entry's, and its snapshot's `prevId` equals the `id` of the base's latest snapshot. In the folder layout, the new folder's timestamp sorts after every base folder, and its snapshot's `prevIds` names the base's latest snapshot `id`.
 
-**Same change.** Compare the stale SQL (`git show <stale commit>:<path>`) with the regenerated SQL as statement sets. Normalize both: split on `--> statement-breakpoint`, collapse whitespace, trim each trailing `;`. Order does not matter. A statement on only one side fails the check. A statement only in the stale file is hand-written SQL, a backfill, or a `--custom` migration that generate cannot reproduce. A statement only in the new file means the merged schema drifted from what the PR intended.
+**Same change.** Compare the stale SQL (`git show <stale commit>:<path>`) with the regenerated SQL as statement sets. Normalize both: split on `--> statement-breakpoint`, drop `--` comments outside quoted spans, collapse whitespace outside quoted spans while leaving quoted text byte-exact, then trim each statement and strip one trailing `;`. A quoted span is single-quoted, double-quoted, or dollar-quoted (`$$` or `$tag$`, closed only by the same tag, with quote characters inside it opening nothing). Order does not matter. A statement on only one side fails the check. A statement only in the stale file is hand-written SQL, a backfill, or a `--custom` migration that generate cannot reproduce. A statement only in the new file means the merged schema drifted from what the PR intended.
 
 ## 6. Verify, commit, push
 
-Hand off to `done`, then commit the regenerated files through `git-commit`, separate from the merge commit.
+Hand off to `done`, then commit through `git-commit`, separate from the merge commit: first any fix `done` needed for merge damage outside the migrations folder, then the regenerated files.
 
 Pushing updates a shared ref, and the branch may belong to a teammate. Push to `<head-remote>`, the remote that resolves to the PR's `headRepository`, or the branch's upstream when there is no PR; on a fork PR it differs from the base's remote. When no configured remote resolves to it, stop and ask. Invoke `preflight-mutations` immediately before the push, with the branch, `<head-remote>`, the local and remote SHAs, and the branch owner (the PR author, or the head repository's owner) in its ownership field. Apply its result. Push without force, then read the remote ref back with `git ls-remote <head-remote> refs/heads/<branch>` and confirm it equals local `HEAD`.
 
