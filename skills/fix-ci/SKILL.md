@@ -14,12 +14,12 @@ The stop-and-ask conditions in the global rules' "Commit and PR autonomy" sectio
 Take the PR from the URL or number the user gave, or from the current branch with `gh pr view`. Record:
 
 ```bash
-gh pr view <pr> --json url,number,author,baseRefName,headRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository,maintainerCanModify
+gh pr view <pr> --json url,number,author,baseRefName,headRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository,maintainerCanModify,state,isDraft
 gh api user -q .login
 gh api repos/<head-owner>/<head-repo> -q .permissions.push
 ```
 
-The **branch owner** is the PR author. The **head is writable** when the last command prints `true`, or when the PR is cross-repository and `maintainerCanModify` is `true`. The **expected remote SHA** starts as `headRefOid`; step 7 updates it after each push. Resolve `<head-remote>`, the configured remote whose URL points at `headRepository`; on a fork PR it differs from the base's remote. When no remote points there, stop and ask.
+When `state` is not `OPEN`, stop and report it; there is no PR to fix. The **branch owner** is the PR author. The **head is writable** when the last command prints `true`, or when the PR is cross-repository and `maintainerCanModify` is `true`. The **expected remote SHA** starts as `headRefOid`; step 7 updates it after each push. Resolve `<head-remote>`, the configured remote whose URL points at `headRepository`; on a fork PR it differs from the base's remote. When no remote points there, stop and ask.
 
 Check out the head branch in a clean worktree and require local `HEAD` to equal `headRefOid`. On a mismatch, stop, show both SHAs, and ask. Someone may have pushed since, or the local branch carries unpublished work.
 
@@ -89,13 +89,14 @@ When the remote SHA differs from the expected remote SHA, someone pushed meanwhi
 ```bash
 git push <head-remote> HEAD:refs/heads/<branch>
 git ls-remote <head-remote> refs/heads/<branch>
+gh pr view <pr> --json url,baseRefName,headRefName,headRefOid,headRepository,state,isDraft
 ```
 
-When the remote rejects the push for lack of access, stop and report as step 6 does for a head that is not writable. The step is done when the read-back SHA equals local `HEAD`. That SHA becomes the expected remote SHA for the next round.
+When the remote rejects the push for lack of access, stop and report as step 6 does for a head that is not writable. The step is done when the read-back SHA and the PR's `headRefOid` both equal local `HEAD`, and the PR's base, head branch, head repository, state, and draft mode still match step 1. GitHub can take a few seconds to move `headRefOid` after a push, so when only that field lags, read the PR again up to three times after a backgrounded `sleep 20`, then stop and report the lag. On any other mismatch, stop and report both values. These observations are the publication evidence step 8 hands to `done`. The read-back SHA becomes the expected remote SHA for the next round.
 
 ## 8. Watch the next run, two rounds at most
 
-Start `gh pr checks <pr> --watch --fail-fast` as a background command, and wait for it through the host's background wait rather than a blocking call. A round is one pushed fix, and only a push advances the count. When the run goes green, rerun `done` on the same card as its post-publication run, with step 7's read-back as the publication evidence and the green run as the CI evidence, then report. When a rerun with no push goes red, return to step 2 in the same round. When a pushed fix's run goes red, start the next round from step 2 on the new run. When round two's run is still red, stop. Do not stack a third patch. Report what failed, what each round tried, and what to try next.
+Start `gh pr checks <pr> --watch --fail-fast` as a background command, and wait for it through the host's background wait rather than a blocking call. When the watch exits with `no checks reported` before any check exists for the pushed or rerun SHA (https://github.com/cli/cli/issues/7401), the run is pending, not red: wait through a backgrounded `sleep 20` and start the watch again, at most three times. When checks still have not appeared, stop and report CI as pending. A round is one pushed fix, and only a push advances the count. When a run goes green and a round pushed a fix, rerun `done` on the latest fix's card as its post-publication run, with step 7's observations as the publication evidence and the green run as the CI evidence, then report. When a rerun goes green before any push, nothing was committed and no card exists, so report the green run's URL as the CI evidence. When a rerun with no push goes red, return to step 2 in the same round. When a pushed fix's run goes red, start the next round from step 2 on the new run. When round two's run is still red, stop. Do not stack a third patch. Report what failed, what each round tried, and what to try next.
 
 ## Report
 
