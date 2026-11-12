@@ -271,6 +271,18 @@
 
     { "utterance": "this pr needs proper browser qa https://github.com/acme/shop/pull/42",
       "expect": "browser-qa",
-      "why": "COLLISION: a PR URL with a browser QA ask belongs to browser-qa, not review-pr" }
+      "why": "COLLISION: a PR URL with a browser QA ask belongs to browser-qa, not review-pr" },
+
+    { "utterance": "merge main and refresh the migration",
+      "expect": "refresh-drizzle-migration",
+      "why": "primary branch: the user's own phrasing from 27 logged turns, with no skill or conflict named" },
+
+    { "utterance": "we're mid-merge with main and drizzle/meta/_journal.json has conflict markers",
+      "expect": "resolving-merge-conflicts",
+      "why": "COLLISION: an in-progress conflict stays with resolving-merge-conflicts, whose step 1 resolves Drizzle meta files to the base side and routes the regeneration to refresh-drizzle-migration" },
+
+    { "utterance": "apply the migration to the database",
+      "forbid": "refresh-drizzle-migration",
+      "why": "NEGATIVE: running a migration touches a database, which the refresh skill never does. Forbid rather than expect-nothing, because another skill may legitimately fire first" }
   ]
 }

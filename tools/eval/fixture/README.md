@@ -7,6 +7,7 @@ It is not meant to be correct. It carries planted defects so the utterances in
 
 - `src/user.ts` dereferences an optional property — a genuine type error
 - `loadUsers` awaits inside a `for` loop — the sequential-await shape
+- `drizzle.config.ts`, `src/schema.ts` and `drizzle/` form a journal-layout Drizzle setup with one migration and a `db:generate` script, so migration-refresh utterances have a migrations folder to land on
 
 **The fixture matters more than it looks.** An early prototype ran against an empty
 directory, and `"ts errors"` did *not* fire `fix-ts-errors` — the agent ran `Glob` to look

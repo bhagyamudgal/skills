@@ -915,7 +915,12 @@ class RegisterProtocol(unittest.TestCase):
                 "tools/eval/slop_rules.json",
                 "tools/eval/register_cases.json",
                 "tools/eval/fixture/README.md",
+                "tools/eval/fixture/drizzle/0000_create_users.sql",
+                "tools/eval/fixture/drizzle/meta/0000_snapshot.json",
+                "tools/eval/fixture/drizzle/meta/_journal.json",
+                "tools/eval/fixture/drizzle.config.ts",
                 "tools/eval/fixture/package.json",
+                "tools/eval/fixture/src/schema.ts",
                 "tools/eval/fixture/src/user.ts",
             ],
         )
