@@ -109,9 +109,9 @@ Preserve every required subcheck inside its facet. Aggregate to the weakest stat
 
 Subject only to the `ready-to-publish` exception below, set final **Readiness** to `ready` only when every request row and required lane is `verified` and every evidence facet is `verified` or `not-applicable`. Any required `pending`, `assumed`, `deferred`, or `blocked` row yields `not ready` and sets the **Evidence ceiling**.
 
-For Git work whose only remaining evidence requires a PR to exist, `ready-to-publish` is allowed when every pre-publication request, lane, and evidence row is `verified` or an allowed `not-applicable`, and every unresolved required row is `pending` with an explicit `PR-dependent` gap. Any unresolved `assumed`, `deferred`, or `blocked` row prevents this transition. `ready-to-publish` authorizes only `file-pr`; it is not task completion and must not be reported as such.
+For Git work whose only remaining evidence requires a PR to exist, `ready-to-publish` is allowed when every pre-publication request, lane, and evidence row is `verified` or an allowed `not-applicable`, and every unresolved required row is `pending` with an explicit `PR-dependent` gap. Any unresolved `assumed`, `deferred`, or `blocked` row prevents this transition. `ready-to-publish` authorizes only `file-pr`; it is not task completion and must not be reported as such. The one exception is a run `fix-ci` started for a PR that already exists: there it authorizes only `fix-ci`'s commit, push, and watch, and never `file-pr`. Its post-publication run takes `fix-ci` step 7's remote read-back and PR read-back in place of `file-pr`'s publication evidence.
 
-For `not ready`, set **Exact next action** to the first dependency-ready unresolved action, naming its target. Do not select a later task whose prerequisite remains unresolved. For `ready-to-publish`, name invocation of `file-pr` for the recorded branch. For `ready`, use `none`.
+For `not ready`, set **Exact next action** to the first dependency-ready unresolved action, naming its target. Do not select a later task whose prerequisite remains unresolved. For `ready-to-publish`, name invocation of `file-pr` for the recorded branch, or `fix-ci` step 6's commit when `fix-ci` started the run. For `ready`, use `none`.
 
 Render the card with the applicable currency header before the three tables. Git work uses:
 
@@ -169,6 +169,8 @@ The first command must succeed, the merge list must be empty, and the ordered fi
 The post-publication card ends with the `Left after this merges:` line from `file-pr`'s publication evidence, placed after the evidence index and copied unchanged. `done` never derives it. When the evidence holds no such line, the card ends with `Left after this merges: not recorded by file-pr`.
 
 New unresolved review threads or review-body findings on the PR, including ones a PR-watch update reports, go through `fix-pr-review` with the review or discussion URL (`#pullrequestreview-` or `#discussion_r`), not the bare PR URL. This post-publication handoff authorizes `fix-pr-review` to execute. Never edit, reply to, or resolve them inline. A thread left open as NEEDS-INPUT keeps the card from final `ready`.
+
+A required check that is red on the PR goes through `fix-ci` with the PR URL. This post-publication handoff authorizes `fix-ci` to execute. Never rerun or patch a red check inline. A check `fix-ci` leaves red keeps the card from final `ready`.
 
 Before final `ready`, repeat the post-commit content seal:
 

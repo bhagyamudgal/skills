@@ -73,6 +73,7 @@ Every row below is one installable skill (`skills/<name>/SKILL.md`, which is wha
 | `parallel-review` | Build a reviewer roster, dispatch it in parallel over a local diff, and merge to one ranked list. The merge is not done while any reviewer is outstanding |
 | `review-pr` | Deep anti-slop review of a GitHub PR with critic-pass filtering, persistent multi-round state, and automatic GitHub submission; self-authored PRs receive the same assessment as a comment |
 | `fix-pr-review` | Triage and fix CodeRabbit / `review-pr` findings, then reply + resolve PR conversations |
+| `fix-ci` | Fix a red check on any PR. Read the failing log first, rerun a flake at most once per run counting earlier attempts, stop when the base is red too, fix forward without force-push or a weakened check, run `done`, push behind a `preflight-mutations` card, and stop after two rounds |
 | `audit-ticket` | Audit a stale GitHub issue against current code, giving per-requirement verdicts with file:line evidence that is re-checked before printing, then update, sunset, or split it |
 | `fix-ts-errors` | Fix TypeScript errors and loop the **workspace** type-check until it exits 0. A file whose squiggles cleared is not green |
 | `grill-me` | Interview-style stress-test of a plan, one decision at a time, then verification of every factual claim against the codebase. No "grill complete" until every decision has an answer and every claim is checked |
@@ -121,6 +122,7 @@ Several skills use progressive disclosure. `SKILL.md` holds the spine, and branc
 /parallel-review     # Review locally-changed code
 /review-pr <pr-url>  # Review a GitHub PR (or several at once in batch mode)
 /fix-pr-review       # Triage and apply CodeRabbit / review-pr findings
+/fix-ci <pr-url>     # Fix a red CI check on a PR, two rounds at most
 /audit-ticket <n>    # Audit a stale issue against current code, then update or sunset it
 /fix-ts-errors       # Fix TypeScript errors, loop until the workspace check is green
 /browser-qa          # Drive a UI flow in a real browser, or run endpoint QA with tabulated results

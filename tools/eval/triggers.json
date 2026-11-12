@@ -257,6 +257,18 @@
       "expect": "fix-pr-review",
       "why": "the user's most common review request: a bare review URL after check, from any reviewer, routes to fix-pr-review" },
 
+    { "utterance": "fix ci",
+      "expect": "fix-ci",
+      "why": "shortest form of the most common phrasing in the November 2026 session audit (issue #106)" },
+
+    { "utterance": "ci check failing https://github.com/acme/shop/pull/42",
+      "expect": "fix-ci",
+      "why": "a bare PR URL with a failing check, often a teammate's PR, routes to fix-ci rather than a review skill" },
+
+    { "utterance": "fix the review comments on https://github.com/acme/shop/pull/42",
+      "expect": "fix-pr-review",
+      "why": "COLLISION: a PR with review findings and no CI mention stays with fix-pr-review; fix-ci must not take it" },
+
     { "utterance": "resolve conflicts on https://github.com/acme/shop/pull/42, it can't merge into dev",
       "expect": "resolving-merge-conflicts",
       "why": "a conflict request before any merge has started still routes here; the skill starts the merge itself" },

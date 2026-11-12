@@ -418,13 +418,7 @@ Stop and ask anyway when:
 
 **Green CI, not an open PR, marks the end of the task.** Once `/file-pr` returns, watch the checks and drive them to green without waiting for instructions. Run `gh pr checks <number> --watch --fail-fast` through a backgrounded Bash call so the session remains usable. Never park a turn on a blocking wait.
 
-When a check goes red:
-
-- **Read the failing job's log before touching anything.** Run `gh run view <run-id> --log-failed`. The failure class decides the response, and guessing wastes a whole round.
-- **Fix forward, never force-push.** New commits on the same branch. Force-push stays on the stop-and-ask list above, and some remotes reject it outright.
-- **Never reach green by weakening the check.** Do not delete or skip the failing test, loosen a threshold, add an ignore directive, or drop a file from lint. A red check is a finding. If the test is right and the change is wrong, fix the change. If the test is genuinely wrong, fix it deliberately and say so. Never change a test merely to reach green.
-- **Flaky tests and infrastructure failures get exactly one rerun.** Use `gh run rerun --failed`. Treat a second failure as real. Investigate the code instead of rerunning again.
-- **Two fix rounds, then stop.** Push a fix, wait for the rerun; if the second full run is still red, stop and report what failed, what you tried, and what you'd try next. Don't stack a third patch.
+When a check goes red, on my PR or anyone's, run `/fix-ci`. It owns reading the failing log first, the one-rerun budget, fixing forward without force-push or a weakened check, the preflight before pushing, and the stop after two fix rounds.
 
 Every condition that would have stopped me before the PR still stops me afterward. This includes a fix that needs a migration, a fix that grows beyond the request, or a failure that rejects the approach rather than the code. `/done` already enforces the same rule. Its post-publication run consumes `file-pr`'s evidence and cannot reach `ready` while CI remains unverified. Red checks leave the task incomplete whether I notice them or not. Always report the CI state. "Opened PR #N" without the check result is an unfinished report.
 
