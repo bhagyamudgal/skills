@@ -10,7 +10,7 @@ For "all open PRs", enumerate via `gh pr list --json number,url,title --limit 50
 
 - Main context is the **orchestrator**: oversight only. It never reviews a PR inline, regardless of `SIZE_MODE` (size routing applies inside each subagent, not in main).
 - Spawn **ONE `general-purpose` subagent PER PR**. Each subagent runs the single-PR flow (Phases 1-3) independently against its own PR and returns its Phase 4 terminal block as its result. Dispatch in parallel batches of 3-4.
-- Subagents NEVER post to GitHub and NEVER ask questions. They return the complete surviving finding set, semantic verdict, and `IS_SELF_REVIEW` value to the orchestrator, which posts each review after every subagent has returned.
+- Subagents NEVER post to GitHub and NEVER ask questions. They return the complete surviving finding set, semantic verdict, `IS_SELF_REVIEW` value, `DISPUTE_REPLIES`, and `ANSWERED_COMMENTS` to the orchestrator, which posts each review after every subagent has returned.
 - When any nested dispatch from a per-PR subagent fails, it runs inline, in order, every lens its `SIZE_MODE` and flags would have dispatched: Subagent 1, Subagent 2 when `INCLUDE_SILENT_FAILURE_HUNTER = true`, Subagent 3 only in `parallel-chunked`, Subagent 4 when `INCLUDE_SECURITY_REVIEWER = true`, then the Phase 3 verifier checks. Its Timing block writes `Reviewers: inline (host blocks nested dispatch)` and marks each lens `run` or `skipped (<reason>)`. The orchestrator sets `INCOMPLETE_COVERAGE=true` for a PR whose required lens could not run, `false` for every other PR, and passes it to the posting flow, which posts `COMMENT` instead of `APPROVE` when it is true. The orchestrator writes that lens and the reason into the review JSON's `summary`, since `render_review.py` has no lens field.
 
 ### `<SKILL_DIR>` on the batch branch
@@ -31,7 +31,7 @@ Substitute this same SKILL_DIR value into every prompt YOU dispatch: Subagent 1,
 Subagent 3, and the Phase 3 verifiers all carry `<SKILL_DIR>` placeholders, and you
 are the only source of the value they have.
 
-Do not post to GitHub and do not ask questions. Return your Phase 4 terminal block, `IS_SELF_REVIEW`, and the complete surviving finding payload the orchestrator needs to post.
+Do not post to GitHub and do not ask questions. Return your Phase 4 terminal block, `IS_SELF_REVIEW`, `DISPUTE_REPLIES`, `ANSWERED_COMMENTS`, and the complete surviving finding payload the orchestrator needs to post.
 ```
 
 ---
@@ -49,7 +49,7 @@ The run continues unattended through the WHOLE list. The user may be away in bat
 
 ## Automatic posting
 
-After every subagent returns, post each completed review in list order through the single-PR GitHub posting flow. For another author's PR, post a review with surviving introduced findings with `REQUEST_CHANGES`, a clean review with no open blockers with `APPROVE` (its pre-existing findings ride along as threads; `COMMENT` when `INCOMPLETE_COVERAGE=true`), and a clean review with open blockers on the blocked-by-open-threads path (Phase 3 step 8). For a self-review, post the complete result with `COMMENT`. Invoke `preflight-mutations` separately for each PR immediately before its first mutation, using the batch `/review-pr` request as the authorization source. Reconcile and record each result before moving to the next PR. Record each PR's reconciled `https://github.com/<owner>/<repo>/pull/<num>#pullrequestreview-<REVIEW_DB_ID>` (or `not posted (<reason>)` when nothing landed) and carry it into that PR's `**Review URL**` line, its table row, and the consolidated posting-status entry.
+After every subagent returns, post each completed review in list order through the single-PR GitHub posting flow. For another author's PR, post a review with surviving introduced findings with `REQUEST_CHANGES`, a clean review with no open blockers with `APPROVE` (its pre-existing findings ride along as threads; `COMMENT` when `INCOMPLETE_COVERAGE=true`), and a clean review with open blockers on the blocked-by-open-threads path (Phase 3 step 8). For a self-review, post the complete result with `COMMENT`. Invoke `preflight-mutations` separately for each PR immediately before its first mutation, using the batch `/review-pr` request as the authorization source. Reconcile and record each result before moving to the next PR. Record each PR's reconciled `https://github.com/<owner>/<repo>/pull/<num>#pullrequestreview-<REVIEW_DB_ID>` (or `not posted (<reason>)` when nothing landed) and carry it into that PR's `**Review URL**` line, its table row, and the consolidated posting-status entry. Rewrite that PR's `**Thread replies**` line from the Step 5-replies and 8f outcomes the same way; the subagent wrote it before anything posted.
 
 A posting failure never asks immediately, and the `SKILL.md` unattended rule applies here only when its own trigger fires. Record the exact partial GitHub state and the recovery choices from `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` as `recovery-pending`, then continue with every untouched PR.
 

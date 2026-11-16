@@ -30,7 +30,7 @@ Main or a subagent loads each file only on the branch that reaches it. Loader an
 - `references/verification-subagents.md`: V1/V2/V3 dispatch conditions + the exact prompt each is given. Loaded by main in Phase 3 at the first of steps 4.55 / 4.9 / 6 that fires.
 - `references/false-positive-rules.md`: the four-rule YAML table (`wrapped-coercion`, `intent-alignment`, `library-behavior-citation`, `default-fallback`) each surviving finding is run through. Loaded by main at Phase 3 step 4.6 when any finding survives step 4.5.
 - `references/finding-state-schema.md`: both persistence files: `.claude/review-state/<pr>.yml` (schema, finding-ID strategy, state machine, Phase 1 read path) and the run-over-run cache (schema + the three replay branches). Loaded by main in Phase 1 before the review-state read and the cache check, and held through Phase 3. The Phase 4 write-back and sweep live in `${CLAUDE_SKILL_DIR}/references/finding-state-phase4.md`, loaded in Phase 4 after posting, plus on Phase 1 startup when the state directory is non-empty.
-- `references/github-posting.md`: fresh-review REST/GraphQL posting flow: rendering every body with `scripts/render_review.py`, Phases A through C, and the write-back. Loaded by main in Phase 4 for every completed review. Re-runs with a prior review or cache entry also load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` (Steps 0, 0b, 0c, 4-rolling, 8d); a posting failure also loads `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` (Step 7).
+- `references/github-posting.md`: fresh-review REST/GraphQL posting flow: rendering every body with `scripts/render_review.py`, Phases A through C, and the write-back. Loaded by main in Phase 4 for every completed review. Re-runs with a prior review or cache entry also load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` (Steps 0, 0b, 0c, 4-rolling, 5-replies, 8d, 8f); a posting failure also loads `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` (Step 7).
 - `references/phase1-timeline-state.md`: prior-review thread query plus shaping, the review-state read plus round seeding, and the run-over-run cache branches. Loaded by main in Phase 1 at the timeline, state, and cache steps.
 - `references/dispatch-prompts.md`: the `<SKILL_DIR>` derivation, the `<PROMPT_PREAMBLE>` and `<GROUND_TRUTH>` blocks, and the silent-failure hunter context packet. Loaded by main at the Phase 2 dispatch.
 - `references/critic-verify.md`: critic steps 1 through 4.57, dedupe through origin attribution. Loaded by main at Phase 3 step 1, kept through step 4.57, reloaded at step 6 for routed findings.
@@ -491,9 +491,11 @@ Neither recomputes it.
 
 Count only `Origin: introduced` findings here. Pre-existing findings still post, but never set the verdict.
 
+Open blockers here are `OPEN_BLOCKERS` minus every thread with an `accepted` `DISPUTE_REPLIES` entry: this run withdraws those findings and Phase 4 resolves their threads.
+
 - One or more surviving introduced findings → `request-changes`
 - No surviving introduced findings AND no open blockers → `approve`
-- No surviving introduced findings BUT one or more open blockers (`OPEN_BLOCKERS` from Phase 1) → `request-changes` on the blocked-by-open-threads path. Dedupe was right to drop the re-reported findings, so no new threads go up. The review posts body-only with the event, and its body lists every blocker as `path:line` (`path` alone for file-level threads with no line), author, and one-line issue. A self-review posts the same body with `COMMENT`, keeping the semantic `request-changes` verdict in the body and terminal output. Pre-existing findings on this path go in that body under `### Pre-existing` without threads, and Phase 4 still tracks each in its own issue. Thread coverage prints `0/<P>`, where `<P>` is that pre-existing count, with the reason pointing at the blocking-threads list.
+- No surviving introduced findings BUT one or more open blockers (as counted above) → `request-changes` on the blocked-by-open-threads path. Dedupe was right to drop the re-reported findings, so no new threads go up. The review posts body-only with the event, and its body lists every blocker as `path:line` (`path` alone for file-level threads with no line), author, and one-line issue. A self-review posts the same body with `COMMENT`, keeping the semantic `request-changes` verdict in the body and terminal output. Pre-existing findings on this path go in that body under `### Pre-existing` without threads, and Phase 4 still tracks each in its own issue. Thread coverage prints `0/<P>`, where `<P>` is that pre-existing count, with the reason pointing at the blocking-threads list.
 
 At any round, if `cascade_share > 0.5`, prepend to the verdict reason:
 
@@ -504,7 +506,7 @@ At any round, if `cascade_share > 0.5`, prepend to the verdict reason:
 
 A binary assessment:
 
-- **No**: one or more introduced findings survived the critic pass, OR one or more open blockers exist, OR Q1 identified an intent gap
+- **No**: one or more introduced findings survived the critic pass, OR one or more open blockers exist as step 8 counts them, OR Q1 identified an intent gap
 - **Yes**: otherwise
 
 Write a one-sentence approval reason grounded in the most important finding or the absence of findings. Composed text carries no em or en dash. Text quoted from the issue or the diff stays as you found it.
@@ -529,6 +531,7 @@ Every Phase 4 path reaches **Convergence handoff** after main submits the GitHub
 **Round**: <CURRENT_ROUND> (<active>/<resolved>/<dismissed> findings carried across rounds)
 **Convergence**: <N> new · <C> caused by earlier fixes · <R> regressions reopened · <F> carried
 **Thread coverage**: <threaded>/<surviving> findings as review threads<; reason when below full>
+**Thread replies**: <n> answered in the review body, <t> also attached as thread replies (<a> agreed, <c> corrections, <p> pointer requests)<; each reply not attached with its reason: `suppressed by the invoking prompt`, `rolling update`, or the Step 5-replies outcome; omit when DISPUTE_REPLIES is empty>
 <trend line, omit at round 1>
 **Review URL**: <https://github.com/<owner>/<repo>/pull/<number>#pullrequestreview-<REVIEW_DB_ID> | <same URL> (pending draft) | not posted (<reason>)>
 
@@ -582,7 +585,7 @@ Use the fresh review's `REVIEW_DB_ID` from Phase C, the reused review's `PRIOR_R
 
 ### Thread coverage
 
-Threaded findings over surviving findings, printed after the posting/recovery outcome is known: the line reports that outcome, not the planned payload. Line-level and file-level threads both count; body-fallback findings count as surviving, not threaded. Name the reason whenever threaded < surviving: body fallback, recovery fallback, a blocked or aborted phase, or no threaded posting at all (batch subagent; the orchestrator posts). A run that blocks or aborts before posting still prints the block with the reason. Zero surviving findings prints `0/0`.
+Threaded findings over surviving findings, printed after the posting/recovery outcome is known: the line reports that outcome, not the planned payload. Line-level and file-level threads both count, and so does a correction kept on its disputed thread (tier `existing`); body-fallback findings count as surviving, not threaded. Name the reason whenever threaded < surviving: body fallback, recovery fallback, a blocked or aborted phase, or no threaded posting at all (batch subagent; the orchestrator posts). A run that blocks or aborts before posting still prints the block with the reason. Zero surviving findings prints `0/0`.
 
 ### Cascade check
 
@@ -626,9 +629,9 @@ An explicit `/review-pr <PR URL>` invocation is fresh authorization to submit th
 - Preserve every item in `Filtered out` as terminal-only audit output. Filtered items never enter the GitHub payload.
 - Every surviving finding ships as a review thread, or the Thread coverage line states plainly that it did not ship and why. The terminal report is never pasted as an issue comment.
 
-Load `${CLAUDE_SKILL_DIR}/references/github-posting.md` now: rendering every body with `scripts/render_review.py`, Phases A through C, and the write-back. Also load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` when a prior `/review-pr` review or cache entry exists for this PR, and `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` if any posting phase fails.
+Load `${CLAUDE_SKILL_DIR}/references/github-posting.md` now: rendering every body with `scripts/render_review.py`, Phases A through C, and the write-back. Also load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` when a prior `/review-pr` review or cache entry exists for this PR or `DISPUTE_REPLIES` is non-empty, and `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` if any posting phase fails.
 
-Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, `IS_SELF_REVIEW`, `INCOMPLETE_COVERAGE` (`false` outside batch mode), a new render-directory path inside an existing directory (the renderer creates it in Step 1 of `github-posting.md` and refuses a path that already exists), the complete surviving finding list (line-level + file-level), `PRIOR_STATE` (Step 0c in the rerun file compares against it), `$CACHE_FILE` path, `$STATE_FILE` path, and the `/review-pr` invocation as the posting authorization source.
+Pass into the reference: `<owner>`, `<repo>`, `<pr-num>`, `<head_sha>`, `CURRENT_ROUND`, `IS_SELF_REVIEW`, `INCOMPLETE_COVERAGE` (`false` outside batch mode), a new render-directory path inside an existing directory (the renderer creates it in Step 1 of `github-posting.md` and refuses a path that already exists), the complete surviving finding list (line-level + file-level), `PRIOR_STATE` (Step 0c in the rerun file compares against it), `DISPUTE_REPLIES` (Step 5-replies in the rerun file attaches them before Phase C) and `ANSWERED_COMMENTS` (Step 1 carries them forward), `$CACHE_FILE` path, `$STATE_FILE` path, and the `/review-pr` invocation as the posting authorization source.
 
 ### Convergence handoff
 

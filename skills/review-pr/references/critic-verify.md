@@ -41,8 +41,9 @@ Verify every finding against the stashed diff regardless of size or severity, in
 A match is the same file and the same issue as the prior thread's first comment, and the line may have shifted. Check the marker branch first, then the answered branch:
 
 1. A match whose prior thread's first comment carries `<!-- review-pr:origin=pre-existing -->`: HOLD it rather than drop it, even though the `/review-pr` reply on that thread reads as answered. Step 4.57 decides it once the finding has an origin, because a PR commit may have rewritten that old line.
-2. The matched thread is answered, as defined in `phase1-timeline-state.md`: keep a `Prior-finding-correction` only if it quotes the reply claim it refutes, names new evidence, and links the thread, and mark it `answered-correction`. Otherwise DROP, log `answered in thread <thread_id>: <author_rationale>`; Phase 4 step 2 reads this log.
-3. Any other match NOT marked `Prior-finding-correction`: DROP, log `already reported in prior review`.
+2. The matched thread is answered, as defined in `phase1-timeline-state.md`: keep a `Prior-finding-correction` only if it quotes the reply claim it refutes, names new evidence, and links the thread, and mark it `answered-correction`. When that thread has a `DISPUTE_REPLIES` entry, note the pairing. Once step 7 has ranked the final set, set that entry's `kind` to `correction`, drop `reason`, and add `quote` (the refuted claim, one line) and `evidence` (the new evidence with its file:line, one line), but only if the correction survived every later step. A correction dropped later leaves the entry `accepted`. Otherwise DROP, log `answered in thread <thread_id>: <author_rationale>`; Phase 4 step 2 reads this log.
+3. A `Prior-finding-correction` whose matched thread holds a reply `ANSWERED_COMMENTS` records as `correction`, with no newer human reply: DROP, log `correction already delivered in thread <thread_id>`. The finding stays open on that thread.
+4. Any other match NOT marked `Prior-finding-correction`: DROP, log `already reported in prior review`.
 
 ### 4. Challenge with the 3-prong test
 
