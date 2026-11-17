@@ -7,15 +7,15 @@ description: "Generate the user's daily standup update from real activity: GitHu
 
 Produce a short standup update, ready to read aloud, from real activity. Never invent items. A script gathers the raw material and does nothing else. You write the summary.
 
-## Step 0: Confirm the day scope
+## Step 0: Pick the day scope
 
-Propose the default, then ask the user to confirm. One question, three choices: today, previous workday, or both. Monday reaches back to Friday. A weekend run covers since Friday. Work past midnight belongs to the standup that has not happened yet.
+Do not ask. Use the script's default window: the previous workday from 10:00 up to today's 10:00 standup. Before 10:00, it ends now instead. Monday reaches back to Friday. A weekend run covers since Friday. Work past midnight belongs to the standup that has not happened yet.
 
-Turn the confirmed scope into explicit bounds. A single named day means its full cycle, 10:00 that day to 10:00 the next, so its late-night work stays attached.
+Pass explicit bounds only when the request names another scope, such as today, both days, or a named day. A single named day means its full cycle, 10:00 that day to 10:00 the next, so its late-night work stays attached.
 
 ## Step 1: Gather
 
-Run `${CLAUDE_SKILL_DIR}/scripts/gather.py`. With no arguments it computes the default window from the current time and prints one JSON blob. Pass explicit bounds when the user confirmed a scope other than the default.
+Run `${CLAUDE_SKILL_DIR}/scripts/gather.py`. With no arguments it computes the default window from the current time and prints one JSON blob. Pass explicit bounds when the request named a scope other than the default.
 
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/scripts/gather.py"
@@ -50,7 +50,7 @@ Four buckets, in this order. Omit any empty bucket.
 
 - **Done.** PRs you authored that merged, plus your pushed commits. Say what landed, not that a PR merged.
 - **Merged (N).** Teammates' PRs you merged, whether or not you reviewed them in the window. The heading carries the count.
-- **In progress.** Open PRs and unpushed local work: uncommitted changes, unpushed commits, and stashes. Use sessions only to name a ticket that had real work but no commit yet. Skip anything already covered above.
+- **In progress.** Open PRs and unpushed local work: uncommitted changes, unpushed commits, and stashes. Use sessions only to name a ticket that had real work but no commit yet. Local work is a snapshot of now, even when the window ends earlier. Skip anything already covered above.
 - **Reviewed.** Teammates' PRs you reviewed but did not merge. One line total when few.
 
 ## Output format

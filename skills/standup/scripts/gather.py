@@ -54,15 +54,10 @@ def default_window(now):
     tz = now.tzinfo
     today = now.date()
     if now.hour < STANDUP_HOUR:
-        start = at_standup(previous_workday(today), tz)
-        label = "since previous standup"
-    elif not is_weekend(today):
-        start = at_standup(today, tz)
-        label = "since today's standup"
-    else:
-        start = at_standup(last_friday_before(today), tz)
-        label = "since last Friday (weekend)"
-    return start, now, label
+        return at_standup(previous_workday(today), tz), now, "since previous standup"
+    if is_weekend(today):
+        return at_standup(last_friday_before(today), tz), now, "since last Friday (weekend)"
+    return at_standup(previous_workday(today), tz), at_standup(today, tz), "previous workday, up to today's standup"
 
 
 def parse_iso_local(value, tz):
