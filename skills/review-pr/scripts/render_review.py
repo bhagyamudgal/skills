@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Render every GitHub body a /review-pr run posts from one review JSON file.
 
-Writes summary.md, line_comments.json, file_level.json, monolithic.md and ids.json
-into a new --out directory, and exits 2 with one line per problem on stderr when
+Writes summary.md, line_comments.json, file_level.json, monolithic.md, ids.json and
+replies.json into a new --out directory, and exits 2 with one line per problem on stderr when
 the input breaks the schema. Run with --example to print a valid input file.
 """
 
@@ -22,11 +22,15 @@ ORIGINS = ["introduced", "pre-existing"]
 FINDING_REQUIRED = ["finding_id", "severity", "category", "issue", "explanation", "why", "fix", "inverse_risk", "class_sites"]
 RESOLVED_REQUIRED = ["label", "location", "issue", "round", "commit"]
 BLOCKER_REQUIRED = ["path", "author", "issue"]
+REPLY_TEXT_REQUIRED = {"accepted": ["location", "reason"], "correction": ["location", "quote", "evidence"], "needs-pointer": ["location"]}
+REPLY_TEXT_FIELDS = ["location", "reason", "quote", "evidence"]
+REPLY_DASH_CHECKED_FIELDS = ["location", "reason", "evidence"]
 FORBIDDEN_DASHES = ["\u2014", "\u2013"]
 MARKER_PREFIX = "review-pr:"
 GITHUB_BODY_LIMIT = 65536
 DETAILS_IN_COMMENTS = "*Details in review comments below.*"
 DETAILS_BELOW = "*Details below.*"
+NEEDS_POINTER_TEXT = "I'm keeping this finding open. Your reply doesn't name a test, doc, issue, or file:line I can check against the code. Reply with one, as a new comment rather than an edit, and the next review run re-checks the finding."
 
 EXAMPLE = {
     "verdict": "request-changes",
@@ -51,11 +55,16 @@ EXAMPLE = {
     ],
     "blockers": [],
     "resolved": [],
+    "replies": [],
+    "answered": [],
 }
 
 ENTRY_SHAPES = {
     "blockers": {"path": "apps/backend/src/import/address.ts", "line": 12, "author": "reviewer-login", "issue": "Postcode is still trimmed twice."},
     "resolved": {"label": "S2", "location": "address.ts:18", "issue": "missing null check", "round": 1, "commit": "abc1234"},
+    "replies": {"thread_id": "PRRT_kwDO123abc", "answers_comment_id": 2145678903, "kind": "accepted", "location": "address.ts:42",
+                "reason": "The caller at `address.ts:30` already rejects a blank country, as the reply points out."},
+    "answered": {"comment_id": 2145678801, "kind": "needs-pointer"},
 }
 
 
@@ -159,6 +168,9 @@ def text_fields(review):
     for index, item in enumerate(review.get("resolved") or []):
         for field in ["location", "issue"]:
             yield f"resolved[{index}].{field}", item.get(field)
+    for index, reply in enumerate(review.get("replies") or []):
+        for field in REPLY_DASH_CHECKED_FIELDS:
+            yield f"replies[{index}].{field}", reply.get(field)
 
 
 def marker_paths(value, path="review"):
@@ -196,6 +208,70 @@ def finding_problems(index, finding):
         problems.append(f"{label} is pre-existing and needs blame (short commit SHA)")
     if "\n" in str(finding.get("issue", "")):
         problems.append(f"{label}.issue must be one line")
+    if "thread_id" in finding and not is_thread_id(finding["thread_id"]):
+        problems.append(f"{label}.thread_id must be the PRRT_ node ID of the disputed thread it keeps")
+    return problems
+
+
+def is_thread_id(value):
+    return isinstance(value, str) and re.fullmatch(r"PRRT_[A-Za-z0-9_-]+", value) is not None
+
+
+def is_comment_id(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 1
+
+
+def reply_problems(index, reply):
+    label = f"replies[{index}]"
+    kind = reply.get("kind")
+    if kind not in REPLY_TEXT_REQUIRED:
+        return [f"{label}.kind must be one of {sorted(REPLY_TEXT_REQUIRED)}"]
+    problems = [f"{label}.{field} is required for {kind}" for field in REPLY_TEXT_REQUIRED[kind] if not is_text(reply.get(field))]
+    if not is_thread_id(reply.get("thread_id")):
+        problems.append(f"{label}.thread_id must be the PRRT_ thread node ID")
+    if not is_comment_id(reply.get("answers_comment_id")):
+        problems.append(f"{label}.answers_comment_id must be the answered comment's databaseId")
+    problems.extend(f"{label}.{field} must be one line" for field in REPLY_TEXT_FIELDS if any(br in str(reply.get(field, "")) for br in "\r\n"))
+    return problems
+
+
+def duplicates(values, is_valid):
+    return sorted({value for value in values if is_valid(value) and values.count(value) > 1})
+
+
+def replies_problems(review):
+    replies = review.get("replies") or []
+    problems = [problem for index, reply in enumerate(replies) for problem in reply_problems(index, reply)]
+    problems.extend(f"thread_id {thread_id} appears more than once; answer one comment per thread"
+                    for thread_id in duplicates([reply.get("thread_id") for reply in replies], is_thread_id))
+    problems.extend(f"answers_comment_id {comment_id} appears more than once"
+                    for comment_id in duplicates([reply.get("answers_comment_id") for reply in replies], is_comment_id))
+    return problems
+
+
+def kept_thread_problems(review):
+    correction_threads = [reply.get("thread_id") for reply in review.get("replies") or [] if reply.get("kind") == "correction"]
+    kept = [finding.get("thread_id") for finding in review["findings"] if is_thread_id(finding.get("thread_id"))]
+    if review.get("answers_in_body_only") is True:
+        return ["answers_in_body_only posts no thread reply, so no finding may keep a disputed thread"] if kept else []
+    problems = [f"thread {thread_id} is kept by more than one finding" for thread_id in duplicates(kept, is_thread_id)]
+    problems.extend(f"thread {thread_id} is kept by a finding but has no correction reply" for thread_id in sorted(set(kept) - set(correction_threads)))
+    problems.extend(f"correction reply on thread {thread_id} needs the finding it corrects to keep that thread"
+                    for thread_id in sorted(set(correction_threads) - set(kept)))
+    return problems
+
+
+def answered_problems(review):
+    problems = []
+    for index, entry in enumerate(review.get("answered") or []):
+        if not is_comment_id(entry.get("comment_id")):
+            problems.append(f"answered[{index}].comment_id must be the answered comment's databaseId")
+        if entry.get("kind") not in REPLY_TEXT_REQUIRED:
+            problems.append(f"answered[{index}].kind must be one of {sorted(REPLY_TEXT_REQUIRED)}")
+    prior = [entry.get("comment_id") for entry in review.get("answered") or []]
+    problems.extend(f"answered comment_id {comment_id} appears more than once" for comment_id in duplicates(prior, is_comment_id))
+    problems.extend(f"replies[{index}] answers comment {reply.get('answers_comment_id')}, which is already answered; drop the reply"
+                    for index, reply in enumerate(review.get("replies") or []) if reply.get("answers_comment_id") in prior)
     return problems
 
 
@@ -227,13 +303,13 @@ def validate(review):
     problems.extend(f"{path} contains '{MARKER_PREFIX}'; only the renderer writes review-pr markers, so paraphrase the quoted text"
                     for path in marker_paths(review))
     if "_entry_shapes" in review:
-        problems.append("remove _entry_shapes; it only shows the blockers and resolved entry shapes")
+        problems.append("remove _entry_shapes; it only shows the blockers, resolved, replies and answered entry shapes")
     if not isinstance(review.get("verdict"), str) or review.get("verdict") not in VERDICT_EMOJI:
         problems.append(f"verdict must be one of {sorted(VERDICT_EMOJI)}")
     approval = review.get("senior_approval")
     if not isinstance(approval, dict) or not isinstance(approval.get("approved"), bool) or not is_text(approval.get("reason")):
         problems.append("senior_approval needs approved (true or false) and reason")
-    for key in ["findings", "blockers", "resolved"]:
+    for key in ["findings", "blockers", "resolved", "replies", "answered"]:
         entries = review.get(key, [])
         if not isinstance(entries, list):
             problems.append(f"{key} must be a list")
@@ -252,6 +328,9 @@ def validate(review):
             problems.append(f"blockers[{index}].line must be a whole number of at least 1, or null")
     for index, item in enumerate(review.get("resolved") or []):
         problems.extend(f"resolved[{index}].{field} is required" for field in RESOLVED_REQUIRED if item.get(field) in (None, ""))
+    problems.extend(replies_problems(review))
+    problems.extend(kept_thread_problems(review))
+    problems.extend(answered_problems(review))
     problems.extend(verdict_problems(review))
     problems.extend(f"{name} contains an em or en dash outside backticks; use a period or a comma"
                     for name, text in text_fields(review)
@@ -271,6 +350,8 @@ def assign_labels(findings):
 
 
 def route(finding, diff_files, body_only):
+    if finding.get("thread_id") and not body_only:
+        return "existing"
     path = finding.get("file")
     if body_only or not path or path not in diff_files:
         return "body"
@@ -360,6 +441,23 @@ def findings_section(review, routed, details_line):
     return "\n\n".join(sections)
 
 
+def answers_section(replies, head_sha):
+    lines = {
+        "accepted": lambda reply: f"Agreed, finding dropped. {reply['reason']}",
+        "correction": lambda reply: f"On \"{reply['quote']}\": this still holds at `{head_sha[:7]}`. {reply['evidence']}",
+        "needs-pointer": lambda reply: NEEDS_POINTER_TEXT,
+    }
+    return "### Answers to replies\n\n" + "\n".join(f"- `{reply['location']}`: {lines[reply['kind']](reply)}" for reply in replies)
+
+
+def answered_marker(review):
+    kinds = {entry["comment_id"]: entry["kind"] for entry in review.get("answered") or []}
+    kinds.update({reply["answers_comment_id"]: reply["kind"] for reply in review.get("replies") or []})
+    if not kinds:
+        return None
+    return "<!-- review-pr:answered " + " ".join(f"{comment_id}={kinds[comment_id]}" for comment_id in sorted(kinds)) + " -->"
+
+
 def summary_body(review, routed, meta, details_line):
     approval = review["senior_approval"]
     verdict = review["verdict"]
@@ -370,7 +468,10 @@ def summary_body(review, routed, meta, details_line):
         f"**Senior engineer approval**: {'✅ Yes' if approval['approved'] else '❌ No'}, {approval['reason']}",
     ]
     lead = f"**Goal**: {review['goal']}\n**Summary**: {review['summary']}"
-    return "\n".join(head) + "\n\n" + lead + "\n\n" + findings_section(review, routed, details_line)
+    body = "\n".join(head) + "\n\n" + lead + "\n\n" + findings_section(review, routed, details_line)
+    replies = review.get("replies") or []
+    parts = [body, answers_section(replies, meta["head_sha"]) if replies else None, answered_marker(review)]
+    return "\n\n".join(part for part in parts if part)
 
 
 def monolithic_body(review, routed, meta):
@@ -382,10 +483,22 @@ def monolithic_body(review, routed, meta):
     return summary + "\n\n### Finding details\n\n" + "\n\n---\n\n".join(details)
 
 
+def reply_body(reply, head_sha, kept_finding=None):
+    texts = {
+        "accepted": f"Agreed, so I dropped this finding. {reply.get('reason')}",
+        "correction": f"> {reply.get('quote')}\n\nThis still holds at `{head_sha[:7]}`: {reply.get('evidence')} The finding stays open in this round's review.",
+        "needs-pointer": NEEDS_POINTER_TEXT,
+    }
+    marker = f"<!-- review-pr:reply to={reply['answers_comment_id']} kind={reply['kind']} -->"
+    detail = f"\n\n{comment_body(kept_finding)}" if kept_finding else ""
+    return f"{texts[reply['kind']]}{detail}\n\n{marker}"
+
+
 def render(review, diff_text, meta):
     diff_files = parse_diff(diff_text)
     body_only = bool(review.get("blockers"))
     routed = [(finding, route(finding, diff_files, body_only)) for finding in assign_labels(review.get("findings") or [])]
+    kept = {finding["thread_id"]: finding for finding, _ in routed if finding.get("thread_id")}
     return {
         "summary.md": summary_body(review, routed, meta, DETAILS_IN_COMMENTS),
         "line_comments.json": [{"path": finding["file"], "line": finding["line"], "side": "RIGHT", "body": comment_body(finding)}
@@ -394,19 +507,24 @@ def render(review, diff_text, meta):
                             for finding, tier in routed if tier == "file"],
         "monolithic.md": monolithic_body(review, routed, meta),
         "ids.json": [{"finding_id": finding["finding_id"], "label": finding["label"], "tier": tier,
-                      "file": finding.get("file"), "line": finding.get("line")} for finding, tier in routed],
+                      "file": finding.get("file"), "line": finding.get("line"),
+                      **({"thread_id": finding["thread_id"]} if tier == "existing" else {})} for finding, tier in routed],
+        "replies.json": [{"thread_id": reply["thread_id"], "answers_comment_id": reply["answers_comment_id"], "kind": reply["kind"],
+                          "body": reply_body(reply, meta["head_sha"], kept.get(reply["thread_id"]) if reply["kind"] == "correction" else None)}
+                         for reply in review.get("replies") or []],
     }
 
 
 def demotions(outputs):
     return [f"{entry['label']} {entry['file']}:{entry['line']} is not on the diff's post-image side; posting it as {entry['tier']}"
-            for entry in outputs["ids.json"] if entry.get("line") is not None and entry["tier"] != "line"]
+            for entry in outputs["ids.json"] if entry.get("line") is not None and entry["tier"] in ("file", "body")]
 
 
 def size_problems(outputs):
     bodies = [("summary.md", outputs["summary.md"])]
     bodies += [(f"line_comments.json[{index}]", entry["body"]) for index, entry in enumerate(outputs["line_comments.json"])]
     bodies += [(f"file_level.json[{index}]", entry["body"]) for index, entry in enumerate(outputs["file_level.json"])]
+    bodies += [(f"replies.json[{index}]", entry["body"]) for index, entry in enumerate(outputs["replies.json"])]
     return [f"{name} is over GitHub's {GITHUB_BODY_LIMIT}-character limit" for name, body in bodies if len(body) > GITHUB_BODY_LIMIT]
 
 
@@ -477,7 +595,7 @@ def main(argv=None):
         print(f"monolithic.md is over GitHub's {GITHUB_BODY_LIMIT}-character limit; a monolithic post of it would be rejected", file=sys.stderr)
     write_outputs(outputs, args.out)
     tiers = [entry["tier"] for entry in outputs["ids.json"]]
-    print(json.dumps({tier: tiers.count(tier) for tier in ["line", "file", "body"]}))
+    print(json.dumps({tier: tiers.count(tier) for tier in ["line", "file", "existing", "body"]}))
     return 0
 
 

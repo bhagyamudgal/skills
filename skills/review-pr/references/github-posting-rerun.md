@@ -1,7 +1,7 @@
 
 # GitHub posting: re-runs and rolling reviews
 
-Main loads this in Phase 4 only when a prior `/review-pr` review or cache entry exists for this PR. The fresh-review path stays in `${CLAUDE_SKILL_DIR}/references/github-posting.md`, already loaded.
+Main loads this in Phase 4 only when a prior `/review-pr` review or cache entry exists for this PR, or `DISPUTE_REPLIES` is non-empty. The fresh-review path stays in `${CLAUDE_SKILL_DIR}/references/github-posting.md`, already loaded.
 
 ## Step 0: Detect prior `/review-pr` review (rolling-review path)
 
@@ -46,7 +46,8 @@ Before selecting a branch, derive `CURRENT_THREADED_FINDING_IDS` from the `ids.j
 - the validated current cache records `publication_evidence.publication_mode: threaded`;
 - `last_posted_review_node_id` and `last_posted_review_id` equal the candidate prior review;
 - when `IS_SELF_REVIEW=true`, the cache's `last_posted_verdict` equals the current semantic verdict;
-- every ID in `CURRENT_THREADED_FINDING_IDS` has exactly one `posted_comments` entry with non-empty `github_thread_id`, `review_node_id == PRIOR_REVIEW_NODE_ID`, and `review_database_id == PRIOR_REVIEW_DB_ID`.
+- every ID in `CURRENT_THREADED_FINDING_IDS` has exactly one `posted_comments` entry with non-empty `github_thread_id`, `review_node_id == PRIOR_REVIEW_NODE_ID`, and `review_database_id == PRIOR_REVIEW_DB_ID`;
+- no `ids.json` entry has tier `existing`: a kept correction ships only in its thread reply, which needs a pending review.
 
 Treat missing ownership fields, multiple matches, an unvalidated cache contract, a self-review semantic-verdict mismatch, or a monolithic publication as not thread-complete. Query each cached thread ID and require it to belong to the candidate review before reuse; any absent, mismatched, or inconclusive thread makes the current run a fresh review.
 
@@ -171,3 +172,32 @@ gh api graphql -f query='
 
 After every mutation attempt, query the exact thread ID. Record `resolved` only when the authoritative result has `isResolved: true`; record an authoritative `false` as `confirmed-open`, and a failed or inconclusive query as `reconcile-required` with the exact settling query. Do not retry an indeterminate thread. On either non-resolved result, retire the current card and preflight the remaining items without this unresolved thread before the next write. Report every non-resolved outcome and exclude it from claims that GitHub resolution completed; never execute later writes under a retired card.
 
+
+## Step 5-replies: attach dispute replies to the pending review
+
+Runs after Phase B and before Phase C in `${CLAUDE_SKILL_DIR}/references/github-posting.md`, only when the frozen `replies.json` is non-empty. The rendered `### Answers to replies` section and its `review-pr:answered` marker already answer every entry in the review itself; a thread reply adds the notification. Skip this step when the invoking prompt asks for answers in the review rather than in thread replies, and on the rolling path, which has no pending review.
+
+A reply posted outside a pending review becomes its own submitted `COMMENTED` review with an empty body, and a caller that reads the viewer's newest review then records that empty review instead of this run's verdict (https://github.com/hexleap/reqlook/issues/104). So every reply belongs to this run's pending review, passed as `pullRequestReviewId`, and Phase C publishes them with the verdict. A due reply never pushes Step 0 off the rolling path: a fresh review would post every carried finding's thread a second time.
+
+For each entry, in order, with `INDEX` from 0:
+
+1. Re-read the thread's comments, paginated as in Phase 1. When a `VIEWER` comment outside a `PENDING` review already carries `review-pr:reply to=<answers_comment_id> kind=<kind>` with this entry's `kind`, record `already-answered` and go to the next entry.
+2. Attach the frozen body. jq reads it from the file, so the shell never parses it:
+
+   ```bash
+   REPLY_RESP=$(jq -n \
+       --arg reviewId "$REVIEW_NODE_ID" \
+       --slurpfile entries "<frozen replies.json>" \
+       --argjson index "${INDEX:?}" \
+       '{query: "mutation($reviewId: ID!, $threadId: ID!, $body: String!) { addPullRequestReviewThreadReply(input: {pullRequestReviewId: $reviewId, pullRequestReviewThreadId: $threadId, body: $body}) { comment { databaseId pullRequestReview { id state } } } }",
+         variables: {reviewId: $reviewId, threadId: $entries[0][$index].thread_id, body: $entries[0][$index].body}}' \
+     | gh api graphql --input -)
+   ```
+
+3. Whatever the response says, read the pending review's comments back by `REVIEW_NODE_ID`. Exactly one comment carrying that entry's marker records `attached`. None records `confirmed-absent`: report it and continue. The body still answers it, and its marker keeps later runs from answering again. A `correction` whose finding has tier `existing` is the exception: that reply is the finding's only thread comment, so `confirmed-absent` there is `reconcile-required`. More than one, a match outside this review, or an inconclusive read is `reconcile-required` and blocks Phase C, exactly as an unresolved Phase B thread does. Never retry an entry inside the run.
+
+Report every outcome on the terminal block's Thread replies line. Recovery fallbacks that post a monolithic review attach no replies.
+
+### 8f. Resolve accepted dispute threads
+
+After Phase C or Step 4-rolling confirmed the review, resolve every `accepted` entry's thread, whether or not its thread reply attached: the review body already answers it. Use 8d's preflight, mutation, read-back, and outcome rules; resolving creates no review. Leave a thread open, recorded `left open (new reply)`, when its fresh comments hold a human reply, as defined in `phase1-timeline-state.md`, that the Phase 1 timeline lacked; the next run reads it. `correction` and `needs-pointer` threads stay open for the author. A failure here never changes the verdict or the posted review, and an `accepted` thread whose resolve failed still stays out of the next run's `OPEN_BLOCKERS` through `ANSWERED_COMMENTS`.

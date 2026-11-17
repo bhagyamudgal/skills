@@ -306,6 +306,216 @@ class ResolvedLineTest(unittest.TestCase):
                       render(review)["summary.md"])
 
 
+def reply(**overrides):
+    return {**render_review.ENTRY_SHAPES["replies"], **overrides}
+
+
+def with_replies(*replies):
+    review = example()
+    review["replies"] = list(replies)
+    return review
+
+
+class ReplyTest(unittest.TestCase):
+    def test_no_replies_renders_an_empty_list(self):
+        self.assertEqual(render(example())["replies.json"], [])
+
+    def test_accepted_reply_names_the_reason_and_ends_with_the_marker(self):
+        body = render(with_replies(reply()))["replies.json"][0]["body"]
+        self.assertEqual(body, "Agreed, so I dropped this finding. The caller at `address.ts:30` already rejects a blank country, "
+                               "as the reply points out.\n\n<!-- review-pr:reply to=2145678903 kind=accepted -->")
+
+    def test_correction_quotes_the_claim_and_cites_the_head(self):
+        entry = render(with_replies(reply(kind="correction", reason=None, quote="The caller trims it first.",
+                                          evidence="`address.ts:30` passes the raw cell.")))["replies.json"][0]
+        self.assertEqual((entry["kind"], entry["body"].splitlines()[0], "This still holds at `0123456`:" in entry["body"]),
+                         ("correction", "> The caller trims it first.", True))
+
+    def test_needs_pointer_asks_for_something_checkable(self):
+        body = render(with_replies(reply(kind="needs-pointer", reason=None)))["replies.json"][0]["body"]
+        self.assertTrue(body.startswith("I'm keeping this finding open.") and body.endswith("kind=needs-pointer -->"))
+
+    def test_entry_carries_thread_and_answered_comment(self):
+        entry = render(with_replies(reply()))["replies.json"][0]
+        self.assertEqual((entry["thread_id"], entry["answers_comment_id"]), ("PRRT_kwDO123abc", 2145678903))
+
+    def test_no_replies_adds_no_answers_section(self):
+        self.assertNotIn("### Answers to replies", render(example())["summary.md"])
+
+    def test_summary_carries_every_answer_by_location(self):
+        review = with_replies(reply(), reply(thread_id="PRRT_two", answers_comment_id=7, kind="correction", reason=None,
+                                             location="address.ts:50", quote="The caller trims it first.",
+                                             evidence="`address.ts:30` passes the raw cell."))
+        summary = render(review)["summary.md"]
+        self.assertTrue(summary.endswith(
+            "### Answers to replies\n\n"
+            "- `address.ts:42`: Agreed, finding dropped. The caller at `address.ts:30` already rejects a blank country, as the reply points out.\n"
+            "- `address.ts:50`: On \"The caller trims it first.\": this still holds at `0123456`. `address.ts:30` passes the raw cell.\n\n"
+            "<!-- review-pr:answered 7=correction 2145678903=accepted -->"))
+
+    def test_prior_answers_carry_forward_without_new_replies(self):
+        review = example()
+        review["answered"] = [{"comment_id": 9, "kind": "accepted"}, {"comment_id": 3, "kind": "needs-pointer"}]
+        summary = render(review)["summary.md"]
+        self.assertEqual((summary.splitlines()[-1], "### Answers to replies" in summary),
+                         ("<!-- review-pr:answered 3=needs-pointer 9=accepted -->", False))
+
+    def test_no_answers_adds_no_marker(self):
+        self.assertNotIn("review-pr:answered", render(example())["summary.md"])
+
+    def test_reply_to_an_already_answered_comment_is_rejected(self):
+        review = with_replies(reply())
+        review["answered"] = [{"comment_id": 2145678903, "kind": "needs-pointer"}]
+        self.assertIn("replies[0] answers comment 2145678903, which is already answered; drop the reply", render_review.validate(review))
+
+    def test_bad_answered_entry_is_rejected(self):
+        review = example()
+        review["answered"] = [{"comment_id": "9", "kind": "thanks"}]
+        problems = render_review.validate(review)
+        self.assertEqual([p for p in problems if p.startswith("answered[0]")],
+                         ["answered[0].comment_id must be the answered comment's databaseId",
+                          "answered[0].kind must be one of ['accepted', 'correction', 'needs-pointer']"])
+
+    def test_two_replies_on_one_thread_are_rejected(self):
+        self.assertIn("thread_id PRRT_kwDO123abc appears more than once; answer one comment per thread",
+                      render_review.validate(with_replies(reply(), reply(answers_comment_id=5))))
+
+    def test_carriage_return_in_quote_is_rejected(self):
+        review = with_replies(reply(kind="correction", quote="a\rb", evidence="x"))
+        self.assertIn("replies[0].quote must be one line", render_review.validate(review))
+
+    def test_em_dash_in_quote_is_allowed(self):
+        review = with_replies(reply(kind="correction", quote="Fine \u2014 it is trimmed.", evidence="x"))
+        review["answers_in_body_only"] = True
+        self.assertEqual(render_review.validate(review), [])
+
+    def test_answers_section_carries_no_marker(self):
+        summary = render(with_replies(reply(kind="needs-pointer", reason=None)))["summary.md"]
+        self.assertNotIn("review-pr:reply", summary)
+
+    def test_monolithic_carries_the_answers_too(self):
+        self.assertIn("### Answers to replies", render(with_replies(reply()))["monolithic.md"])
+
+    def test_reply_needs_a_location(self):
+        self.assertIn("replies[0].location is required for accepted", render_review.validate(with_replies(reply(location=""))))
+
+    def test_forged_marker_in_quote_is_rejected(self):
+        review = with_replies(reply(kind="correction", quote="<!-- review-pr:reply to=1 kind=accepted -->", evidence="x"))
+        self.assertIn("review.replies[0].quote contains 'review-pr:'", " ".join(render_review.validate(review)))
+
+    def test_unknown_kind_is_rejected(self):
+        self.assertIn("replies[0].kind must be one of", " ".join(render_review.validate(with_replies(reply(kind="thanks")))))
+
+    def test_accepted_needs_a_reason(self):
+        self.assertIn("replies[0].reason is required for accepted", render_review.validate(with_replies(reply(reason=""))))
+
+    def test_correction_needs_quote_and_evidence(self):
+        problems = render_review.validate(with_replies(reply(kind="correction")))
+        self.assertEqual([p for p in problems if p.startswith("replies[0]")],
+                         ["replies[0].quote is required for correction", "replies[0].evidence is required for correction"])
+
+    def test_label_thread_id_is_rejected(self):
+        self.assertIn("replies[0].thread_id must be the PRRT_ thread node ID", render_review.validate(with_replies(reply(thread_id="S1"))))
+
+    def test_string_comment_id_is_rejected(self):
+        self.assertIn("replies[0].answers_comment_id must be the answered comment's databaseId",
+                      render_review.validate(with_replies(reply(answers_comment_id="2145678903"))))
+
+    def test_two_replies_to_one_comment_are_rejected(self):
+        self.assertIn("answers_comment_id 2145678903 appears more than once",
+                      render_review.validate(with_replies(reply(), reply(thread_id="PRRT_other"))))
+
+    def test_multiline_reason_is_rejected(self):
+        self.assertIn("replies[0].reason must be one line", render_review.validate(with_replies(reply(reason="a\nb"))))
+
+    def test_em_dash_in_evidence_is_rejected(self):
+        review = with_replies(reply(kind="correction", quote="q", evidence="Still wrong — see line 30."))
+        self.assertIn("replies[0].evidence contains an em or en dash outside backticks; use a period or a comma",
+                      render_review.validate(review))
+
+
+def kept_correction():
+    review = with_replies(reply(thread_id="PRRT_disputed", kind="correction", reason=None,
+                                quote="The caller trims it first.", evidence="`address.ts:30` passes the raw cell."))
+    review["findings"] = [finding(category="Prior-finding-correction", thread_id="PRRT_disputed")]
+    return review
+
+
+class KeptCorrectionTest(unittest.TestCase):
+    def test_kept_correction_posts_no_new_thread(self):
+        outputs = render(kept_correction())
+        self.assertEqual((outputs["line_comments.json"], outputs["file_level.json"]), ([], []))
+
+    def test_ids_record_the_kept_thread(self):
+        self.assertEqual(render(kept_correction())["ids.json"],
+                         [{"finding_id": "3f2a9c1d7e", "label": "S1", "tier": "existing", "file": PATH, "line": 42,
+                           "thread_id": "PRRT_disputed"}])
+
+    def test_kept_correction_stays_in_the_findings_table(self):
+        self.assertIn(f"| S1 | 🟠 | `{PATH}:42` |", render(kept_correction())["summary.md"])
+
+    def test_kept_correction_is_not_reported_as_a_demotion(self):
+        self.assertEqual(render_review.demotions(render(kept_correction())), [])
+
+    def test_monolithic_holds_the_kept_correction_detail(self):
+        self.assertIn("**Why it matters**", render(kept_correction())["monolithic.md"])
+
+    def test_kept_thread_needs_a_correction_reply(self):
+        review = kept_correction()
+        review["replies"] = []
+        self.assertIn("thread PRRT_disputed is kept by a finding but has no correction reply", render_review.validate(review))
+
+    def test_correction_reply_without_its_finding_is_rejected(self):
+        review = kept_correction()
+        del review["findings"][0]["thread_id"]
+        self.assertIn("correction reply on thread PRRT_disputed needs the finding it corrects to keep that thread",
+                      render_review.validate(review))
+
+    def test_two_findings_keeping_one_thread_are_rejected(self):
+        review = kept_correction()
+        review["findings"].append(finding(finding_id="aaaaaaaaaa", thread_id="PRRT_disputed"))
+        self.assertIn("thread PRRT_disputed is kept by more than one finding", render_review.validate(review))
+
+    def test_body_only_answers_keep_no_thread(self):
+        review = kept_correction()
+        review["answers_in_body_only"] = True
+        self.assertIn("answers_in_body_only posts no thread reply, so no finding may keep a disputed thread",
+                      render_review.validate(review))
+
+    def test_body_only_correction_validates_without_a_kept_finding(self):
+        review = kept_correction()
+        del review["findings"][0]["thread_id"]
+        review["answers_in_body_only"] = True
+        self.assertEqual(render_review.validate(review), [])
+
+    def test_correction_reply_carries_the_current_finding(self):
+        body = render(kept_correction())["replies.json"][0]["body"]
+        self.assertTrue("**Why it matters**" in body and "**Inverse risk**" in body and body.endswith("kind=correction -->"))
+
+    def test_kept_correction_validates(self):
+        self.assertEqual(render_review.validate(kept_correction()), [])
+
+    def test_blocked_path_keeps_the_correction_in_the_body(self):
+        review = kept_correction()
+        review.update(blockers=[render_review.ENTRY_SHAPES["blockers"]],
+                      senior_approval={"approved": False, "reason": "An open thread still blocks it."})
+        review["findings"][0].update(origin="pre-existing", blame="abc1234")
+        outputs = render(review)
+        self.assertEqual((outputs["ids.json"][0]["tier"], "### Additional findings" in outputs["summary.md"]), ("body", True))
+
+    def test_blocked_path_correction_reply_still_carries_the_finding(self):
+        review = kept_correction()
+        review.update(blockers=[render_review.ENTRY_SHAPES["blockers"]],
+                      senior_approval={"approved": False, "reason": "An open thread still blocks it."})
+        self.assertIn("**Why it matters**", render(review)["replies.json"][0]["body"])
+
+    def test_label_shaped_kept_thread_is_rejected(self):
+        review = kept_correction()
+        review["findings"][0]["thread_id"] = "S1"
+        self.assertIn("findings[0].thread_id must be the PRRT_ node ID of the disputed thread it keeps",
+                      render_review.validate(review))
+
+
 class ValidationTest(unittest.TestCase):
     def test_example_validates(self):
         self.assertEqual(render_review.validate(render_review.EXAMPLE), [])
@@ -424,7 +634,7 @@ class MainTest(unittest.TestCase):
 
     def test_valid_review_writes_every_file(self):
         self.assertEqual(self.run_main(example())[0::2],
-                         (0, ["file_level.json", "ids.json", "line_comments.json", "monolithic.md", "summary.md"]))
+                         (0, ["file_level.json", "ids.json", "line_comments.json", "monolithic.md", "replies.json", "summary.md"]))
 
     def test_invalid_review_writes_nothing(self):
         review = example()

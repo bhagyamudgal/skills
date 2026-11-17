@@ -16,7 +16,7 @@ query($owner:String!, $repo:String!, $num:Int!, $after:String = null) {
           comments(first:20) {
             pageInfo { hasNextPage endCursor }
             nodes {
-              databaseId author { login } body createdAt
+              databaseId author { __typename login } body createdAt
               pullRequestReview { id submittedAt commit { oid } state }
             }
           }
@@ -39,7 +39,7 @@ query($threadId:ID!, $after:String = null) {
       comments(first:100, after:$after) {
         pageInfo { hasNextPage endCursor }
         nodes {
-          databaseId author { login } body createdAt
+          databaseId author { __typename login } body createdAt
           pullRequestReview { id submittedAt commit { oid } state }
         }
       }
@@ -63,20 +63,33 @@ prior_findings:
     is_outdated: <bool: later commits invalidated the line>
     author_login: <thread author login>
     body_excerpt: <first 200 chars>
-    author_rationale: <none | design-decision | out-of-scope | refuted-with-evidence | fix-promised, read from human replies AFTER the first comment; bot replies and the `/review-pr` "Tracked in <issue URL>" reply on a pre-existing thread never count>
+    owned_by_viewer: <bool: the first comment's author is VIEWER>
+    author_rationale: <none | design-decision | out-of-scope | refuted-with-evidence | fix-promised | disputed, read from the newest human reply AFTER the first comment that takes a position on the finding; a reply that only thanks or acknowledges, such as "Thanks", is skipped, while one that concedes, such as "you're right", sets none>
     rationale_pointer: <doc path, ADR, issue number, test name, measurement, or file:line cited in the reply, or none>
     rationale_reply: <full text of the human reply that set author_rationale, or none>
+    rationale_comment_id: <databaseId of that reply, or none>
     resolution_state: open | resolved | outdated | stale
 ```
 
-This enables (a) accurate dedupe in Phase 3, (b) reply-aware reopening. Read every human reply on every prior thread, open or resolved, before any prior finding is carried, re-verified, or re-raised. An author who answers a finding often leaves the thread open for a human reviewer. Code that still exhibits the issue is not by itself grounds to raise it again. A thread is **answered** when its `author_rationale` is design-decision (points at a doc, ADR, or issue), out-of-scope (points at a follow-up issue), or refuted-with-evidence (names a test, measurement, counterexample, or file:line). A reply without a pointer sets `none`. Record an answered finding as `dismissed` or `wontfix` in the state file with that rationale in `dismissal_reason` and the code condition it rests on in `depends_on`, and do not re-raise it. "The new commits did not touch this code" is never a reason to re-raise an answered finding. The author already said why the code stays. Re-raise with `Category: Prior-finding-correction` only when the thread is not answered, the reply promised a fix the diff shows never landed, a later commit voided `depends_on`, or you have new evidence that a specific claim in `rationale_reply` is false. A correction on an answered thread quotes the claim it refutes, names the new evidence, and links the prior thread.
+This enables (a) accurate dedupe in Phase 3, (b) reply-aware reopening. A **human reply** is a comment after the first whose author `__typename` is not `Bot` and whose body carries no `review-pr:` marker, excluding the `/review-pr` `Tracked in <issue URL>` reply (a `VIEWER` comment on a thread whose first comment carries `review-pr:origin=pre-existing`).
+
+`ANSWERED_COMMENTS` maps each author comment `/review-pr` already answered to the answer's kind. Read it from `VIEWER` content outside `PENDING` reviews only, since a leftover draft was never published: thread comments carrying `<!-- review-pr:reply to=<id> kind=<kind> -->`, and review bodies carrying `<!-- review-pr:answered <id>=<kind> ... -->`. Fetch the reviews once here, into a file, since each shell call starts fresh; the response includes the viewer's pending reviews, and the round query below reads the same file:
+
+```bash
+REVIEWS_FILE="${TMPDIR:-/tmp}/review-pr-<owner>-<repo>-<pr-number>-reviews.json"
+gh pr view <url> --json reviews > "$REVIEWS_FILE" \
+  || { echo "GitHub reviews query failed; stop before reading answers or the round" >&2; exit 1; }
+```
+
+Each rendered summary carries every prior entry forward, so a body update never loses one. Read every human reply on every prior thread, open or resolved, before any prior finding is carried, re-verified, or re-raised. An author who answers a finding often leaves the thread open for a human reviewer. Code that still exhibits the issue is not by itself grounds to raise it again. A thread is **answered** when its `author_rationale` is design-decision (points at a doc, ADR, or issue), out-of-scope (points at a follow-up issue), or refuted-with-evidence (names a test, measurement, counterexample, or file:line). A thread whose `rationale_comment_id` `ANSWERED_COMMENTS` records as `correction` or `needs-pointer` is not answered: `/review-pr` already ruled that reply insufficient. A reply that disagrees with the finding but cites no pointer sets `disputed`, which is not answered; any other reply without a pointer sets `none`. Record an answered finding as `dismissed` or `wontfix` in the state file with that rationale in `dismissal_reason` and the code condition it rests on in `depends_on`, and do not re-raise it. "The new commits did not touch this code" is never a reason to re-raise an answered finding. The author already said why the code stays. Re-raise with `Category: Prior-finding-correction` only when the thread is not answered, the reply promised a fix the diff shows never landed, a later commit voided `depends_on`, or you have new evidence that a specific claim in `rationale_reply` is false. A correction on an answered thread quotes the claim it refutes, names the new evidence, and links the prior thread.
 
 ### Derive `OPEN_BLOCKERS`
 
 From the same list, collect every entry with `is_resolved == false` AND `is_outdated == false`,
 keeping its `file`, `line` (absent for file-level threads), `author_login`, and `body_excerpt`.
 Outdated threads stay out: the code moved under them, so they no longer describe the head
-under review. Threads whose first comment carries `<!-- review-pr:origin=pre-existing -->` stay out too: that code
+under review. A viewer-owned thread whose newest comment in `ANSWERED_COMMENTS` is recorded as `accepted`
+stays out too: `/review-pr` already withdrew that finding, even if resolving its thread failed. A later `correction` or `needs-pointer` answer on the same thread puts it back. Threads whose first comment carries `<!-- review-pr:origin=pre-existing -->` stay out too: that code
 predates the PR, so its thread is never this PR's to clear. The marker lives in the comment,
 so this works before the state file loads and when no state file exists. `OPEN_BLOCKERS` never feeds dedupe. Dedupe still drops re-reported findings
 so no duplicate threads are created. `OPEN_BLOCKERS` feeds the Phase 3 step 8 and step 9
@@ -106,8 +119,9 @@ else
 fi
 
 LOCAL_ROUND=$(echo "$PRIOR_STATE" | yq '.last_round')
-GITHUB_ROUND=$(gh pr view <url> --json reviews -q '[.reviews[].body | capture("review-pr:run [^>]*round=(?<round>[0-9]+)").round | tonumber] | max // 0') \
-  || { echo "GitHub round query failed; stop before choosing a round" >&2; exit 1; }
+REVIEWS_FILE="${TMPDIR:-/tmp}/review-pr-<owner>-<repo>-<pr-number>-reviews.json"
+[ -s "$REVIEWS_FILE" ] || { echo "reviews file missing; rerun the timeline fetch" >&2; exit 1; }
+GITHUB_ROUND=$(jq '[.reviews[].body | capture("review-pr:run [^>]*round=(?<round>[0-9]+)").round | tonumber] | max // 0' "$REVIEWS_FILE")
 CURRENT_ROUND=$(( (LOCAL_ROUND > GITHUB_ROUND ? LOCAL_ROUND : GITHUB_ROUND) + 1 ))
 ```
 
@@ -123,6 +137,8 @@ Do this after state load, before Phase 2 dispatch. Start `ANSWERED_THREADS` as a
 2. On a match, set the entry deterministically: `out-of-scope` becomes `wontfix`; `design-decision` or `refuted-with-evidence` becomes `dismissed`. Write `dismissal_reason` as the rationale plus its pointer, `depends_on` as the code condition the rationale rests on, and refresh `updated_at`. Leave round counters untouched.
 3. Entries written here enter Phase 3 as `dismissed`/`wontfix` and suppress normally, except an `answered-correction` per `critic-round2.md` step 4.95; a later commit that voids `depends_on` reopens them through the existing rule, not through a new finding.
 
+Then build `DISPUTE_REPLIES`, the answers Phase 4 lists in the review body and, when it creates a pending review, attaches to the disputed threads. Add one entry per `owned_by_viewer` timeline entry on an unresolved, non-outdated thread whose `rationale_comment_id` is not in `ANSWERED_COMMENTS` and whose `author_rationale` is answered or `disputed`. A thread someone already resolved needs no answer. Each entry has `thread_id`, `answers_comment_id` (its `rationale_comment_id`), `location` (`file:line`, or `file` for a file-level thread), and `kind`: `accepted` for answered with `reason` (the rationale plus its pointer, one line), `needs-pointer` for `disputed`. Phase 3 step 3 turns an entry into `correction` when it keeps an `answered-correction` for that thread. Threads other reviewers opened get no reply. `ANSWERED_COMMENTS` is the dedup record: an answered comment never enters this list again, and a new reply from the author is a new comment ID.
+
 ### Run-over-run cache check
 
 ```bash
@@ -133,6 +149,6 @@ CACHE_FILE="$CACHE_DIR/<owner>_<repo>_<pr-number>.json"
 
 Use the `CURRENT_HEAD` pinned in Phase 1. Do not re-read it here: a fresh read can move past the stashed diff and select a cache branch for a different revision.
 
-Use `REVIEW_CACHE_CONTRACT_VERSION` from `references/finding-state-schema.md`, already loaded for the review-state read. Validate `contract_version` before reading any cache field. A missing or mismatched version invalidates the complete cache and starts a full fresh review. For a current cache, comparing `last_run_sha` to `CURRENT_HEAD` and the stored `base_sha` to the pinned base OID selects one of three branches: replay the cached run unchanged, re-review only the new commits, or invalidate and start fresh. The cache schema and the full body of each branch live in that reference under "Run-over-run cache".
+Use `REVIEW_CACHE_CONTRACT_VERSION` from `references/finding-state-schema.md`, already loaded for the review-state read. Validate `contract_version` before reading any cache field. A missing or mismatched version invalidates the complete cache and starts a full fresh review. For a current cache, comparing `last_run_sha` to `CURRENT_HEAD` and the stored `base_sha` to the pinned base OID selects one of three branches: replay the cached run unchanged, re-review only the new commits, or invalidate and start fresh. An unanswered dispute, or a human reply newer than the cached post, blocks the replay, per the reply check in branch 1. The cache schema and the full body of each branch live in that reference under "Run-over-run cache".
 
 After a successful run, write `contract_version: REVIEW_CACHE_CONTRACT_VERSION` with the result plus `last_run_sha`, `base_sha` (the pinned base OID), and `incomplete_coverage` with `skipped_lenses` (`true` and each skipped lens with its reason when `INCOMPLETE_COVERAGE=true`, else `false` and `[]`) in `$CACHE_FILE` at the end of Phase 4. The cache stays local and never touches GitHub state.
