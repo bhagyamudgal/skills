@@ -498,7 +498,7 @@ def render(review, diff_text, meta):
     diff_files = parse_diff(diff_text)
     body_only = bool(review.get("blockers"))
     routed = [(finding, route(finding, diff_files, body_only)) for finding in assign_labels(review.get("findings") or [])]
-    kept = {finding["thread_id"]: finding for finding, tier in routed if tier == "existing"}
+    kept = {finding["thread_id"]: finding for finding, _ in routed if finding.get("thread_id")}
     return {
         "summary.md": summary_body(review, routed, meta, DETAILS_IN_COMMENTS),
         "line_comments.json": [{"path": finding["file"], "line": finding["line"], "side": "RIGHT", "body": comment_body(finding)}
