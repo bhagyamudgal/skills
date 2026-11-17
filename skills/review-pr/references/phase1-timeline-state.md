@@ -64,7 +64,7 @@ prior_findings:
     author_login: <thread author login>
     body_excerpt: <first 200 chars>
     owned_by_viewer: <bool: the first comment's author is VIEWER>
-    author_rationale: <none | design-decision | out-of-scope | refuted-with-evidence | fix-promised | disputed, read from the newest human reply AFTER the first comment>
+    author_rationale: <none | design-decision | out-of-scope | refuted-with-evidence | fix-promised | disputed, read from the newest human reply AFTER the first comment that takes a position on the finding; a reply that only thanks or acknowledges, such as "Thanks", is skipped, while one that concedes, such as "you're right", sets none>
     rationale_pointer: <doc path, ADR, issue number, test name, measurement, or file:line cited in the reply, or none>
     rationale_reply: <full text of the human reply that set author_rationale, or none>
     rationale_comment_id: <databaseId of that reply, or none>
@@ -88,8 +88,8 @@ Each rendered summary carries every prior entry forward, so a body update never 
 From the same list, collect every entry with `is_resolved == false` AND `is_outdated == false`,
 keeping its `file`, `line` (absent for file-level threads), `author_login`, and `body_excerpt`.
 Outdated threads stay out: the code moved under them, so they no longer describe the head
-under review. A viewer-owned thread holding any comment `ANSWERED_COMMENTS` records as `accepted`
-stays out too: `/review-pr` already withdrew that finding, even if resolving its thread failed. Threads whose first comment carries `<!-- review-pr:origin=pre-existing -->` stay out too: that code
+under review. A viewer-owned thread whose newest comment in `ANSWERED_COMMENTS` is recorded as `accepted`
+stays out too: `/review-pr` already withdrew that finding, even if resolving its thread failed. A later `correction` or `needs-pointer` answer on the same thread puts it back. Threads whose first comment carries `<!-- review-pr:origin=pre-existing -->` stay out too: that code
 predates the PR, so its thread is never this PR's to clear. The marker lives in the comment,
 so this works before the state file loads and when no state file exists. `OPEN_BLOCKERS` never feeds dedupe. Dedupe still drops re-reported findings
 so no duplicate threads are created. `OPEN_BLOCKERS` feeds the Phase 3 step 8 and step 9
