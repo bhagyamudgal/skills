@@ -350,7 +350,7 @@ def assign_labels(findings):
 
 
 def route(finding, diff_files, body_only):
-    if finding.get("thread_id"):
+    if finding.get("thread_id") and not body_only:
         return "existing"
     path = finding.get("file")
     if body_only or not path or path not in diff_files:

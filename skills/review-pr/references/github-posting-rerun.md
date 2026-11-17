@@ -181,7 +181,7 @@ A reply posted outside a pending review becomes its own submitted `COMMENTED` re
 
 For each entry, in order, with `INDEX` from 0:
 
-1. Re-read the thread's comments, paginated as in Phase 1. When a `VIEWER` comment outside a `PENDING` review already carries `review-pr:reply to=<answers_comment_id>`, record `already-answered` and go to the next entry.
+1. Re-read the thread's comments, paginated as in Phase 1. When a `VIEWER` comment outside a `PENDING` review already carries `review-pr:reply to=<answers_comment_id> kind=<kind>` with this entry's `kind`, record `already-answered` and go to the next entry.
 2. Attach the frozen body. jq reads it from the file, so the shell never parses it:
 
    ```bash
@@ -200,4 +200,4 @@ Report every outcome on the terminal block's Thread replies line. Recovery fallb
 
 ### 8f. Resolve accepted dispute threads
 
-After Phase C or Step 4-rolling confirmed the review, resolve every `accepted` entry's thread, whether or not its thread reply attached: the review body already answers it. Use 8d's preflight, mutation, read-back, and outcome rules; resolving creates no review. `correction` and `needs-pointer` threads stay open for the author. A failure here never changes the verdict or the posted review, and an `accepted` thread whose resolve failed still stays out of the next run's `OPEN_BLOCKERS` through `ANSWERED_COMMENTS`.
+After Phase C or Step 4-rolling confirmed the review, resolve every `accepted` entry's thread, whether or not its thread reply attached: the review body already answers it. Use 8d's preflight, mutation, read-back, and outcome rules; resolving creates no review. Leave a thread open, recorded `left open (new reply)`, when its fresh comments hold a human reply, as defined in `phase1-timeline-state.md`, that the Phase 1 timeline lacked; the next run reads it. `correction` and `needs-pointer` threads stay open for the author. A failure here never changes the verdict or the posted review, and an `accepted` thread whose resolve failed still stays out of the next run's `OPEN_BLOCKERS` through `ANSWERED_COMMENTS`.

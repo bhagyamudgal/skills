@@ -495,6 +495,14 @@ class KeptCorrectionTest(unittest.TestCase):
     def test_kept_correction_validates(self):
         self.assertEqual(render_review.validate(kept_correction()), [])
 
+    def test_blocked_path_keeps_the_correction_in_the_body(self):
+        review = kept_correction()
+        review.update(blockers=[render_review.ENTRY_SHAPES["blockers"]],
+                      senior_approval={"approved": False, "reason": "An open thread still blocks it."})
+        review["findings"][0].update(origin="pre-existing", blame="abc1234")
+        outputs = render(review)
+        self.assertEqual((outputs["ids.json"][0]["tier"], "### Additional findings" in outputs["summary.md"]), ("body", True))
+
     def test_label_shaped_kept_thread_is_rejected(self):
         review = kept_correction()
         review["findings"][0]["thread_id"] = "S1"

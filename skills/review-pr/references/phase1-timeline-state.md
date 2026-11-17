@@ -64,7 +64,7 @@ prior_findings:
     author_login: <thread author login>
     body_excerpt: <first 200 chars>
     owned_by_viewer: <bool: the first comment's author is VIEWER>
-    author_rationale: <none | design-decision | out-of-scope | refuted-with-evidence | fix-promised | disputed, read from human replies AFTER the first comment, skipping any reply ANSWERED_COMMENTS records as `correction` or `needs-pointer`>
+    author_rationale: <none | design-decision | out-of-scope | refuted-with-evidence | fix-promised | disputed, read from the newest human reply AFTER the first comment>
     rationale_pointer: <doc path, ADR, issue number, test name, measurement, or file:line cited in the reply, or none>
     rationale_reply: <full text of the human reply that set author_rationale, or none>
     rationale_comment_id: <databaseId of that reply, or none>
@@ -81,14 +81,14 @@ gh pr view <url> --json reviews > "$REVIEWS_FILE" \
   || { echo "GitHub reviews query failed; stop before reading answers or the round" >&2; exit 1; }
 ```
 
-Each rendered summary carries every prior entry forward, so a body update never loses one. Read every human reply on every prior thread, open or resolved, before any prior finding is carried, re-verified, or re-raised. An author who answers a finding often leaves the thread open for a human reviewer. Code that still exhibits the issue is not by itself grounds to raise it again. A thread is **answered** when its `author_rationale` is design-decision (points at a doc, ADR, or issue), out-of-scope (points at a follow-up issue), or refuted-with-evidence (names a test, measurement, counterexample, or file:line). A reply that disagrees with the finding but cites no pointer sets `disputed`, which is not answered; any other reply without a pointer sets `none`. Record an answered finding as `dismissed` or `wontfix` in the state file with that rationale in `dismissal_reason` and the code condition it rests on in `depends_on`, and do not re-raise it. "The new commits did not touch this code" is never a reason to re-raise an answered finding. The author already said why the code stays. Re-raise with `Category: Prior-finding-correction` only when the thread is not answered, the reply promised a fix the diff shows never landed, a later commit voided `depends_on`, or you have new evidence that a specific claim in `rationale_reply` is false. A correction on an answered thread quotes the claim it refutes, names the new evidence, and links the prior thread.
+Each rendered summary carries every prior entry forward, so a body update never loses one. Read every human reply on every prior thread, open or resolved, before any prior finding is carried, re-verified, or re-raised. An author who answers a finding often leaves the thread open for a human reviewer. Code that still exhibits the issue is not by itself grounds to raise it again. A thread is **answered** when its `author_rationale` is design-decision (points at a doc, ADR, or issue), out-of-scope (points at a follow-up issue), or refuted-with-evidence (names a test, measurement, counterexample, or file:line). A thread whose `rationale_comment_id` `ANSWERED_COMMENTS` records as `correction` or `needs-pointer` is not answered: `/review-pr` already ruled that reply insufficient. A reply that disagrees with the finding but cites no pointer sets `disputed`, which is not answered; any other reply without a pointer sets `none`. Record an answered finding as `dismissed` or `wontfix` in the state file with that rationale in `dismissal_reason` and the code condition it rests on in `depends_on`, and do not re-raise it. "The new commits did not touch this code" is never a reason to re-raise an answered finding. The author already said why the code stays. Re-raise with `Category: Prior-finding-correction` only when the thread is not answered, the reply promised a fix the diff shows never landed, a later commit voided `depends_on`, or you have new evidence that a specific claim in `rationale_reply` is false. A correction on an answered thread quotes the claim it refutes, names the new evidence, and links the prior thread.
 
 ### Derive `OPEN_BLOCKERS`
 
 From the same list, collect every entry with `is_resolved == false` AND `is_outdated == false`,
 keeping its `file`, `line` (absent for file-level threads), `author_login`, and `body_excerpt`.
 Outdated threads stay out: the code moved under them, so they no longer describe the head
-under review. A viewer-owned thread whose `rationale_comment_id` `ANSWERED_COMMENTS` records as `accepted`
+under review. A viewer-owned thread holding any comment `ANSWERED_COMMENTS` records as `accepted`
 stays out too: `/review-pr` already withdrew that finding, even if resolving its thread failed. Threads whose first comment carries `<!-- review-pr:origin=pre-existing -->` stay out too: that code
 predates the PR, so its thread is never this PR's to clear. The marker lives in the comment,
 so this works before the state file loads and when no state file exists. `OPEN_BLOCKERS` never feeds dedupe. Dedupe still drops re-reported findings

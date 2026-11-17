@@ -21,11 +21,11 @@ import unittest
 import review_pr_load
 import review_pr_tokens
 
-CORPUS_CEILING = 227140
+CORPUS_CEILING = 227464
 CEILINGS = {
-    "parallel-standard/round-1": (158265, 158265, 15),
-    "parallel-chunked/round-1": (159800, 159800, 15),
-    "parallel-standard/with-step6-reload": (158265, 171161, 15),
+    "parallel-standard/round-1": (158354, 158354, 15),
+    "parallel-chunked/round-1": (159889, 159889, 15),
+    "parallel-standard/with-step6-reload": (158354, 171250, 15),
 }
 DELTA_CEILINGS = {"delta_distinct": 5755, "delta_with_repeats": 5755,
                   "network": 0}
