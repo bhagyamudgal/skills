@@ -10,7 +10,7 @@ For "all open PRs", enumerate via `gh pr list --json number,url,title --limit 50
 
 - Main context is the **orchestrator**: oversight only. It never reviews a PR inline, regardless of `SIZE_MODE` (size routing applies inside each subagent, not in main).
 - Spawn **ONE `general-purpose` subagent PER PR**. Each subagent runs the single-PR flow (Phases 1-3) independently against its own PR and returns its Phase 4 terminal block as its result. Dispatch in parallel batches of 3-4.
-- Subagents NEVER post to GitHub and NEVER ask questions. They return the complete surviving finding set, semantic verdict, `IS_SELF_REVIEW` value, `DISPUTE_REPLIES`, and `ANSWERED_COMMENTS` to the orchestrator, which posts each review after every subagent has returned.
+- Subagents NEVER post to GitHub and NEVER ask questions. They return the complete surviving finding set, semantic verdict, `IS_SELF_REVIEW` value, `DISPUTE_REPLIES`, and `ANSWERED_COMMENTS` to the orchestrator, which posts each review after every subagent has returned. They also return each finding Phase 3 dropped as `answered in thread`, with its `id`, `file`, `enclosing_symbol`, `rule_class`, `severity`, and matching `ANSWERED_THREADS` entry, so Phase 4 step 2 can write its state entry.
 - When any nested dispatch from a per-PR subagent fails, it runs inline, in order, every lens its `SIZE_MODE` and flags would have dispatched: Subagent 1, Subagent 2 when `INCLUDE_SILENT_FAILURE_HUNTER = true`, Subagent 3 only in `parallel-chunked`, Subagent 4 when `INCLUDE_SECURITY_REVIEWER = true`, then the Phase 3 verifier checks. Its Timing block writes `Reviewers: inline (host blocks nested dispatch)` and marks each lens `run` or `skipped (<reason>)`. The orchestrator sets `INCOMPLETE_COVERAGE=true` for a PR whose required lens could not run, `false` for every other PR, and passes it to the posting flow, which posts `COMMENT` instead of `APPROVE` when it is true. The orchestrator writes that lens and the reason into the review JSON's `summary`, since `render_review.py` has no lens field.
 
 ### `<SKILL_DIR>` on the batch branch
@@ -31,7 +31,7 @@ Substitute this same SKILL_DIR value into every prompt YOU dispatch: Subagent 1,
 Subagent 3, and the Phase 3 verifiers all carry `<SKILL_DIR>` placeholders, and you
 are the only source of the value they have.
 
-Do not post to GitHub and do not ask questions. Return your Phase 4 terminal block, `IS_SELF_REVIEW`, `DISPUTE_REPLIES`, `ANSWERED_COMMENTS`, and the complete surviving finding payload the orchestrator needs to post.
+Do not post to GitHub and do not ask questions. Return your Phase 4 terminal block, `IS_SELF_REVIEW`, `DISPUTE_REPLIES`, `ANSWERED_COMMENTS`, each finding Phase 3 dropped as `answered in thread` with its `id`, `file`, `enclosing_symbol`, `rule_class`, `severity`, and matching `ANSWERED_THREADS` entry, and the complete surviving finding payload the orchestrator needs to post.
 ```
 
 ---

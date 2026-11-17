@@ -21,7 +21,7 @@ import unittest
 import review_pr_load
 import review_pr_tokens
 
-CORPUS_CEILING = 227464
+CORPUS_CEILING = 227849
 CEILINGS = {
     "parallel-standard/round-1": (158354, 158354, 15),
     "parallel-chunked/round-1": (159889, 159889, 15),
