@@ -37,36 +37,36 @@ Ask every question through the AskUserQuestion tool, so each decision reaches me
 - If my answer is non-committal, something like "not sure" or "whatever you think" or "both", do not record it. Restate the trade-off in one sentence and re-ask the same decision once. Record the second answer either way.
 - When an answer contradicts an earlier one or leaves a dependency unresolved, say which one and re-ask before moving on.
 - Ground every question before asking it. Check each claim in its context line, its example, and its options to the proof its kind needs. Check each option against the project's written rules in CLAUDE.md or AGENTS.md and name any rule it breaks. When the code answers the question and the plan does not propose changing that behavior, record that answer with its `file:line` and move on without asking. Otherwise build the options and the recommendation from what you found, and cite the `file:line` in the context line. When no code bears on the decision, say so in the context line.
-- Recommend from data when data can decide. When a local database, a log, run history, or a browser measurement would settle the choice, read it before you pick the recommended option and put the figure in the context line. Ask before you connect to anything live.
+- When a local database, a log, run history, or a browser measurement would settle the choice, read it before you pick the recommended option and put the figure in the context line. Ask before you connect to anything live.
 - When a check corrects a fact behind a decision I already answered, say what was wrong and re-ask that decision with the corrected fact.
 - If I say "enough" or "done" or "stop" or "skip the rest", append per the file rule and post per the issue rule below with the decisions captured so far, then announce "Grill complete." and exit.
-- Every "Grill complete." announcement ends with a `Pending on you:` line that names each decision or action still waiting on me, or reads `Pending on you: nothing`.
+- Every "Grill complete." announcement ends with a `Pending on you:` line that names each decision, action, or decision-critical `unverified` row still waiting on me, or reads `Pending on you: nothing`.
 - When every numbered decision has a recorded answer and no answer has opened a new one, move to the verification pass below instead of closing out. If an answer opens a new decision, append it to the list and say so.
 
 ## Verification pass
 
 The decisions are settled. Now prove the plan is true before I code.
 
-- Print the claim ledger: one numbered row for every claim the plan or a recorded decision rests on. Take rows from the plan, the settled list, and the context line and chosen option of every answered question. Each row holds the claim, its kind, its proof, and a result of `holds`, `corrected`, or `unverified`.
+- Print the claim ledger: one numbered row for every claim the plan or a recorded decision rests on. Take rows from the plan, the settled list, and the context line, example, and options of every answered question. Each row holds the claim, its kind, its proof, and a result of `holds`, `corrected`, or `unverified`.
 - Fill each row's proof with the observation its kind needs: the command you ran or the `file:line` you read, and what it showed. An earlier read counts when it already met that bar. Otherwise make the observation now.
 - Fix what you can verify without asking, and say what you changed in one line each.
 - Hand the decision-critical rows to one fresh agent that has not seen this conversation. A row is decision-critical when a recorded decision would change if it were false. Give it each row as a neutral question, so "no retry exists on the upload path" becomes "is there any retry on the upload path?". Add the proof rule for the row's kind and the repo path. Withhold your answer, your proof, and the decision the row supports. Ask what it observed and where, row by row.
-- Reconcile its report with the ledger. Where its observation disagrees with yours, make the observation that tells the two apart, then correct the row. With no agent tool in this host, mark the ledger `no independent recheck` and carry on.
+- Reconcile its report with the ledger. Where its observation disagrees with yours, make the observation that tells the two apart, then correct the row. With no agent tool, mark the ledger `no independent recheck` and carry on.
 - Ask about only what you cannot resolve on your own. Ask it under the same rules as a decision question.
 - Never ask me to confirm a fact you could have checked. Never batch questions.
-- When a decision is re-asked, here or in the challenge pass, add the new answer's claims to the ledger and check them the same way.
+- When a decision is re-asked, here or in the challenge pass, add the new answer's claims to the ledger and check them.
 - The pass is done when every row reads `holds`, `corrected`, or `unverified`, the fresh agent's report is reconciled or the ledger is marked `no independent recheck`, and the final ledger is printed. Then move to the challenge pass.
 
 ## Challenge pass
 
-The ledger is printed. Now attack the plan the way its reviewer will, before I build it. Work through each lens and print what you observed under it.
+Now attack the plan the way its reviewer will, before I build it. Work through each lens and print what you observed under it.
 
 - **Premise.** Print one line per decision: the fact it cannot work without, and where you observed it. Look for that fact outside the code the plan changes, in whoever has to act for the decision to do anything: a user, a caller, an agent, another service. Drop any decision that exists only because of a decision whose premise failed, name each one you drop, and correct the total.
 - **Regression.** For each piece of code the plan changes, list every other path that reaches it: callers, other entry points, other writers, other screens, tests that pin today's behavior, open PRs on the same files. Say what happens to each.
 - **Gaps.** For each new behavior, walk the states no question covered: empty, deleted, filtered out, pending, unauthorized, a second locale or theme. In each state, take the action the plan is about, follow the plan's rule to what the user ends up seeing, and check it against the reason the plan exists. A state where the original problem comes back, or a new one appears, becomes a new decision.
 - **Direction.** Say whether a smaller plan reaches the same result and whether the change improves the product for its user, from data when data exists.
 
-A finding that changes a decision reopens it as a question under the same rules. After my answer, pick the challenge pass up at the lens you were on. When every decision has its premise line, every lens is printed, and no decision is open, close out.
+A finding that changes a decision reopens it as a question under the same rules. After my answer, rerun each lens the new answer affects. When every decision has its premise line, every lens is printed, the ledger is reprinted with any new rows, and no decision is open, close out.
 
 ## Close out
 
