@@ -76,7 +76,7 @@ Every row below is one installable skill (`skills/<name>/SKILL.md`, which is wha
 | `fix-ci` | Fix a red check on any PR. Read the failing log first, rerun a flake at most once per run counting earlier attempts, stop when the base is red too, fix forward without force-push or a weakened check, run `done`, push behind a `preflight-mutations` card, and stop after two rounds |
 | `audit-ticket` | Audit a stale GitHub issue against current code, giving per-requirement verdicts with file:line evidence that is re-checked before printing, then update, sunset, or split it |
 | `fix-ts-errors` | Fix TypeScript errors and loop the **workspace** type-check until it exits 0. A file whose squiggles cleared is not green |
-| `grill-me` | Interview-style stress-test of a plan, one decision at a time, then verification of every factual claim against the codebase. No "grill complete" until every decision has an answer and every claim is checked |
+| `grill-me` | Interview-style stress-test of a plan, one decision at a time. A printed claim ledger then proves every fact the decisions rest on, a fresh agent rechecks the decision-critical ones, and a challenge pass attacks the plan for false premises, regressions and gaps. No "grill complete" until every decision has an answer and every claim reads holds, corrected or unverified |
 | `project-discovery` | Discovery interview before writing code on a new project. Interrogate requirements and stack, then emit `CLAUDE.md`, `PATTERNS.md` and the `lib/` scaffolding |
 | `discover-product-domain` | Generate through independent naming lenses, remix with the user, and verify their exact standard-price `.com` domains |
 | `design-director` | Senior creative-director direction. Eight modes cover brief simplification, staged logo work, layout, typography, color, critique, brand identity, and production asset finalization |
@@ -126,7 +126,7 @@ Several skills use progressive disclosure. `SKILL.md` holds the spine, and branc
 /audit-ticket <n>    # Audit a stale issue against current code, then update or sunset it
 /fix-ts-errors       # Fix TypeScript errors, loop until the workspace check is green
 /browser-qa          # Drive a UI flow in a real browser, or run endpoint QA with tabulated results
-/grill-me            # Interview-style plan/design refinement, then fact-check against the codebase
+/grill-me            # Interview-style plan/design refinement, then a claim ledger and a challenge pass against the codebase
 /project-discovery   # Plan a new project
 /discover-product-domain  # Generate, remix, and verify product .com names
 /design-director     # Design + branding direction

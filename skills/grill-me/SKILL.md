@@ -3,9 +3,23 @@ name: grill-me
 description: Grill the user on a plan one question at a time until every decision is settled, then check the plan's facts against the codebase. Use when the user says "grill me", "harden", "check" or "verify" a plan, or passes a plan file to be interrogated.
 ---
 
-Interview me relentlessly about every aspect of this plan. Walk down each branch of the decision tree and settle dependencies between decisions one by one. I would rather get grilled now than rebuild later. Once the decisions are settled, check every factual claim in the plan against the real codebase before I code.
+Interview me relentlessly about every aspect of this plan. Walk down each branch of the decision tree and settle dependencies between decisions one by one. I would rather get grilled now than rebuild later. Once the decisions are settled, prove every fact they rest on and attack the plan before I code.
 
-If I invoke you with a file path argument, read that file first and grill its contents as the plan. If the decisions are already settled and I ask only for verification, skip to the verification pass below.
+If I invoke you with a file path argument, read that file first and grill its contents as the plan. If the decisions are already settled and I ask only for verification, skip to the verification pass below. The challenge pass still follows it.
+
+## What counts as checked
+
+Every fact you state to me is a claim, wherever it appears: the settled list, a question's context line, an option's description, an example, or the plan itself. A claim is checked when you observed it with a tool in this session. The issue text, the plan, a subagent's summary, a symbol's name, and your memory of the code are leads to follow.
+
+| Kind | Looks like | Proof |
+|---|---|---|
+| Exists | a path, symbol, flag, command, CI job | Open it at the cited line. |
+| Behaves | "X already blocks, handles, always, never does Y" | Read every path that reaches X: each caller, each writer, each entry point. Name the case most likely to break the claim and check that case. Run it when a test, query, or command can show the result. |
+| Absent or complete | "no X exists", "these are all the sites", "that cast is gone" | Search the whole repo for what the thing does under at least two patterns, beyond the name the ticket uses. Run each pattern against a known hit first, so an empty result means absent and not a broken pattern. |
+| Number | a count, size, duration, rate | Compute or measure it from the source: a local database, the logs, the browser, a script. Label anything else an estimate. |
+| Works | an option you offer, the approach you recommend | Name the one fact it cannot work without and observe it in the code or system that has to cooperate. |
+
+A command that errors or prints nothing is no observation. State a claim you could not check as unverified and name what would check it.
 
 ## Rules
 
@@ -22,7 +36,9 @@ Ask every question through the AskUserQuestion tool, so each decision reaches me
 - After each answer, acknowledge the choice in 1 sentence max, ending with `<n> of <total> resolved`, then ask the next question.
 - If my answer is non-committal, something like "not sure" or "whatever you think" or "both", do not record it. Restate the trade-off in one sentence and re-ask the same decision once. Record the second answer either way.
 - When an answer contradicts an earlier one or leaves a dependency unresolved, say which one and re-ask before moving on.
-- Ground every question in the code before asking it: read the files and symbols it rests on. When the code answers it and the plan does not propose changing that behavior, record that answer with its `file:line` and move on without asking. Otherwise build the options and the recommendation from what you found, and cite the `file:line` in the context line. When no code bears on the decision, say so in the context line.
+- Ground every question before asking it. Check each claim in its context line, its example, and its options to the proof its kind needs. Check each option against the project's written rules in CLAUDE.md or AGENTS.md and name any rule it breaks. When the code answers the question and the plan does not propose changing that behavior, record that answer with its `file:line` and move on without asking. Otherwise build the options and the recommendation from what you found, and cite the `file:line` in the context line. When no code bears on the decision, say so in the context line.
+- Recommend from data when data can decide. When a local database, a log, run history, or a browser measurement would settle the choice, read it before you pick the recommended option and put the figure in the context line. Ask before you connect to anything live.
+- When a check corrects a fact behind a decision I already answered, say what was wrong and re-ask that decision with the corrected fact.
 - If I say "enough" or "done" or "stop" or "skip the rest", append per the file rule and post per the issue rule below with the decisions captured so far, then announce "Grill complete." and exit.
 - Every "Grill complete." announcement ends with a `Pending on you:` line that names each decision or action still waiting on me, or reads `Pending on you: nothing`.
 - When every numbered decision has a recorded answer and no answer has opened a new one, move to the verification pass below instead of closing out. If an answer opens a new decision, append it to the list and say so.
@@ -31,10 +47,29 @@ Ask every question through the AskUserQuestion tool, so each decision reaches me
 
 The decisions are settled. Now prove the plan is true before I code.
 
-- List every factual claim in the plan: file paths, symbol names, numbers, commands, flags, CI job names.
-- Check each claim yourself with Grep, Glob, Read, or Agent. Fix what you can verify without asking, and say what you changed in one line each.
+- Print the claim ledger: one numbered row for every claim the plan or a recorded decision rests on. Take rows from the plan, the settled list, and the context line and chosen option of every answered question. Each row holds the claim, its kind, its proof, and a result of `holds`, `corrected`, or `unverified`.
+- Fill each row's proof with the observation its kind needs: the command you ran or the `file:line` you read, and what it showed. An earlier read counts when it already met that bar. Otherwise make the observation now.
+- Fix what you can verify without asking, and say what you changed in one line each.
+- Hand the decision-critical rows to one fresh agent that has not seen this conversation. A row is decision-critical when a recorded decision would change if it were false. Give it each row as a neutral question, so "no retry exists on the upload path" becomes "is there any retry on the upload path?". Add the proof rule for the row's kind and the repo path. Withhold your answer, your proof, and the decision the row supports. Ask what it observed and where, row by row.
+- Reconcile its report with the ledger. Where its observation disagrees with yours, make the observation that tells the two apart, then correct the row. With no agent tool in this host, mark the ledger `no independent recheck` and carry on.
 - Ask about only what you cannot resolve on your own. Ask it under the same rules as a decision question.
 - Never ask me to confirm a fact you could have checked. Never batch questions.
+- When a decision is re-asked, here or in the challenge pass, add the new answer's claims to the ledger and check them the same way.
+- The pass is done when every row reads `holds`, `corrected`, or `unverified`, the fresh agent's report is reconciled or the ledger is marked `no independent recheck`, and the final ledger is printed. Then move to the challenge pass.
+
+## Challenge pass
+
+The ledger is printed. Now attack the plan the way its reviewer will, before I build it. Work through each lens and print what you observed under it.
+
+- **Premise.** Print one line per decision: the fact it cannot work without, and where you observed it. Look for that fact outside the code the plan changes, in whoever has to act for the decision to do anything: a user, a caller, an agent, another service. Drop any decision that exists only because of a decision whose premise failed, name each one you drop, and correct the total.
+- **Regression.** For each piece of code the plan changes, list every other path that reaches it: callers, other entry points, other writers, other screens, tests that pin today's behavior, open PRs on the same files. Say what happens to each.
+- **Gaps.** For each new behavior, walk the states no question covered: empty, deleted, filtered out, pending, unauthorized, a second locale or theme. In each state, take the action the plan is about, follow the plan's rule to what the user ends up seeing, and check it against the reason the plan exists. A state where the original problem comes back, or a new one appears, becomes a new decision.
+- **Direction.** Say whether a smaller plan reaches the same result and whether the change improves the product for its user, from data when data exists.
+
+A finding that changes a decision reopens it as a question under the same rules. After my answer, pick the challenge pass up at the lens you were on. When every decision has its premise line, every lens is printed, and no decision is open, close out.
+
+## Close out
+
 - If I invoked you with a file path, append the numbered decisions and the verified corrections under a `## Decisions` heading in that file before announcing "Grill complete."
 - If the context holds a GitHub issue as a URL, number, or issue body, post an issue comment for tracking before announcing "Grill complete." The body holds the numbered decisions and the verified corrections followed by the full plan, or whatever is captured so far on early exit. Comment on the exact issue from context with `gh issue comment <url> --body`. When context holds only a number, resolve its repository first instead of assuming the checkout.
-- When every claim is verified or answered, announce "Grill complete." with the numbered decisions and the corrections.
+- Announce "Grill complete." with the numbered decisions, the corrections, and every row still `unverified`.
