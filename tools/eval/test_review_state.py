@@ -52,6 +52,11 @@ class HighestPostedRoundTest(unittest.TestCase):
         with mock.patch.object(review_state.subprocess, "run", return_value=reviews):
             self.assertEqual(review_state.highest_posted_round(REPO, PR), 13)
 
+    def test_oversized_round_marker_is_ignored_instead_of_crashing(self):
+        reviews = gh_reviews("<!-- review-pr:run sha=abc round=13 -->", f"<!-- review-pr:run sha=x round={'9' * 5000} -->")
+        with mock.patch.object(review_state.subprocess, "run", return_value=reviews):
+            self.assertEqual(review_state.highest_posted_round(REPO, PR), 13)
+
     def test_no_marker_reads_as_round_zero(self):
         with mock.patch.object(review_state.subprocess, "run", return_value=gh_reviews("LGTM")):
             self.assertEqual(review_state.highest_posted_round(REPO, PR), 0)

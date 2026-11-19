@@ -18,7 +18,7 @@ import tempfile
 
 STATUSES = ["active", "resolved", "dismissed", "wontfix", "regression"]
 IDENTITY_FIELDS = ["file", "enclosing_symbol", "rule_class"]
-RUN_MARKER_ROUND = re.compile(r"review-pr:run [^>]*round=([0-9]+)")
+RUN_MARKER_ROUND = re.compile(r"review-pr:run [^>]*round=([0-9]{1,6})(?![0-9])")
 REPO_NAME = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 PROBLEM_EXIT = 2
 LEGACY_EXIT = 3
