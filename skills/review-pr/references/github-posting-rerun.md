@@ -11,30 +11,39 @@ Every review posted by `/review-pr` includes a hidden marker comment in the body
 <!-- review-pr:run sha=<head_sha_at_post_time> round=<round_number> -->
 ```
 
-Every posting run maps the semantic verdict first, per "Event mapping" in `${CLAUDE_SKILL_DIR}/references/github-posting.md`. Then query for prior tagged reviews:
+Every posting run maps the semantic verdict first, per "Event mapping" in `${CLAUDE_SKILL_DIR}/references/github-posting.md`. Then query every page of prior tagged reviews; past 100 reviews, the newest sits on a later page:
 
 ```bash
-PRIOR_REVIEWS_JSON=$(gh api graphql -f query='
-  query($owner:String!, $repo:String!, $num:Int!) {
+PRIOR_REVIEW_PAGES=$(gh api graphql --paginate --slurp -f query='
+  query($owner:String!, $repo:String!, $num:Int!, $endCursor:String) {
     repository(owner:$owner, name:$repo) {
       pullRequest(number:$num) {
-        reviews(first:100) { nodes { id databaseId state submittedAt body } }
+        reviews(first:100, after:$endCursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes { id databaseId state submittedAt body }
+        }
       }
     }
   }
-' -f owner=<owner> -f repo=<repo> -F num=<num>)
+' -f owner=<owner> -f repo=<repo> -F num=<num>) \
+  || { echo "prior review lookup failed; stop before choosing a posting branch" >&2; exit 1; }
+PRIOR_REVIEWS_JSON=$(printf '%s' "$PRIOR_REVIEW_PAGES" \
+  | jq -e 'if type == "array" and length > 0 and all(.[]; .data.repository.pullRequest.reviews.nodes | type == "array")
+           then {data: {repository: {pullRequest: {reviews: {nodes: [.[].data.repository.pullRequest.reviews.nodes[]]}}}}}
+           else error("unexpected review pages") end') \
+  || { echo "prior review pages unreadable; stop before choosing a posting branch" >&2; exit 1; }
 
-PRIOR_REVIEW_NODE_ID=$(echo "$PRIOR_REVIEWS_JSON" | jq -r '
+PRIOR_REVIEW_NODE_ID=$(printf '%s' "$PRIOR_REVIEWS_JSON" | jq -r '
     [.data.repository.pullRequest.reviews.nodes[]
      | select(.body | test("<!-- review-pr:run"))]
     | sort_by(.submittedAt) | last | .id // empty
   ')
-PRIOR_REVIEW_DB_ID=$(echo "$PRIOR_REVIEWS_JSON" | jq -r '
+PRIOR_REVIEW_DB_ID=$(printf '%s' "$PRIOR_REVIEWS_JSON" | jq -r '
     [.data.repository.pullRequest.reviews.nodes[]
      | select(.body | test("<!-- review-pr:run"))]
     | sort_by(.submittedAt) | last | .databaseId // empty
   ')
-PRIOR_REVIEW_STATE=$(echo "$PRIOR_REVIEWS_JSON" | jq -r '
+PRIOR_REVIEW_STATE=$(printf '%s' "$PRIOR_REVIEWS_JSON" | jq -r '
     [.data.repository.pullRequest.reviews.nodes[]
      | select(.body | test("<!-- review-pr:run"))]
     | sort_by(.submittedAt) | last | .state // empty

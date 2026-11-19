@@ -137,7 +137,7 @@ For each surviving finding with a `Suggested fix:`:
    rewrite it into one that doesn't trade the defect for a bigger one, or keep the
    finding and replace the suggestion with `no safe one-line fix, needs design`.
 
-3. **Record it.** The `inverse_risk` string is persisted to `.claude/review-state/<pr>.yml`
+3. **Record it.** The `inverse_risk` string is persisted to `.claude/review-state/<pr>.json`
    on the finding. Round N+1 checks it FIRST, before hunting anything new. See step 4.9.
 
 `/fix-pr-review` implements these suggestions verbatim. An unvetted one-sentence

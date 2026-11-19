@@ -14,6 +14,11 @@ import re
 import sys
 import tempfile
 
+SCRIPT_DIR = str(pathlib.Path(__file__).resolve().parent)
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+import review_state
+
 SEVERITIES = ["Critical", "Serious", "Moderate", "Minor"]
 SEVERITY_EMOJI = {"Critical": "🔴", "Serious": "🟠", "Moderate": "🟡", "Minor": "🔵"}
 SEVERITY_PREFIX = {"Critical": "C", "Serious": "S", "Moderate": "M", "Minor": "m"}
@@ -462,7 +467,7 @@ def summary_body(review, routed, meta, details_line):
     approval = review["senior_approval"]
     verdict = review["verdict"]
     head = [
-        f"<!-- review-pr:run sha={meta['head_sha']} round={meta['round']} -->",
+        review_state.run_marker(meta["head_sha"], meta["round"]),
         f"## PR Review: #{meta['pr']}",
         f"{VERDICT_EMOJI[verdict]} {verdict} | {badges([finding for finding, _ in routed])}",
         f"**Senior engineer approval**: {'✅ Yes' if approval['approved'] else '❌ No'}, {approval['reason']}",
@@ -555,6 +560,8 @@ def meta_problems(args):
         problems.append("--pr must be a PR number of at least 1")
     if args.round < 1:
         problems.append("--round must be at least 1")
+    if not review_state.REPO_NAME.fullmatch(args.repo):
+        problems.append("--repo must be <owner>/<name>")
     if not re.fullmatch(r"[0-9a-f]{40}", args.head_sha):
         problems.append("--head-sha must be the full 40-character commit SHA")
     if pathlib.Path(args.out).exists():
@@ -564,23 +571,42 @@ def meta_problems(args):
     return problems
 
 
+def round_problems(args):
+    try:
+        posted = review_state.highest_posted_round(args.repo, args.pr)
+    except review_state.StateError as error:
+        return [f"cannot check --round against the PR: {error}"]
+    if args.supplemental:
+        if args.round != posted:
+            return [f"a supplemental review keeps the round of the review it completes; --round {args.round} is not that round"]
+        return []
+    if args.round <= posted:
+        return [f"--round {args.round} is not above the rounds already posted on this PR; rerun Phase 1 "
+                f"(references/phase1-timeline-state.md) and render with the CURRENT_ROUND that review_state.py round prints"]
+    return []
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("review", nargs="?", help="review JSON file")
     parser.add_argument("--diff", help="the staged diff.full.patch, used to route findings to line, file or body")
     parser.add_argument("--out", help="new directory for the rendered files")
+    parser.add_argument("--repo", help="<owner>/<name> of the PR, checked for the highest posted round")
     parser.add_argument("--pr", type=int, help="PR number")
     parser.add_argument("--head-sha", help="the pinned head commit SHA")
     parser.add_argument("--round", type=int, help="CURRENT_ROUND from Phase 1")
+    parser.add_argument("--supplemental", action="store_true",
+                        help="render the Step 7 supplemental review, which keeps the round of the review it completes")
     parser.add_argument("--example", action="store_true", help="print a valid input file and exit")
     args = parser.parse_args(argv)
     if args.example:
         print(json.dumps({**EXAMPLE, "_entry_shapes": ENTRY_SHAPES}, ensure_ascii=False, indent=2))
         return 0
-    if None in (args.review, args.diff, args.out, args.pr, args.head_sha, args.round):
-        parser.error("review, --diff, --out, --pr, --head-sha and --round are required")
+    if None in (args.review, args.diff, args.out, args.repo, args.pr, args.head_sha, args.round):
+        parser.error("review, --diff, --out, --repo, --pr, --head-sha and --round are required")
     review, diff_text, problems = read_inputs(args.review, args.diff)
     problems = problems or (meta_problems(args) + validate(review))
+    problems = problems or round_problems(args)
     if problems:
         print("\n".join(problems), file=sys.stderr)
         return 2

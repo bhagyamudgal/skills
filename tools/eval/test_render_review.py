@@ -5,6 +5,7 @@ import json
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 from contextlib import redirect_stderr, redirect_stdout
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[2] / "skills" / "review-pr" / "scripts" / "render_review.py"
@@ -15,6 +16,7 @@ SPEC.loader.exec_module(render_review)
 SHA = "0123456789abcdef0123456789abcdef01234567"
 META = {"pr": 123, "head_sha": SHA, "round": 2}
 PATH = "apps/backend/src/import/address.ts"
+REPO = "acme/shop"
 
 DIFF = f"""diff --git a/{PATH} b/{PATH}
 --- a/{PATH}
@@ -618,6 +620,11 @@ class ValidationTest(unittest.TestCase):
 
 
 class MainTest(unittest.TestCase):
+    def setUp(self):
+        self.posted_round = mock.patch.object(render_review.review_state, "highest_posted_round", return_value=1)
+        self.fetch = self.posted_round.start()
+        self.addCleanup(self.posted_round.stop)
+
     def run_main(self, review, diff=DIFF.encode(), extra=None):
         with tempfile.TemporaryDirectory() as tmp:
             source = pathlib.Path(tmp) / "review.json"
@@ -625,7 +632,7 @@ class MainTest(unittest.TestCase):
             out_dir = pathlib.Path(tmp) / "render"
             source.write_text(review if isinstance(review, str) else json.dumps(review), encoding="utf-8")
             patch.write_bytes(diff)
-            args = [str(source), "--diff", str(patch), "--out", str(out_dir), "--pr", "123", "--head-sha", SHA, "--round", "2"] + (extra or [])
+            args = [str(source), "--diff", str(patch), "--out", str(out_dir), "--repo", REPO, "--pr", "123", "--head-sha", SHA, "--round", "2"] + (extra or [])
             err = io.StringIO()
             with redirect_stdout(io.StringIO()), redirect_stderr(err):
                 code = render_review.main(args)
@@ -658,7 +665,7 @@ class MainTest(unittest.TestCase):
             err = io.StringIO()
             with redirect_stdout(io.StringIO()), redirect_stderr(err):
                 code = render_review.main([str(source), "--diff", str(patch), "--out", str(pathlib.Path(tmp) / "o"),
-                                           "--pr", "1", "--head-sha", "abc123", "--round", "1"])
+                                           "--repo", REPO, "--pr", "1", "--head-sha", "abc123", "--round", "1"])
         self.assertEqual((code, "full 40-character" in err.getvalue()), (2, True))
 
     def test_missing_out_parent_is_rejected(self):
@@ -670,7 +677,7 @@ class MainTest(unittest.TestCase):
             err = io.StringIO()
             with redirect_stdout(io.StringIO()), redirect_stderr(err):
                 code = render_review.main([str(source), "--diff", str(patch), "--out", str(pathlib.Path(tmp) / "missing" / "o"),
-                                           "--pr", "1", "--head-sha", SHA, "--round", "1"])
+                                           "--repo", REPO, "--pr", "1", "--head-sha", SHA, "--round", "1"])
         self.assertEqual((code, "does not exist" in err.getvalue()), (2, True))
 
     def test_bodies_have_no_trailing_newline(self):
@@ -686,7 +693,7 @@ class MainTest(unittest.TestCase):
             err = io.StringIO()
             with redirect_stdout(io.StringIO()), redirect_stderr(err):
                 code = render_review.main([str(source), "--diff", str(patch), "--out", tmp,
-                                           "--pr", "1", "--head-sha", SHA, "--round", "1"])
+                                           "--repo", REPO, "--pr", "1", "--head-sha", SHA, "--round", "1"])
         self.assertEqual((code, "already exists" in err.getvalue()), (2, True))
 
     def test_demotion_is_reported(self):
@@ -700,6 +707,33 @@ class MainTest(unittest.TestCase):
         review["findings"] = [finding(explanation="x" * (render_review.GITHUB_BODY_LIMIT + 1))]
         code, err, files = self.run_main(review)
         self.assertEqual((code, "line_comments.json[0] is over" in err, files), (2, True, []))
+
+    def test_round_below_the_posted_round_is_rejected(self):
+        self.fetch.return_value = 13
+        code, err, files = self.run_main(example())
+        self.assertEqual((code, "--round 2 is not above the rounds already posted" in err, files), (2, True, []))
+
+    def test_round_equal_to_the_posted_round_is_rejected(self):
+        self.fetch.return_value = 2
+        self.assertEqual(self.run_main(example())[0::2], (2, []))
+
+    def test_supplemental_review_keeps_the_posted_round(self):
+        self.fetch.return_value = 2
+        self.assertEqual(self.run_main(example(), extra=["--supplemental"])[0], 0)
+
+    def test_supplemental_review_with_another_round_is_rejected(self):
+        self.fetch.return_value = 1
+        code, err, _ = self.run_main(example(), extra=["--supplemental"])
+        self.assertEqual((code, "keeps the round of the review it completes" in err), (2, True))
+
+    def test_round_check_reads_the_named_pr(self):
+        self.run_main(example())
+        self.fetch.assert_called_once_with(REPO, 123)
+
+    def test_unreachable_github_blocks_the_render(self):
+        self.fetch.side_effect = render_review.review_state.StateError("gh pr view 123 --repo acme/shop failed: offline")
+        code, err, files = self.run_main(example())
+        self.assertEqual((code, "cannot check --round against the PR" in err, files), (2, True, []))
 
 
 if __name__ == "__main__":
