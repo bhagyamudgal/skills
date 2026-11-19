@@ -726,6 +726,10 @@ class MainTest(unittest.TestCase):
         code, err, _ = self.run_main(example(), extra=["--supplemental"])
         self.assertEqual((code, "keeps the round of the review it completes" in err), (2, True))
 
+    def test_repo_without_owner_is_rejected_before_any_lookup(self):
+        code, err, files = self.run_main(example(), extra=["--repo", "acme"])
+        self.assertEqual((code, "--repo must be <owner>/<name>" in err, files, self.fetch.called), (2, True, [], False))
+
     def test_round_check_reads_the_named_pr(self):
         self.run_main(example())
         self.fetch.assert_called_once_with(REPO, 123)

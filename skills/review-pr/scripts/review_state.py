@@ -3,7 +3,7 @@
 
 round prints CURRENT_ROUND, one past the highest round posted on the PR or recorded in the state file.
 read prints the state as JSON, converting a legacy YAML state file on every read until write saves JSON.
-write validates a new state and replaces the file atomically, refusing to lower last_round or drop a stored finding.
+write validates a new state and replaces the file atomically, refusing to lower last_round, drop a stored finding or top-level block, or name another PR.
 Exits 2 with one line per problem on stderr, or 3 when a legacy YAML state file does not convert cleanly.
 """
 
@@ -21,8 +21,11 @@ IDENTITY_FIELDS = ["file", "enclosing_symbol", "rule_class"]
 RUN_MARKER_ROUND = re.compile(r"review-pr:run [^>]*round=([0-9]{1,6})(?![0-9])")
 REPO_NAME = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 PROBLEM_EXIT = 2
+COMMAND_TIMEOUT_SECONDS = 60
 LEGACY_EXIT = 3
 REPAIR_ADVICE = "if a newer ruby parses it, put that ruby first on PATH; otherwise repair the file in place until review_state.py read converts it"
+RUBY_ADVICE = "put a working ruby first on PATH, which converts it"
+STOP_ADVICE = "stop and report it, never delete or replace it"
 YAML_TO_JSON = """
 require "yaml"
 require "json"
@@ -64,16 +67,20 @@ def run_marker(head_sha, round_number):
     return f"<!-- review-pr:run sha={head_sha} round={round_number} -->"
 
 
-def run_command(arguments, missing_error):
+def run_command(arguments, failure):
     try:
-        return subprocess.run(arguments, capture_output=True, text=True, check=False)
+        return subprocess.run(arguments, capture_output=True, text=True, check=False, timeout=COMMAND_TIMEOUT_SECONDS)
     except FileNotFoundError:
-        raise missing_error
+        raise failure(f"{arguments[0]} is not installed", False)
+    except subprocess.TimeoutExpired:
+        raise failure(f"{arguments[0]} did not finish within {COMMAND_TIMEOUT_SECONDS} seconds", True)
+    except OSError as error:
+        raise failure(f"{arguments[0]} could not run: {error.strerror or error}", False)
 
 
 def highest_posted_round(repo, pr):
     completed = run_command(["gh", "pr", "view", str(pr), "--repo", repo, "--json", "reviews"],
-                            StateError(f"gh is not installed, so the rounds posted on {repo}#{pr} cannot be read"))
+                            lambda reason, timed_out: StateError(f"{reason}, so the rounds posted on {repo}#{pr} cannot be read"))
     if completed.returncode != 0:
         raise StateError(f"gh pr view {pr} --repo {repo} failed: {completed.stderr.strip()}")
     try:
@@ -97,7 +104,7 @@ def read_text(path):
     except FileNotFoundError:
         return None
     except (OSError, UnicodeDecodeError) as error:
-        raise StateError(f"cannot read state file {path}: {error}")
+        raise StateError(f"cannot read state file {path}: {error}; {STOP_ADVICE}")
 
 
 def legacy_error(path, reason, advice=REPAIR_ADVICE):
@@ -105,7 +112,7 @@ def legacy_error(path, reason, advice=REPAIR_ADVICE):
 
 
 def convert_legacy(path):
-    completed = run_command(["ruby", "-e", YAML_TO_JSON, str(path)], legacy_error(path, "ruby is not installed", "install ruby, which converts it"))
+    completed = run_command(["ruby", "-e", YAML_TO_JSON, str(path)], lambda reason, timed_out: legacy_error(path, reason, REPAIR_ADVICE if timed_out else RUBY_ADVICE))
     if completed.returncode != 0:
         raise legacy_error(path, next(iter(completed.stderr.strip().splitlines()), f"ruby exited {completed.returncode}"))
     try:
@@ -118,7 +125,7 @@ def is_count(value, minimum):
     return isinstance(value, int) and not isinstance(value, bool) and value >= minimum
 
 
-def stored_problems(state, repo, pr):
+def shape_problems(state):
     if not isinstance(state, dict):
         return ["it must hold one JSON object"]
     problems = []
@@ -126,32 +133,47 @@ def stored_problems(state, repo, pr):
         problems.append("last_round must be a whole number")
     if not isinstance(state.get("findings"), list):
         problems.append("findings must be a list")
-    if "pr" in state and state["pr"] != pr:
-        problems.append(f"it belongs to PR {state['pr']!r}, not {pr}")
-    if isinstance(state.get("repo"), str) and state["repo"].lower() != repo.lower():
-        problems.append(f"it belongs to {state['repo']}, not {repo}")
     return problems
 
 
-def read_state(path, repo, pr):
+def identity_mismatches(state, repo, pr):
+    mismatches = []
+    if "pr" in state and state["pr"] != pr:
+        mismatches.append((f"PR {state['pr']!r}", f"PR {pr}"))
+    if isinstance(state.get("repo"), str) and state["repo"].lower() != repo.lower():
+        mismatches.append((state["repo"], repo))
+    return mismatches
+
+
+def load_stored(path):
     text = read_text(path)
     if text is None:
         legacy = legacy_path(path)
         if read_text(legacy) is None:
-            return empty_state(repo, pr)
+            return None
         state = convert_legacy(legacy)
-        problems = stored_problems(state, repo, pr)
+        problems = shape_problems(state)
         if problems:
             raise legacy_error(legacy, "; ".join(problems))
         return state
     try:
         state = json.loads(text)
     except json.JSONDecodeError as error:
-        raise StateError(f"state file {path} is not valid JSON ({error}); stop and report it, never delete or replace it")
-    problems = stored_problems(state, repo, pr)
+        raise StateError(f"state file {path} is not valid JSON ({error}); {STOP_ADVICE}")
+    problems = shape_problems(state)
     if problems:
-        raise StateError("\n".join(f"state file {path}: {problem}; stop and report it, never delete or replace it" for problem in problems))
+        raise StateError("\n".join(f"state file {path}: {problem}; {STOP_ADVICE}" for problem in problems))
     return state
+
+
+def read_state(path, repo, pr):
+    stored = load_stored(path)
+    if stored is None:
+        return empty_state(repo, pr)
+    mismatches = identity_mismatches(stored, repo, pr)
+    if mismatches:
+        raise StateError("\n".join(f"state file {path} belongs to {stored_value}, not {given}; {STOP_ADVICE}" for stored_value, given in mismatches))
+    return stored
 
 
 def finding_problems(index, finding):
@@ -191,8 +213,13 @@ def stored_ids(state):
 
 
 def history_problems(path, state, drops):
-    stored = read_state(path, state["repo"], state["pr"])
-    problems = []
+    stored = load_stored(path) or empty_state(state["repo"], state["pr"])
+    problems = [f"the new state names {given}, but {path} holds {stored_value}; if {path} is not the state file for {given}, "
+                f"stop and report it, otherwise rebuild the new state from review_state.py read"
+                for stored_value, given in identity_mismatches(stored, state["repo"], state["pr"])]
+    dropped_blocks = sorted(set(stored) - set(state))
+    if dropped_blocks:
+        problems.append(f"the new state drops stored top-level blocks {', '.join(dropped_blocks)}; carry every stored block forward")
     if state["last_round"] < stored["last_round"]:
         problems.append(f"last_round {state['last_round']} is below round {stored['last_round']} already stored for this PR; "
                         f"rebuild the state from review_state.py read instead of starting over")
@@ -217,7 +244,7 @@ def replace_atomically(path, state):
     except OSError as error:
         if temporary is not None:
             pathlib.Path(temporary).unlink(missing_ok=True)
-        raise StateError(f"cannot write {path}: {error}")
+        raise StateError(f"cannot write {path}: {error}; {STOP_ADVICE}")
     sync_directory(path)
 
 

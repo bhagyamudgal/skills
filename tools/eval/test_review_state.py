@@ -66,6 +66,15 @@ class HighestPostedRoundTest(unittest.TestCase):
             with self.assertRaisesRegex(review_state.StateError, "gh is not installed"):
                 review_state.highest_posted_round(REPO, PR)
 
+    def test_gh_timeout_or_spawn_failure_exits_two(self):
+        for failure in [subprocess.TimeoutExpired(["gh"], 300), PermissionError("denied")]:
+            with self.subTest(failure=type(failure).__name__):
+                with mock.patch.object(review_state.subprocess, "run", side_effect=failure):
+                    with self.assertRaises(review_state.StateError) as raised:
+                        review_state.highest_posted_round(REPO, PR)
+                self.assertEqual((raised.exception.exit_code, "rounds posted on" in str(raised.exception), review_state.RUBY_ADVICE in str(raised.exception)),
+                                 (review_state.PROBLEM_EXIT, True, False))
+
     def test_unreadable_gh_output_raises(self):
         for stdout in ["not json", "{}", '{"reviews": null}']:
             with self.subTest(stdout=stdout):
@@ -179,6 +188,17 @@ class ReadTest(StateFileTest):
             review_state.write_state(self.path, state())
         self.assertEqual((self.path.exists(), "but its directory could not be synced" in err.getvalue()), (True, True))
 
+    def test_ruby_timeout_exits_with_the_legacy_code(self):
+        self.path.parent.mkdir(parents=True)
+        self.path.with_suffix(".yml").write_text("last_round: 3\n", encoding="utf-8")
+        with mock.patch.object(review_state.subprocess, "run", side_effect=subprocess.TimeoutExpired(review_state.YAML_TO_JSON, 300)):
+            with self.assertRaises(review_state.StateError) as raised:
+                review_state.read_state(self.path, REPO, PR)
+        message = str(raised.exception)
+        self.assertEqual((raised.exception.exit_code, f"did not finish within {review_state.COMMAND_TIMEOUT_SECONDS} seconds); {review_state.REPAIR_ADVICE}" in message,
+                          "never write JSON over it" in message, len(message) < 400),
+                         (review_state.LEGACY_EXIT, True, True, True))
+
     def test_ruby_failure_without_stderr_names_its_exit_code(self):
         self.path.parent.mkdir(parents=True)
         self.path.with_suffix(".yml").write_text("last_round: 3\n", encoding="utf-8")
@@ -202,7 +222,7 @@ class ReadTest(StateFileTest):
         self.store(state())
         self.path.chmod(0)
         self.addCleanup(self.path.chmod, 0o644)
-        with self.assertRaisesRegex(review_state.StateError, "cannot read state file"):
+        with self.assertRaisesRegex(review_state.StateError, "cannot read state file.*stop and report it"):
             review_state.read_state(self.path, REPO, PR)
 
     @unittest.skipUnless(HAS_RUBY, "ruby converts legacy YAML state")
@@ -219,7 +239,7 @@ class ReadTest(StateFileTest):
         with mock.patch.object(review_state.subprocess, "run", side_effect=FileNotFoundError):
             with self.assertRaises(review_state.StateError) as raised:
                 review_state.read_state(self.path, REPO, PR)
-        self.assertEqual((raised.exception.exit_code, "ruby is not installed); install ruby" in str(raised.exception)),
+        self.assertEqual((raised.exception.exit_code, "ruby is not installed); put a working ruby first on PATH" in str(raised.exception)),
                          (review_state.LEGACY_EXIT, True))
 
 
@@ -266,9 +286,30 @@ class WriteTest(StateFileTest):
 
     def test_failed_replace_leaves_no_temporary_file(self):
         with mock.patch.object(review_state.os, "replace", side_effect=OSError("disk full")):
-            with self.assertRaisesRegex(review_state.StateError, "cannot write"):
+            with self.assertRaisesRegex(review_state.StateError, "cannot write.*stop and report it, never delete or replace it"):
                 review_state.write_state(self.path, state())
         self.assertEqual(list(self.path.parent.iterdir()), [])
+
+    def test_repo_without_owner_is_rejected(self):
+        with self.assertRaisesRegex(review_state.StateError, "repo must be <owner>/<name>"):
+            review_state.write_state(self.path, state(repo="acme"))
+
+    def test_pr_zero_is_rejected(self):
+        with self.assertRaisesRegex(review_state.StateError, "pr must be the PR number"):
+            review_state.write_state(self.path, state(pr=0))
+
+    def test_input_for_another_pr_is_a_rebuild_problem_not_a_corrupt_file(self):
+        self.store(state())
+        with self.assertRaises(review_state.StateError) as raised:
+            review_state.write_state(self.path, state(pr=8, last_round=14))
+        message = str(raised.exception)
+        self.assertEqual(("names PR 8" in message, "holds PR 8094" in message, "otherwise rebuild" in message, "never delete" in message),
+                         (True, True, True, False))
+
+    def test_dropping_a_stored_top_level_block_is_refused(self):
+        self.store(state(publication={"publication_mode": "monolithic"}))
+        with self.assertRaisesRegex(review_state.StateError, "drops stored top-level blocks publication"):
+            review_state.write_state(self.path, state(last_round=14))
 
     def test_label_shaped_id_is_rejected(self):
         with self.assertRaisesRegex(review_state.StateError, r"findings\[0\]\.id must be the 10-hex"):
