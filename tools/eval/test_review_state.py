@@ -214,6 +214,19 @@ class ReadTest(StateFileTest):
         with self.assertRaisesRegex(review_state.StateError, "must hold one JSON object"):
             review_state.read_state(self.path, REPO, PR)
 
+    def test_quoted_pr_is_a_repair_problem_not_another_pr(self):
+        self.store(state(pr=str(PR)))
+        with self.assertRaisesRegex(review_state.StateError, "pr must be the PR number"):
+            review_state.read_state(self.path, REPO, PR)
+
+    @unittest.skipUnless(HAS_RUBY, "ruby converts legacy YAML state")
+    def test_quoted_pr_in_legacy_yaml_exits_with_the_legacy_code(self):
+        self.path.parent.mkdir(parents=True)
+        self.path.with_suffix(".yml").write_text(f'pr: "{PR}"\nlast_round: 3\nfindings: []\n', encoding="utf-8")
+        with self.assertRaises(review_state.StateError) as raised:
+            review_state.read_state(self.path, REPO, PR)
+        self.assertEqual((raised.exception.exit_code, "pr must be the PR number" in str(raised.exception)), (review_state.LEGACY_EXIT, True))
+
     def test_state_of_another_pr_is_rejected(self):
         self.store(state(pr=7))
         with self.assertRaisesRegex(review_state.StateError, "belongs to PR 7"):

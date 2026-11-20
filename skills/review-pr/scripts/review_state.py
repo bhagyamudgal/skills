@@ -131,6 +131,8 @@ def shape_problems(state):
     if not isinstance(state, dict):
         return ["it must hold one JSON object"]
     problems = []
+    if "pr" in state and not is_count(state["pr"], 1):
+        problems.append("pr must be the PR number")
     if not is_count(state.get("last_round"), 0):
         problems.append("last_round must be a whole number")
     if not isinstance(state.get("findings"), list):
