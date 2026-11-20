@@ -25,6 +25,7 @@ ROOT = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 \
 RP = ROOT / "review-pr/SKILL.md"
 FP = ROOT / "fix-pr-review/SKILL.md"
 SCHEMA = ROOT / "review-pr/references/finding-state-schema.md"
+STATE_SCRIPT = ROOT / "review-pr/scripts/review_state.py"
 
 fails, warns, notes = [], [], []
 
@@ -679,21 +680,25 @@ def check_status_values():
         return
     declared = set()
     for l in lines:
-        m = re.search(r"status:.*#\s*(.+)$", l)
-        if m and "|" in m.group(1):
-            declared = {x.strip().strip("`") for x in m.group(1).split("|")}
+        m = re.search(r"`findings\[\]\.status`\s*\|\s*enum\s*\|[^|]*\|\s*`(.+)`\s*\|\s*$", l)
+        if m:
+            declared = {x.strip(" \\") for x in m.group(1).split("|")}
             break
     if not declared:
-        fail("schema", "could not locate the status enum comment")
+        fail("schema", "could not locate the `findings[].status` enum row")
         return
     if declared != STATUS_ENUM:
         warn("schema", f"enum drifted from expected: {sorted(declared)}")
+    script = read(STATE_SCRIPT) or []
+    listed = next((set(re.findall(r'"([a-z-]+)"', l)) for l in script if l.startswith("STATUSES = ")), None)
+    if listed != declared:
+        fail(rel(STATE_SCRIPT), f"STATUSES {sorted(listed or [])} does not match the schema enum {sorted(declared)}")
     for path in ALL_MD:
         ls = read(path)
         if not ls:
             continue
         for i, l in enumerate(ls, 1):
-            for m in re.finditer(r"(?<![-\w])status:\s*([a-z][a-z-]*)", l):
+            for m in re.finditer(r"(?<![-\w])\"?status\"?:\s*\"?([a-z][a-z-]*)", l):
                 v = m.group(1)
                 if v not in declared and v not in {"resolved", "regression"}:
                     fail(rel(path), f"line {i}: writes status `{v}` "
