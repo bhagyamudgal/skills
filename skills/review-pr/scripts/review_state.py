@@ -3,11 +3,13 @@
 
 round prints CURRENT_ROUND, one past the highest round posted on the PR or recorded in the state file.
 read prints the state as JSON, converting a legacy YAML state file on every read until write saves JSON.
-write validates a new state and replaces the file atomically, refusing to lower last_round, drop a stored finding or top-level block, or name another PR.
+write validates a new state and, holding a lock on the state directory, replaces the file atomically, refusing to lower last_round, drop a stored finding or top-level block, or name another PR.
 Exits 2 with one line per problem on stderr, or 3 when a legacy YAML state file does not convert cleanly.
 """
 
 import argparse
+import contextlib
+import fcntl
 import json
 import os
 import pathlib
@@ -233,7 +235,6 @@ def history_problems(path, state, drops):
 def replace_atomically(path, state):
     temporary = None
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
         handle, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
         with os.fdopen(handle, "w", encoding="utf-8") as file:
             json.dump(state, file, ensure_ascii=False, indent=2)
@@ -259,12 +260,32 @@ def sync_directory(path):
         print(f"saved {path}, but its directory could not be synced to disk: {error}", file=sys.stderr)
 
 
+@contextlib.contextmanager
+def state_directory_lock(path):
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        directory = os.open(path.parent, os.O_RDONLY)
+    except OSError as error:
+        raise StateError(f"cannot open state directory {path.parent}: {error}; {STOP_ADVICE}")
+    try:
+        try:
+            fcntl.flock(directory, fcntl.LOCK_EX)
+        except OSError as error:
+            raise StateError(f"cannot lock state directory {path.parent}: {error}; {STOP_ADVICE}")
+        yield
+    finally:
+        os.close(directory)
+
+
 def write_state(path, state, drops=()):
     problems = state_problems(state)
-    problems = problems or history_problems(path, state, drops)
     if problems:
         raise StateError("\n".join(problems))
-    replace_atomically(path, state)
+    with state_directory_lock(path):
+        problems = history_problems(path, state, drops)
+        if problems:
+            raise StateError("\n".join(problems))
+        replace_atomically(path, state)
 
 
 def current_round(path, repo, pr):

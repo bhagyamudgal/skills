@@ -1,3 +1,4 @@
+import fcntl
 import importlib.util
 import io
 import json
@@ -6,6 +7,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
@@ -283,6 +285,34 @@ class WriteTest(StateFileTest):
         self.store(state(findings=[finding(), finding(id="7e2b1c9f4a", file="src/pdf.ts")]))
         review_state.write_state(self.path, state(last_round=14), drops=["7e2b1c9f4a"])
         self.assertEqual(len(json.loads(self.path.read_text(encoding="utf-8"))["findings"]), 1)
+
+    def test_a_writer_waiting_on_the_lock_is_checked_against_the_state_saved_before_it(self):
+        self.store(state())
+        directory = os.open(self.path.parent, os.O_RDONLY)
+        fcntl.flock(directory, fcntl.LOCK_EX)
+        outcome = []
+        writer = threading.Thread(target=lambda: outcome.append(self.attempt_write(state(last_round=14))), daemon=True)
+        writer.start()
+        writer.join(0.5)
+        was_waiting = writer.is_alive()
+        self.store(state(last_round=14, findings=[finding(), finding(id="7e2b1c9f4a", file="src/pdf.ts")]))
+        os.close(directory)
+        writer.join(5)
+        self.assertEqual((was_waiting, outcome), (True, [f"the new state drops stored findings 7e2b1c9f4a; carry every stored entry forward, "
+                                                         f"or pass --drop <id> for each entry Phase 4 step 6 recomputed or removed"]))
+
+    def test_a_failed_lock_exits_two_without_writing(self):
+        with mock.patch.object(review_state.fcntl, "flock", side_effect=OSError(77, "No locks available")):
+            with self.assertRaisesRegex(review_state.StateError, "cannot lock state directory .*stop and report it"):
+                review_state.write_state(self.path, state())
+        self.assertFalse(self.path.exists())
+
+    def attempt_write(self, new_state):
+        try:
+            review_state.write_state(self.path, new_state)
+        except review_state.StateError as error:
+            return str(error)
+        return "written"
 
     def test_failed_replace_leaves_no_temporary_file(self):
         with mock.patch.object(review_state.os, "replace", side_effect=OSError("disk full")):
