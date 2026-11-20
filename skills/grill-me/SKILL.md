@@ -5,7 +5,7 @@ description: Grill the user on a plan one question at a time until every decisio
 
 Interview me relentlessly about every aspect of this plan. Walk down each branch of the decision tree and settle dependencies between decisions one by one. I would rather get grilled now than rebuild later. Once the decisions are settled, prove every fact they rest on and attack the plan before I code.
 
-If I invoke you with a file path argument, read that file first and grill its contents as the plan. If the decisions are already settled and I ask only for verification, skip to the verification pass below. The challenge pass still follows it.
+If I invoke you with a file path argument, read that file first and grill its contents as the plan. If the decisions are already settled and I ask only for verification, skip to the verification pass. The challenge pass still follows.
 
 ## What counts as checked
 
@@ -39,21 +39,21 @@ Ask every question through the AskUserQuestion tool, so each decision reaches me
 - Ground every question before asking it. Check each claim in its context line, its example, and its options to the proof its kind needs. Check each option against the project's written rules in CLAUDE.md or AGENTS.md and name any rule it breaks. When the code answers the question and the plan does not propose changing that behavior, record that answer with its `file:line` and move on without asking. Otherwise build the options and the recommendation from what you found, and cite the `file:line` in the context line. When no code bears on the decision, say so in the context line.
 - When a local database, a log, run history, or a browser measurement would settle the choice, read it before you pick the recommended option and put the figure in the context line. Ask before you connect to anything live.
 - When a check corrects a fact behind a decision I already answered, say what was wrong and re-ask that decision with the corrected fact.
-- If I say "enough" or "done" or "stop" or "skip the rest", make no new checks. Print the ledger for the decisions so far, marking `unverified` each row that lacks the proof its kind needs, and list each pass, lens, and recheck left unfinished. Append per the file rule and post per the issue rule below with the decisions, that ledger, and that list, then announce "Grill complete." and exit.
+- If I say "enough" or "done" or "stop" or "skip the rest", make no new checks. Print the ledger for the decisions so far, marking `unverified` each row that lacks the proof its kind needs, and list each pass, lens, and recheck left unfinished. Then close out, using the decisions, that ledger, and that list as the record.
 - Every "Grill complete." announcement ends with a `Pending on you:` line that names each decision, action, or decision-critical `unverified` row still waiting on me, or reads `Pending on you: nothing`.
-- When every numbered decision has a recorded answer and no answer has opened a new one, move to the verification pass below. If an answer opens a new decision, append it to the list and say so.
+- When every numbered decision has a recorded answer and no answer has opened a new one, move to the verification pass. If an answer opens a new decision, append it to the list and say so.
 
 ## Verification pass
 
 - Print the claim ledger: one numbered row for every claim the plan or a recorded decision rests on. Take rows from the plan, the settled list, and the context line, example, and options of every answered question. Each row holds the claim, its kind, its proof, and a result of `holds`, `corrected`, or `unverified`.
-- Fill each row's proof with the observation its kind needs: the command you ran or the `file:line` you read, and what it showed. An earlier read counts when it already met that bar. Otherwise make the observation now.
+- Fill each row's proof with the observation its kind needs: the command you ran or the `file:line` you read, and what it showed. An earlier read counts when it met that bar. Otherwise make the observation now.
 - Fix what you can verify without asking, and say what you changed in one line each.
 - Hand the decision-critical rows to one fresh agent that has not seen this conversation. A row is decision-critical when a recorded decision would change if it were false. Give it each row as a neutral question, so "no retry exists on the upload path" becomes "is there any retry on the upload path?". Add the proof rule for the row's kind and the repo path. Withhold your answer, your proof, and the decision the row supports. Ask what it observed and where, row by row.
 - Reconcile its report with the ledger. Where its observation disagrees with yours, make the observation that tells the two apart, then correct the row. With no agent tool, mark the ledger `no independent recheck`.
-- Ask about only what you cannot resolve on your own. Ask it under the same rules as a decision question.
+- Ask about only what you cannot resolve on your own, under the same rules as a decision question.
 - Never ask me to confirm a fact you could have checked.
-- When a decision is re-asked, here or in the challenge pass, add the new answer's claims to the ledger and check them.
-- The pass is done when every row reads `holds`, `corrected`, or `unverified`, the fresh agent's report is reconciled or the ledger is marked `no independent recheck`, and the final ledger is printed. Then move to the challenge pass.
+- Claims from any later answer of mine, here or in the challenge pass, join the ledger. Check them, then hand the decision-critical ones to a fresh agent and reconcile its report, both as above.
+- The pass is done when every row reads `holds`, `corrected`, or `unverified`, every decision-critical row has a reconciled fresh-agent report or the ledger is marked `no independent recheck`, and the final ledger is printed. Then move to the challenge pass.
 
 ## Challenge pass
 
@@ -64,10 +64,12 @@ Attack the plan the way its reviewer will. Work through each lens and print what
 - **Gaps.** For each new behavior, walk the states no question covered: empty, deleted, filtered out, pending, unauthorized, a second locale or theme. In each state, take the action the plan is about, follow the plan's rule to what the user ends up seeing, and check it against the reason the plan exists. A state where the original problem comes back, or a new one appears, becomes a new decision.
 - **Direction.** Say whether a smaller plan reaches the same result and whether the change improves the product for its user, from data when data exists.
 
-A finding that changes a decision reopens it as a question under the same rules. After my answer, rerun each lens the new answer affects. When every decision has its premise line, every lens is printed, the ledger is reprinted with any new rows, and no decision is open, close out.
+A finding that changes a decision reopens it as a question under the same rules. After my answer, rerun each lens the new answer affects. When every decision has its premise line, every lens is printed, the ledger with its new rows meets the verification pass's done rule, and no decision is open, close out.
 
 ## Close out
 
-- If I invoked you with a file path, append the numbered decisions and the verified corrections under a `## Decisions` heading in that file.
-- If the context holds a GitHub issue as a URL, number, or issue body, post an issue comment. The body holds the numbered decisions and the verified corrections followed by the full plan, or whatever is captured so far on early exit. Comment on the exact issue from context with `gh issue comment <url> --body`. When context holds only a number, resolve its repository first instead of assuming the checkout.
-- Then announce "Grill complete." with the numbered decisions, the corrections, every row still `unverified`, and `no independent recheck` when the ledger carries it.
+The record is the numbered decisions, the verified corrections, every row still `unverified`, and `no independent recheck` when the ledger carries it.
+
+- If I invoked you with a file path, append the record under a `## Decisions` heading in that file.
+- If the context holds a GitHub issue as a URL, number, or issue body, post an issue comment. The body holds the record followed by the full plan. Comment on the exact issue from context with `gh issue comment <url> --body`. When context holds only a number, resolve its repository first instead of assuming the checkout.
+- Then announce "Grill complete." with the record.
