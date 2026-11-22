@@ -1,6 +1,6 @@
 # Finding-state schema for multi-round dedup
 
-This document defines both of `/review-pr`'s per-PR persistence files, the state file `.claude/review-state/<pr-number>.yml` and the run-over-run cache, plus the stable finding-ID strategy that survives rewordings + line shifts across review rounds.
+This document defines both of `/review-pr`'s per-PR persistence files, the state file `.claude/review-state/<pr-number>.json` and the run-over-run cache, plus the stable finding-ID strategy that survives rewordings + line shifts across review rounds.
 
 **Why this exists**: in real production usage, `/review-pr` ran 6 rounds on a production PR; round 5 resolved finding M3, but round 6 still listed M3 as "deferred", confusing the user about whether they'd shipped the fix. Root cause: dedup keyed on `(file, line, symbol)` breaks when lines shift, and there was no persistent `resolved` marker. This schema fixes both problems.
 
@@ -12,7 +12,7 @@ This document defines both of `/review-pr`'s per-PR persistence files, the state
 
 | File | Holds | Written by |
 |---|---|---|
-| `.claude/review-state/<pr-number>.yml` | Per-finding lifecycle: `active` / `resolved` / `dismissed` / `wontfix` / `regression`, plus the cascade fields | Phase 4 write-back: the only automated writer (see the writer caveat at the end of "Phase 4: write back" in `finding-state-phase4.md`) |
+| `.claude/review-state/<pr-number>.json` | Per-finding lifecycle: `active` / `resolved` / `dismissed` / `wontfix` / `regression`, plus the cascade fields | Phase 4 write-back: the only automated writer (see the writer caveat at the end of "Phase 4: write back" in `finding-state-phase4.md`) |
 | `$HOME/.claude/skills/review-pr/cache/<owner>_<repo>_<pr-number>.json` | Per-run and per-comment GitHub facts: last reviewed SHA, last posted review IDs, and `posted_comments` (for `resolveReviewThread` + dedup against re-posting) | End of Phase 4, independent of GitHub state |
 
 `posted_comments` works alongside the state file: the cache holds per-comment GitHub IDs, the state file holds per-finding lifecycle. Both are necessary; neither is sufficient alone. The state file is the schema described first below; the cache follows under "Run-over-run cache".
@@ -22,74 +22,80 @@ This document defines both of `/review-pr`'s per-PR persistence files, the state
 ## File location
 
 ```
-<repo-root>/.claude/review-state/<pr-number>.yml
+<repo-root>/.claude/review-state/<pr-number>.json
 ```
 
 One file per PR, scoped to the repo's working tree. The file is local-only: Phase 1 seeds `review-state/.gitignore` with `*` when it creates the directory, so the whole dir self-ignores. Don't assume `.claude/` is already ignored: many repos commit it for settings and skills, and unignored state files show up as untracked noise in `git status`.
 
-In **cross-repo mode** (running `/review-pr` from a directory that's not the PR's repo), state lives at `~/.claude/review-state/<owner>__<repo>__<pr-number>.yml` (double underscore separator to avoid path collisions).
+In **cross-repo mode** (running `/review-pr` from a directory that's not the PR's repo), state lives at `~/.claude/review-state/<owner>__<repo>__<pr-number>.json` (double underscore separator to avoid path collisions).
 
 ---
 
 ## Schema
 
-```yaml
-pr: 4785
-repo: fileseye-org/fileseye
-created_at: 2026-04-12T13:29:50Z
-updated_at: 2026-05-08T19:11:42Z
-last_round: 6
-
-findings:
-  - id: 9c4f2a8b1e            # sha1(file::enclosing_symbol::rule_class), first 10 hex chars
-    file: src/services/upsert-bundle.helper.ts
-    enclosing_symbol: upsertBundle
-    rule_class: error-code-wrong-branch
-    severity: Moderate
-    label_history: [M3, M3, M3]    # what label each round assigned (round_first_seen → last_round)
-    status: resolved                # active | resolved | dismissed | wontfix | regression
-    origin: introduced              # introduced | pre-existing (Phase 3 step 4.57)
-    tracking_issue: null            # issue URL for a pre-existing finding (posting step 8c)
-    round_first_seen: 1
-    round_resolved: 5
-    commit_sha_resolved: ced1f1930
-    dismissal_reason: null
-    last_message: "INSERT_RETURNED_NO_ROW error code/message wrong for UPDATE branch"
-    github_thread_id: PRRT_kwDO123abc      # for resolveReviewThread on rolling re-review
-    github_comment_id: 2145678901          # for follow-up comments
-
-    # --- cascade fields (see SKILL.md: "Class-completeness verification",
-    #     "Inverse-risk verification", "Proactive regression sweep") ---
-    inverse_risk: "returning early leaves the bundle row uncommitted"
-    caused_by: null                 # id of the finding whose FIX created this one
-    depends_on: null                # for dismissed/wontfix: the code condition the rationale rests on
-    class_sites:                    # every site of this rule_class, not just the cited one
-      - { site: "src/services/upsert-bundle.helper.ts::upsertBundle", handled: true }
-      - { site: "src/services/upsert-item.helper.ts::upsertItem",     handled: true }
-
-  - id: 7e2b1c9f4a
-    file: src/handlers/import-pdf.ts
-    enclosing_symbol: importPdfBatch
-    rule_class: silent-failure
-    severity: Serious
-    label_history: [S2, S2]
-    status: active
-    round_first_seen: 5
-    round_resolved: null
-    commit_sha_resolved: null
-    dismissal_reason: null
-    last_message: "Promise.allSettled errors swallowed, failed names never logged"
-    github_thread_id: PRRT_kwDO456def
-    github_comment_id: 2145678902
-
-    # --- cascade fields, required here too: this finding proposes a fix ---
-    inverse_risk: "logging every rejected settlement floods the batch log when a whole batch fails"
-    caused_by: null
-    depends_on: null
-    class_sites:
-      - { site: "src/handlers/import-pdf.ts::importPdfBatch",     handled: false }
-      - { site: "src/handlers/import-image.ts::importImageBatch", handled: false }
+```json
+{
+  "pr": 4785,
+  "repo": "fileseye-org/fileseye",
+  "created_at": "2026-04-12T13:29:50Z",
+  "updated_at": "2026-05-08T19:11:42Z",
+  "last_round": 6,
+  "findings": [
+    {
+      "id": "9c4f2a8b1e",
+      "file": "src/services/upsert-bundle.helper.ts",
+      "enclosing_symbol": "upsertBundle",
+      "rule_class": "error-code-wrong-branch",
+      "severity": "Moderate",
+      "label_history": ["M3", "M3", "M3"],
+      "status": "resolved",
+      "origin": "introduced",
+      "tracking_issue": null,
+      "round_first_seen": 1,
+      "round_resolved": 5,
+      "commit_sha_resolved": "ced1f1930",
+      "dismissal_reason": null,
+      "last_message": "INSERT_RETURNED_NO_ROW error code/message wrong for UPDATE branch",
+      "github_thread_id": "PRRT_kwDO123abc",
+      "github_comment_id": 2145678901,
+      "inverse_risk": "returning early leaves the bundle row uncommitted",
+      "caused_by": null,
+      "depends_on": null,
+      "class_sites": [
+        { "site": "src/services/upsert-bundle.helper.ts::upsertBundle", "handled": true },
+        { "site": "src/services/upsert-item.helper.ts::upsertItem", "handled": true }
+      ]
+    },
+    {
+      "id": "7e2b1c9f4a",
+      "file": "src/handlers/import-pdf.ts",
+      "enclosing_symbol": "importPdfBatch",
+      "rule_class": "silent-failure",
+      "severity": "Serious",
+      "label_history": ["S2", "S2"],
+      "status": "active",
+      "round_first_seen": 5,
+      "round_resolved": null,
+      "commit_sha_resolved": null,
+      "dismissal_reason": null,
+      "last_message": "Promise.allSettled errors swallowed, failed names never logged",
+      "github_thread_id": "PRRT_kwDO456def",
+      "github_comment_id": 2145678902,
+      "inverse_risk": "logging every rejected settlement floods the batch log when a whole batch fails",
+      "caused_by": null,
+      "depends_on": null,
+      "class_sites": [
+        { "site": "src/handlers/import-pdf.ts::importPdfBatch", "handled": false },
+        { "site": "src/handlers/import-image.ts::importImageBatch", "handled": false }
+      ]
+    }
+  ]
+}
 ```
+
+`id` is `sha1(file::enclosing_symbol::rule_class)`, first 10 hex chars. `label_history` holds the label each round assigned, from `round_first_seen` to `last_round`. The last four fields are the cascade fields, described under "Cascade fields" below; they are required on every finding that proposes a fix.
+
+`scripts/review_state.py write` is the only writer. It checks every entry's `id`, `file`, `enclosing_symbol`, `rule_class`, and `status`, refuses a `last_round` below the stored one, a state that drops a stored finding without `--drop <id>`, a state that drops a stored top-level block, or one that names another PR. It holds a lock on the state directory from that check until it has replaced the file atomically, so a second writer is checked against the first one's saved state. It saves the input exactly as given, so build it from `review_state.py read` and keep every top-level block, `convergence` and `publication` included. `review_state.py read` converts a legacy `<pr-number>.yml` file until the first write saves JSON; after that write it is never edited again.
 
 ### Field reference
 
@@ -125,8 +131,8 @@ findings:
 
 **`class_sites` item schema**
 
-```yaml
-- { site: "<repo-relative-file>::<enclosing_symbol>", handled: <bool> }
+```json
+{ "site": "<repo-relative-file>::<enclosing_symbol>", "handled": <bool> }
 ```
 
 `site` anchors on `<file>::<symbol>`, never on a line number. A stored site list is re-checked one or more rounds later, by which time every line number in it is stale. Same anchoring rule as the finding ID, for the same reason.
@@ -281,16 +287,7 @@ These branches apply only after the contract-version check succeeds. A cache rec
 
 Both files load in Phase 1: the cache check above (compare `last_run_sha` to `CURRENT_HEAD`, pick a branch) and the state-file read below.
 
-Fetch PR metadata, then dispatch subagents:
-
-```bash
-STATE_FILE=".claude/review-state/<pr-number>.yml"   # or cross-repo path
-if [ -f "$STATE_FILE" ]; then
-  PRIOR_STATE=$(cat "$STATE_FILE")
-else
-  PRIOR_STATE='{ pr: <number>, repo: "<owner>/<repo>", findings: [], last_round: 0 }'
-fi
-```
+Fetch PR metadata, then read the state file only through the guarded block under "Load review-state" in `${CLAUDE_SKILL_DIR}/references/phase1-timeline-state.md`, which saves `PRIOR_STATE` to `<pr-number>-handoff/prior-state.json`.
 
 Pass `PRIOR_STATE.findings` (filtered to status in `{resolved, dismissed, wontfix}`, minus `origin: pre-existing` entries) into Subagent 1's prompt as:
 

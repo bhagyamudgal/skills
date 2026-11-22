@@ -26,7 +26,7 @@ When the caller already owns richer finding state, I reference its artifact and 
 
 A stable scope is the canonical hash of the originating request, review baseline, sorted paths, reviewer roster, and lenses. I record the current content/diff hash as the reviewed snapshot and on each coverage entry.
 
-I keep convergence state in the caller's existing authorized review artifact. When none exists and the workflow is authorized to maintain local review state, I use `.claude/review-state/local-<scope-id>.yml` and keep that directory ignored. Otherwise I render the block inline without creating a file. The block holds only these fields:
+I keep convergence state in the caller's existing authorized review artifact. When that artifact is JSON, such as `/review-pr`'s `.claude/review-state/<pr>.json`, I hand the block back as JSON, an object under a top-level `convergence` key holding exactly the fields listed below, and the caller saves it with its own writer; I never write into it myself. When none exists and the workflow is authorized to maintain local review state, I use `.claude/review-state/local-<scope-id>.yml` and keep that directory ignored. Otherwise I render the block inline without creating a file. The block holds only these fields:
 
 ```yaml
 convergence:

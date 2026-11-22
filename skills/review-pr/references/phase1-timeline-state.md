@@ -73,12 +73,12 @@ prior_findings:
 
 This enables (a) accurate dedupe in Phase 3, (b) reply-aware reopening. A **human reply** is a comment after the first whose author `__typename` is not `Bot` and whose body carries no `review-pr:` marker, excluding the `/review-pr` `Tracked in <issue URL>` reply (a `VIEWER` comment on a thread whose first comment carries `review-pr:origin=pre-existing`).
 
-`ANSWERED_COMMENTS` maps each author comment `/review-pr` already answered to the answer's kind. Read it from `VIEWER` content outside `PENDING` reviews only, since a leftover draft was never published: thread comments carrying `<!-- review-pr:reply to=<id> kind=<kind> -->`, and review bodies carrying `<!-- review-pr:answered <id>=<kind> ... -->`. Fetch the reviews once here, into a file, since each shell call starts fresh; the response includes the viewer's pending reviews, and the round query below reads the same file:
+`ANSWERED_COMMENTS` maps each author comment `/review-pr` already answered to the answer's kind. Read it from `VIEWER` content outside `PENDING` reviews only, since a leftover draft was never published: thread comments carrying `<!-- review-pr:reply to=<id> kind=<kind> -->`, and review bodies carrying `<!-- review-pr:answered <id>=<kind> ... -->`. Fetch the reviews once here, into a file, since each shell call starts fresh; the response includes the viewer's pending reviews:
 
 ```bash
 REVIEWS_FILE="${TMPDIR:-/tmp}/review-pr-<owner>-<repo>-<pr-number>-reviews.json"
 gh pr view <url> --json reviews > "$REVIEWS_FILE" \
-  || { echo "GitHub reviews query failed; stop before reading answers or the round" >&2; exit 1; }
+  || { echo "GitHub reviews query failed; stop before reading answers" >&2; exit 1; }
 ```
 
 Each rendered summary carries every prior entry forward, so a body update never loses one. Read every human reply on every prior thread, open or resolved, before any prior finding is carried, re-verified, or re-raised. An author who answers a finding often leaves the thread open for a human reviewer. Code that still exhibits the issue is not by itself grounds to raise it again. A thread is **answered** when its `author_rationale` is design-decision (points at a doc, ADR, or issue), out-of-scope (points at a follow-up issue), or refuted-with-evidence (names a test, measurement, counterexample, or file:line). A thread whose `rationale_comment_id` `ANSWERED_COMMENTS` records as `correction` or `needs-pointer` is not answered: `/review-pr` already ruled that reply insufficient. A reply that disagrees with the finding but cites no pointer sets `disputed`, which is not answered; any other reply without a pointer sets `none`. Record an answered finding as `dismissed` or `wontfix` in the state file with that rationale in `dismissal_reason` and the code condition it rests on in `depends_on`, and do not re-raise it. "The new commits did not touch this code" is never a reason to re-raise an answered finding. The author already said why the code stays. Re-raise with `Category: Prior-finding-correction` only when the thread is not answered, the reply promised a fix the diff shows never landed, a later commit voided `depends_on`, or you have new evidence that a specific claim in `rationale_reply` is false. A correction on an answered thread quotes the claim it refutes, names the new evidence, and links the prior thread.
@@ -101,10 +101,10 @@ Load `${CLAUDE_SKILL_DIR}/references/finding-state-schema.md` before reading the
 
 ```bash
 # Local mode: state lives next to the working tree
-STATE_FILE=".claude/review-state/<pr-number>.yml"
+STATE_FILE=".claude/review-state/<pr-number>.json"
 # Cross-repo mode: state is keyed by owner__repo__pr in the user's home
 [ "$CROSS_REPO_MODE" = "true" ] && \
-  STATE_FILE="$HOME/.claude/review-state/<owner>__<repo>__<pr-number>.yml"
+  STATE_FILE="$HOME/.claude/review-state/<owner>__<repo>__<pr-number>.json"
 
 STATE_DIR="$(dirname "$STATE_FILE")"
 mkdir -p "$STATE_DIR"
@@ -112,18 +112,17 @@ mkdir -p "$STATE_DIR"
 # out of `git status` in repos that DO commit `.claude/` (settings, skills).
 [ -f "$STATE_DIR/.gitignore" ] || printf '*\n' > "$STATE_DIR/.gitignore"
 
-if [ -f "$STATE_FILE" ]; then
-  PRIOR_STATE=$(cat "$STATE_FILE")
-else
-  PRIOR_STATE='{ pr: <num>, repo: "<owner>/<repo>", findings: [], last_round: 0 }'
-fi
-
-LOCAL_ROUND=$(echo "$PRIOR_STATE" | yq '.last_round')
-REVIEWS_FILE="${TMPDIR:-/tmp}/review-pr-<owner>-<repo>-<pr-number>-reviews.json"
-[ -s "$REVIEWS_FILE" ] || { echo "reviews file missing; rerun the timeline fetch" >&2; exit 1; }
-GITHUB_ROUND=$(jq '[.reviews[].body | capture("review-pr:run [^>]*round=(?<round>[0-9]+)").round | tonumber] | max // 0' "$REVIEWS_FILE")
-CURRENT_ROUND=$(( (LOCAL_ROUND > GITHUB_ROUND ? LOCAL_ROUND : GITHUB_ROUND) + 1 ))
+STATE_SCRIPT="${CLAUDE_SKILL_DIR:?}/scripts/review_state.py"
+python3 "$STATE_SCRIPT" round --repo <owner>/<repo> --pr <pr-number> --file "$STATE_FILE" \
+  || { code=$?; echo "round lookup failed (exit $code); stop before reviewing" >&2; exit $code; }
+HANDOFF_DIR="${STATE_FILE%.json}-handoff"
+mkdir -p "$HANDOFF_DIR"
+python3 "$STATE_SCRIPT" read --repo <owner>/<repo> --pr <pr-number> --file "$STATE_FILE" > "$HANDOFF_DIR/prior-state.json" \
+  || { code=$?; echo "state read failed (exit $code); never continue as if no state exists" >&2; exit $code; }
+echo "PRIOR_STATE: $HANDOFF_DIR/prior-state.json"
 ```
+
+Read the state and the round only through `review_state.py`, never with `cat`, `yq`, or a parser you write. The first line printed is `CURRENT_ROUND`, and `PRIOR_STATE` is the JSON file the last line names; each shell call starts fresh, so carry the round from this output and read that file before Phase 2. `read` writes the empty state `{pr, repo, findings: [], last_round: 0}` when this PR has none. When only a legacy `<pr-number>.yml` exists, it converts that file on every read until Phase 4 saves JSON. Exit 3 means the legacy file does not convert: follow the advice on stderr, which names the ruby version, and never write JSON over it. Exit 2 from `round` with a `gh` error on stderr is a GitHub failure: retry once, then stop and report it; the state file is untouched. Any other exit 2 names a corrupt state file or one that belongs to another PR: stop the run and report it, never delete or replace it. `round` prints one past the higher of the GitHub `review-pr:run` markers, which it fetches in full itself, and the state file's `last_round`.
 
 The `review-pr:run` markers on GitHub are the round every reviewer and machine shares; the state file is this machine's copy, missing on any other machine or worktree. A leftover pending review's marker counts too, so this run's summary can never equal an earlier run's draft and Phase A reconciliation never adopts that draft as its own.
 
